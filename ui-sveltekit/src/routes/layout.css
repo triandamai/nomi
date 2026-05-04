@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+    --color-cash-green: #00d036;
+    --color-cash-black: #000000;
+    --color-cash-gray-950: #0a0a0a;
+    --color-cash-gray-900: #111111;
+    --color-cash-gray-800: #1a1a1a;
+    --color-cash-gray-700: #2a2a2a;
+    --color-cash-gray-400: #a1a1a1;
+    --color-cash-gray-100: #f4f4f4;
+    --color-cash-gray-200: #e5e5e5;
+    --color-cash-white: #ffffff;
+}
+
+@layer base {
+    body {
+        @apply transition-colors duration-300;
+    }
+
+    :root, :root.light {
+        --bg-main: var(--color-cash-white);
+        --text-main: var(--color-cash-black);
+        --text-muted: var(--color-cash-gray-700);
+        --bg-card: var(--color-cash-gray-100);
+        --border-main: var(--color-cash-gray-200);
+        --bg-secondary: var(--color-cash-gray-200);
+    }
+
+    :root.dark {
+        --bg-main: var(--color-cash-black);
+        --text-main: var(--color-cash-white);
+        --text-muted: #d1d1d1;
+        --bg-card: var(--color-cash-gray-900);
+        --border-main: var(--color-cash-gray-800);
+        --bg-secondary: var(--color-cash-gray-800);
+    }
+
+    body {
+        background-color: var(--bg-main);
+        color: var(--text-main);
+        @apply font-sans antialiased;
+    }
+
+    /* Hide number input spinners */
+    input[type='number']::-webkit-inner-spin-button,
+    input[type='number']::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    input[type='number'] {
+        -moz-appearance: textfield;
+    }
+
+    /* Ensure amount inputs look consistent */
+    input[inputmode='decimal'] {
+        caret-color: var(--color-cash-green);
+    }
+}
+
+@layer components {
+    .cash-card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-main);
+        @apply rounded-3xl p-5 transition-all;
+    }
+
+    .cash-button-primary {
+        @apply bg-[--color-cash-green] text-black px-6 py-3 rounded-full font-bold transition-transform active:scale-95 text-center;
+    }
+
+    .cash-button-secondary {
+        background-color: var(--bg-secondary);
+        color: var(--text-main);
+        @apply px-6 py-3 rounded-full font-bold transition-transform active:scale-95 text-center;
+    }
+
+    .cash-input {
+        @apply bg-transparent border-none text-[var(--text-main)] text-xl p-4 focus:outline-none w-full placeholder:text-cash-gray-400;
+    }
+}
