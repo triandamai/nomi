@@ -5,9 +5,7 @@ use crate::common::tools::tools_model::{
     ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse,
     ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse,
 };
-use gemini_rust::tools::FileSearchConfig;
 use gemini_rust::{FunctionDeclaration, Tool};
-use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sqlx::{Column, Pool, Postgres, Row};

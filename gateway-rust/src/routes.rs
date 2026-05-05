@@ -5,15 +5,14 @@ use crate::feature::conversation::{
     handle_get_conversations, handle_get_messages, handle_get_soul_history,
     handle_internal_inbound, handle_restore_conversation_soul, handle_update_conversation,
 };
-use crate::feature::realtime::register_public_sse;
 use axum::extract::Request;
 use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, put};
 use axum::{Json, Router, routing::post};
-
 use crate::feature::graph::{handle_get_graph, handle_search_graph};
+use crate::feature::realtime::register_public_sse;
 
 pub fn create_router(state: AppState) -> Router {
     Router::new()

@@ -6,9 +6,11 @@ use crate::feature::conversation::chat_model::{
     ChatRequest, ConversationResponse, CreateConversationRequest, MessageItem, MessageListParams,
     MessageListResponse, RestoreSoulRequest, RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest,
 };
-use crate::{AppState, rag};
-use axum::Json;
+use crate::feature::conversation::internal_model::InboundMessage;
+use crate::feature::realtime::presence::DebounceEvent;
+use crate::{rag, AppState};
 use axum::extract::{Path, State};
+use axum::Json;
 use chrono::Utc;
 use serde_json::Value;
 use sqlx::Row;
@@ -18,8 +20,6 @@ use uuid::Uuid;
 pub mod chat_model;
 pub mod internal_model;
 
-use crate::feature::conversation::internal_model::InboundMessage;
-use crate::feature::realtime::presence::DebounceEvent;
 
 pub async fn handle_internal_inbound(
     State(state): State<AppState>,

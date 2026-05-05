@@ -7,7 +7,6 @@ use crate::feature::conversation::internal_model::InboundMessage;
 use crate::rag;
 use chrono::Utc;
 use dashmap::DashMap;
-use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, Instant};
@@ -35,7 +34,7 @@ impl PresenceManager {
 
         let manager_clone = manager.clone();
         tokio::spawn(async move {
-            let mut pending_messages: DashMap<Uuid, (InboundMessage, Instant)> = DashMap::new();
+            let pending_messages: DashMap<Uuid, (InboundMessage, Instant)> = DashMap::new();
 
             loop {
                 tokio::select! {

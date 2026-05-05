@@ -1,0 +1,45 @@
+services:
+  gateway:
+    image: ${DOCKERHUB_USERNAME}/nomi-gateway:latest
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - db
+      - redis
+
+  channel:
+    image: ${DOCKERHUB_USERNAME}/nomi-channel:latest
+    environment:
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - channel_data:/app/data
+    depends_on:
+      - redis
+
+  ui:
+    image: ${DOCKERHUB_USERNAME}/nomi-ui:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - PUBLIC_GATEWAY_URL=${PUBLIC_GATEWAY_URL}
+
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+  channel_data:

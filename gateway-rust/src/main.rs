@@ -4,18 +4,17 @@ pub mod models;
 pub mod rag;
 pub mod routes;
 
-use crate::common::agent::parse_llm_output;
+
 use crate::common::sse::sse_emitter::SseBroadcaster;
 use crate::feature::realtime::presence::PresenceManager;
 use axum::Router;
 use dotenvy::dotenv;
 use gemini_rust::{Gemini, Model};
-use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
-use std::fmt::format;
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use std::{env::var, sync::Arc};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info};
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -79,6 +78,14 @@ async fn main() -> anyhow::Result<()> {
         gemini_api_key,
         presence,
     };
+
+    // Start Redis Listener
+    let redis_state = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::feature::redis::start_redis_listener(redis_state).await {
+            error!("Redis listener failed: {}", e);
+        }
+    });
 
     // Configure CORS
     let cors = CorsLayer::new()

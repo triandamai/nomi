@@ -27,6 +27,13 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/presence/typing", post(handle_typing))
         .with_state(state);
 
+    // Start Redis Listener
+    tokio::spawn(async move {
+        if let Err(e) = crate::feature::redis::start_redis_listener().await {
+            tracing::error!("Redis listener failed: {}", e);
+        }
+    });
+
     let addr = SocketAddr::from(([0, 0, 0, 0], 8001));
     info!("channel-rust listening on {}", addr);
     
