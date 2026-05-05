@@ -69,7 +69,7 @@ function createRagStore() {
             isSearching = true;
             try {
                 const result = await chatApi.searchGraph(query);
-                if (result.status === 200) {
+                if (result.data) {
                     searchResults = result.data;
                 }
             } catch (e) {
