@@ -1,5 +1,4 @@
 use crate::common::agent::agent_model::PromptActor;
-use crate::common::agent::{function_call, send_prompt};
 use crate::common::api_response::ApiResponse;
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::common::tools::ToolDispatcher;
@@ -17,6 +16,115 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 pub mod chat_model;
+pub mod internal_model;
+
+use crate::feature::conversation::internal_model::InboundMessage;
+use crate::feature::realtime::presence::DebounceEvent;
+
+pub async fn handle_internal_inbound(
+    State(state): State<AppState>,
+    Json(payload): Json<InboundMessage>,
+) -> ApiResponse<Value> {
+    info!(
+        sender_id = %payload.sender_id,
+        chat_id = %payload.chat_id,
+        channel = %payload.channel,
+        "Received internal inbound message"
+    );
+
+    // 1. Resolve/Create User
+    let user_id = match sqlx::query!(
+        "INSERT INTO users (external_id, display_name) VALUES ($1, $2) ON CONFLICT (external_id) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id",
+        payload.sender_id,
+        payload.sender_id // Default display name to sender_id if not provided
+    )
+    .fetch_one(&state.pool)
+    .await {
+        Ok(row) => row.id,
+        Err(e) => {
+            error!("Failed to resolve user: {}", e);
+            return ApiResponse::failed("Failed to resolve user");
+        }
+    };
+
+    // 2. Resolve/Create Conversation
+    let conversation_id = match sqlx::query!(
+        "SELECT conversation_id FROM channels WHERE channel_type = $1 AND external_chat_id = $2",
+        payload.channel,
+        payload.chat_id
+    )
+    .fetch_optional(&state.pool)
+    .await {
+        Ok(Some(row)) => row.conversation_id.unwrap(),
+        Ok(None) => {
+            // Create new conversation
+            let conv_id = Uuid::new_v4();
+            let title = format!("{} via {}", payload.chat_id, payload.channel);
+            
+            if let Err(e) = sqlx::query!(
+                "INSERT INTO conversations (id, title) VALUES ($1, $2)",
+                conv_id,
+                title
+            ).execute(&state.pool).await {
+                error!("Failed to create conversation: {}", e);
+                return ApiResponse::failed("Failed to create conversation");
+            }
+
+            if let Err(e) = sqlx::query!(
+                "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id) VALUES ($1, $2, $3, $4)",
+                payload.channel,
+                payload.sender_id,
+                payload.chat_id,
+                conv_id
+            ).execute(&state.pool).await {
+                error!("Failed to link channel: {}", e);
+                return ApiResponse::failed("Failed to link channel");
+            }
+
+            // Add member
+            let _ = sqlx::query!(
+                "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                conv_id,
+                user_id
+            ).execute(&state.pool).await;
+
+            conv_id
+        }
+        Err(e) => {
+            error!("Database error: {}", e);
+            return ApiResponse::failed("Database error");
+        }
+    };
+
+    // 3. Save incoming message immediately
+    let save_res = sqlx::query!(
+        "INSERT INTO messages (conversation_id, role, content, thought, created_at) VALUES ($1, 'user', $2, '', now()) RETURNING id, role, content, thought, created_at",
+        conversation_id,
+        payload.text
+    ).fetch_one(&state.pool).await;
+
+    if let Ok(m) = save_res {
+        // Broadcast to SSE so Web UI shows it
+        let _ = state.sse.send(SseBuilder::new(
+            SseTarget::broadcast("message".to_string()),
+            MessageItem {
+                id: m.id,
+                conversation_id,
+                role: m.role,
+                content: m.content,
+                thought: m.thought,
+                created_at: m.created_at.unwrap_or_else(Utc::now),
+            }
+        )).await;
+    }
+
+    // 4. Send to Debouncer
+    if let Err(e) = state.presence.channel_tx.send(DebounceEvent::NewMessage(conversation_id, payload)).await {
+        error!("Failed to send to debouncer: {}", e);
+    }
+
+    ApiResponse::ok(serde_json::json!({ "status": "received", "conversation_id": conversation_id }), "Message received")
+}
 
 pub async fn handle_get_messages(
     State(state): State<AppState>,
@@ -305,6 +413,16 @@ pub async fn handle_chat_stream(
     let user_message = payload.message.clone();
 
     tokio::spawn(async move {
+        // Start typing
+        let _ = state.sse.send(SseBuilder::new(
+            SseTarget::broadcast("presence".to_string()),
+            serde_json::json!({
+                "conversation_id": conversation_id,
+                "is_typing": true,
+                "user_id": "nomi"
+            }),
+        )).await;
+
         let dispatcher = ToolDispatcher::new(
             state.pool.clone(),
             std::env::current_dir().unwrap_or_default(),
@@ -378,46 +496,80 @@ pub async fn handle_chat_stream(
             ); // Improved separator
 
         // C. Prepare Reasoning Loop
+        let mut loop_count = 0;
+        let max_loops = 5;
+        let mut current_actor = PromptActor::User {
+            history: history_text.clone(),
+            memories: memories_text.clone(),
+            message: user_message.clone(),
+            system_prompt: system_prompt.clone(),
+        };
 
-        let result = send_prompt(
-            &state.gemini,
-            None,
-            PromptActor::User {
-                history: history_text.clone(),
-                memories: memories_text.clone(),
-                message: user_message.clone(),
-                system_prompt: system_prompt.clone(),
-            },
-        )
-        .await;
+        let mut final_response = None;
+        let mut previous_calls = Vec::new();
 
-        if let Err(error) = result {
-            error!("Got error {}", error);
-            return;
+        while loop_count < max_loops {
+            loop_count += 1;
+            info!(loop_count = loop_count, "Starting agentic loop iteration");
+
+            let result = crate::common::agent::send_prompt(&state.gemini, current_actor).await;
+
+            match result {
+                Ok((response, chunk)) => {
+                    // Emit thought
+                    if !chunk.thought.is_empty() {
+                        let _ = state.sse.send(SseBuilder::new(
+                            SseTarget::broadcast("thought".to_string()),
+                            serde_json::json!({ "thought": chunk.thought, "conversation_id": conversation_id }),
+                        )).await;
+                    }
+
+                    let tool_calls = response.function_calls();
+                    
+                    if tool_calls.is_empty() {
+                        info!("No tool calls requested, finishing loop");
+                        final_response = Some((response, chunk));
+                        break;
+                    }
+
+                    info!(count = tool_calls.len(), "Executing parallel tool calls");
+                    
+                    // Track calls for history
+                    let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
+                    previous_calls.extend(current_calls.clone());
+
+                    let tool_results = crate::common::agent::execute_tools(
+                        &dispatcher,
+                        current_calls.clone(),
+                        &user_message,
+                        Some(state.sse.clone()),
+                    ).await;
+
+                    // Update actor for next turn
+                    current_actor = PromptActor::MultiTool {
+                        history: history_text.clone(),
+                        memories: memories_text.clone(),
+                        message: user_message.clone(),
+                        system_prompt: system_prompt.clone(),
+                        tool_results,
+                        previous_calls: previous_calls.clone(),
+                    };
+                }
+                Err(error) => {
+                    error!("Agentic loop error: {}", error);
+                    break;
+                }
+            }
         }
 
-        if let Ok(response) = result {
-            history_text.push_str(response.0.text().as_str());
-
-            let function_result = function_call(
-                &state.gemini,
-                dispatcher,
-                response.0.clone(),
-                user_message.clone(),
-                history_text.clone(),
-                memories_text.clone(),
-                system_prompt.clone(),
-            )
-            .await
-            .map_or_else(|_| response, |r| r);
-
+        if let Some((_, function_result)) = final_response {
             // F. Finalization
             if let Ok(result) = sqlx::query!(
                 "INSERT INTO messages (conversation_id, role, content, thought, created_at) VALUES ($1, 'user', $2, '', now()), ($1, 'assistant', $3, $4, now()) returning id, role, content, thought, created_at",
                 conversation_id,
                 user_message,
-                function_result.1.content,
-                function_result.1.thought
+                function_result.content,
+                function_result.thought
             )
             .fetch_all(&state.pool)
             .await
@@ -438,6 +590,16 @@ pub async fn handle_chat_stream(
                         ))
                         .await;
                 }
+
+                // Stop typing
+                let _ = state.sse.send(SseBuilder::new(
+                    SseTarget::broadcast("presence".to_string()),
+                    serde_json::json!({
+                        "conversation_id": conversation_id,
+                        "is_typing": false,
+                        "user_id": "nomi"
+                    }),
+                )).await;
 
                 // Hierarchical Memory: Background Consolidation (Last Summarized ID Approach)
                 let pool = state.pool.clone();
@@ -500,6 +662,8 @@ pub async fn handle_chat_stream(
 3. 'edges': An array of relationships ({{'source': 'node_id', 'target': 'node_id', 'relationship': 'Description'}}).
 
 Rules:
+- NEVER create a node with id 'summary' or that represents the conversation summary itself.
+- Extract individual entities (specific technologies, names, project names).
 - Reuse IDs for the same entities across different parts of the conversation.
 - 'id' should be lowercase and snake_case (e.g., 'rust', 'axum_framework').
 - Focus on technical stack, project goals, and preferences.

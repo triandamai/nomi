@@ -38,10 +38,16 @@
 						graphInstance = (ForceGraph3D as any)()(graphContainer)
 							.backgroundColor('#020617') // slate-950 deep black
 							.nodeId('id')
-							.nodeLabel((node: any) => `${node.label} (${node.node_type})`)
+							.nodeLabel((node: any) => `${node.label || 'Unknown'} (${node.node_type || 'Entity'})`)
+							.nodeAutoColorBy('node_type')
 							.nodeThreeObject((node: any) => {
-								const isSummary = node.node_type?.toLowerCase() === 'summary';
-								const size = isSummary ? 12 : 5;
+								const nodeType = String(node.node_type || '').toLowerCase();
+								const isSummary = nodeType === 'summary' || node.id === 'summary';
+								
+								// Defensive size check
+								let size = isSummary ? 12 : 5;
+								if (isNaN(size) || size <= 0) size = 5;
+
 								const color = node.id === highlightedNodeId ? '#ffffff' : (node.color || '#94a3b8');
 
 								const material = new THREE.MeshPhongMaterial({
@@ -61,7 +67,7 @@
 									const group = new THREE.Group();
 									group.add(mesh);
 
-									const sprite = new (SpriteText as any)(node.label);
+									const sprite = new (SpriteText as any)(node.label || 'Summary');
 									sprite.color = '#ffffff';
 									sprite.textHeight = 6;
 									sprite.position.y = size + 8;
@@ -91,10 +97,16 @@
 								selectedNode = node;
 								highlightedNodeId = node.id;
 								handleInteraction();
-								const distance = 80;
-								const distRatio = 1 + distance / Math.hypot(node.x || 0, node.y || 0, node.z || 0);
+								
+								const distance = 120;
+								const x = node.x || 0;
+								const y = node.y || 0;
+								const z = node.z || 0;
+								const currentDist = Math.hypot(x, y, z);
+								const distRatio = currentDist === 0 ? 2 : 1 + distance / currentDist;
+
 								graphInstance.cameraPosition(
-									{ x: (node.x || 0) * distRatio, y: (node.y || 0) * distRatio, z: (node.z || 0) * distRatio },
+									{ x: x * distRatio, y: y * distRatio, z: z * distRatio },
 									node,
 									2000
 								);
@@ -135,7 +147,9 @@
 										node.__threeObj.scale.setScalar(scale);
 
 										if (node.__sphereMesh && node.__sphereMesh.material) {
-											const targetColor = node.id === highlightedNodeId ? 0xffffff : parseInt((node.color || '#94a3b8').replace('#', '0x'));
+											let colorStr = node.id === highlightedNodeId ? '#ffffff' : (node.color || '#94a3b8');
+											if (!colorStr.startsWith('#')) colorStr = '#94a3b8';
+											const targetColor = parseInt(colorStr.replace('#', '0x'));
 											node.__sphereMesh.material.color.setHex(targetColor);
 											node.__sphereMesh.material.emissive.setHex(node.id === highlightedNodeId ? 0x333333 : 0x000000);
 										}

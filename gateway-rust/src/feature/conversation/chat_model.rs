@@ -1,25 +1,7 @@
-use axum::{Json, extract::State};
 use chrono::{DateTime, Utc};
-use gemini_rust::{
-    Content, FunctionCall, FunctionCallingMode, Gemini, GenerationResponse, Message, Role,
-};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::encode::IsNull::No;
-use tracing::{error, info};
 use uuid::Uuid;
-
-use crate::AppState;
-use crate::common::agent::agent_model::PromptActor;
-use crate::common::agent::{function_call, send_prompt};
-use crate::common::api_response::ApiResponse;
-use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
-use crate::common::sse::sse_emitter::SseBroadcaster;
-use crate::common::tools::tools_model::{
-    ExecuteReadQueryParameters, ReadWorkSpaceParameters, ToolResult,
-};
-use crate::common::tools::{ArtaTool, ToolDispatcher};
-use crate::rag;
 
 #[derive(Deserialize, Debug)]
 pub struct ChatRequest {

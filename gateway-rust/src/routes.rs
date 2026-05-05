@@ -3,7 +3,7 @@ use crate::common::api_response::ApiResponse;
 use crate::feature::conversation::{
     handle_chat_stream, handle_create_conversation, handle_delete_conversation,
     handle_get_conversations, handle_get_messages, handle_get_soul_history,
-    handle_restore_conversation_soul, handle_update_conversation,
+    handle_internal_inbound, handle_restore_conversation_soul, handle_update_conversation,
 };
 use crate::feature::realtime::register_public_sse;
 use axum::extract::Request;
@@ -31,6 +31,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/realtime", get(register_public_sse))
         .route("/graph", get(handle_get_graph))
         .route("/graph/search", get(handle_search_graph))
+        .route("/internal/inbound", post(handle_internal_inbound))
         .layer(axum::middleware::from_fn(method_not_allowed))
         .fallback(handle_fallback)
         .with_state(state)

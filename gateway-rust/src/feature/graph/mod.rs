@@ -55,32 +55,54 @@ pub async fn handle_get_graph(State(state): State<AppState>) -> ApiResponse<Grap
 
     match rows {
         Ok(rows) => {
-            let mut all_nodes = HashSet::new();
+            let mut all_nodes = std::collections::HashMap::new();
             let mut all_links = HashSet::new();
 
             for row in rows {
                 if let Some(graph_val) = row.graph {
                     if let Ok(graph) = serde_json::from_value::<GraphData>(graph_val) {
                         for mut node in graph.nodes {
+                            // Ensure node IDs are cleaned up
+                            node.id = node.id.trim().to_lowercase().replace(' ', "_");
+                            
+                            // Skip generic "summary" nodes that AI might have hallucinated
+                            if node.id == "summary" || node.node_type.to_lowercase() == "summary" {
+                                continue;
+                            }
+
+                            // Deterministic color based on ID
                             if node.color.is_none() {
-                                // Deterministic "random" color based on ID hash-like simple logic
                                 let idx = node.id.chars().map(|c| c as usize).sum::<usize>()
                                     % colors.len();
                                 node.color = Some(colors[idx].to_string());
                             }
-                            all_nodes.insert(node);
+                            
+                            // Deduplicate by ID, keep the first one or merge labels if needed
+                            all_nodes.entry(node.id.clone()).or_insert(node);
                         }
                         for link in graph.links {
+                            let mut link = link;
+                            link.source = link.source.trim().to_lowercase().replace(' ', "_");
+                            link.target = link.target.trim().to_lowercase().replace(' ', "_");
                             all_links.insert(link);
                         }
                     }
                 }
             }
 
+            // Filter links to ensure both source and target exist
+            let nodes_vec: Vec<GraphNode> = all_nodes.into_values().collect();
+            let node_ids: HashSet<String> = nodes_vec.iter().map(|n| n.id.clone()).collect();
+            
+            let links_vec: Vec<GraphEdge> = all_links
+                .into_iter()
+                .filter(|l| node_ids.contains(&l.source) && node_ids.contains(&l.target))
+                .collect();
+
             ApiResponse::ok(
                 GraphData {
-                    nodes: all_nodes.into_iter().collect(),
-                    links: all_links.into_iter().collect(),
+                    nodes: nodes_vec,
+                    links: links_vec,
                 },
                 "Graph data retrieved",
             )

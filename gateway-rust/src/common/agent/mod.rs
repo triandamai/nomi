@@ -4,7 +4,7 @@ use crate::common::agent::agent_model::{ChatResponse, PromptActor};
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::common::sse::sse_emitter::SseBroadcaster;
 use crate::common::tools::tools_model::{
-    ExecuteReadQueryParameters, ReadWorkSpaceParameters, UpdateConversationSoulParameters,
+    ExecuteReadQueryParameters, ReadWorkSpaceParameters, UpdateConversationSoulParameters, ToolResult,
 };
 use crate::common::tools::{ArtaTool, ToolDispatcher};
 use crate::feature::conversation::chat_model::ChatStreamChunk;
@@ -13,10 +13,10 @@ use gemini_rust::{
     Content, FunctionCall, FunctionCallingMode, Gemini, GenerationResponse, Message, Role,
 };
 use tracing::{error, info};
+use std::sync::Arc;
 
 pub async fn send_prompt(
     gemini: &Gemini,
-    function_call: Option<&FunctionCall>,
     actor: PromptActor,
 ) -> Result<(GenerationResponse, ChatStreamChunk), String> {
     info!("sending message to llm");
@@ -29,7 +29,6 @@ pub async fn send_prompt(
             system_prompt,
         } => {
             info!("history text: {}", history);
-            // info!("memories text: {}", memories);
             gemini
                 .generate_content()
                 .with_system_prompt(build_system_prompt(history, memories, system_prompt))
@@ -37,46 +36,35 @@ pub async fn send_prompt(
                 .with_tool(ToolDispatcher::generate_tool_for_prompt())
                 .with_function_calling_mode(FunctionCallingMode::Auto)
         }
-        PromptActor::Tool {
+        PromptActor::MultiTool {
             history,
             memories,
-            tool_name,
-            tool_result,
             message,
             system_prompt,
+            tool_results,
+            previous_calls,
         } => {
-            // Optimization: Truncate history to only most recent 3 messages to prioritize tool result
-            let truncated_history = history
-                .lines()
-                .rev()
-                .take(3)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            // info!("truncated history text: {}", truncated_history);
-            // info!("memories text: {}", memories);
-            // info!("follow up: {}", tool_result.follow_up_prompt.clone());
-
-            let model_content = Content::function_call(function_call.unwrap().clone());
-            gemini
+            let mut builder = gemini
                 .generate_content()
-                .with_system_prompt(build_system_prompt(
-                    truncated_history,
-                    memories,
-                    system_prompt,
-                ))
-                .with_user_message(tool_result.follow_up_prompt.clone())
-                .with_message(Message {
-                    content: model_content,
+                .with_system_prompt(build_system_prompt(history, memories, system_prompt))
+                .with_user_message(message);
+
+            // Add previous assistant tool calls
+            for call in previous_calls {
+                builder = builder.with_message(Message {
+                    content: Content::function_call(call),
                     role: Role::Model,
-                })
-                .with_function_response(tool_name, tool_result)
-                .unwrap()
+                });
+            }
+
+            // Add function responses
+            for (name, result) in tool_results {
+                builder = builder.with_function_response(name, result).unwrap();
+            }
+
+            builder
                 .with_tool(ToolDispatcher::generate_tool_for_prompt())
-                .with_function_calling_mode(FunctionCallingMode::None)
+                .with_function_calling_mode(FunctionCallingMode::Auto)
         }
     };
     // D. Streaming Egress
@@ -100,121 +88,80 @@ pub async fn send_prompt(
     }
 }
 
-pub async fn function_call(
-    gemini: &Gemini,
-    dispatcher: ToolDispatcher,
-    llm: GenerationResponse,
-    user_message: String,
-    history_text: String,
-    memories_text: String,
-    system_prompt: String,
-) -> Result<(GenerationResponse, ChatStreamChunk), String> {
-    if let Some(function_call) = llm.function_calls().first() {
-        info!(
-            function_name=function_call.name,
-            args= ?function_call.args,
-            "function call received"
-        );
+pub async fn execute_tools(
+    dispatcher: &ToolDispatcher,
+    function_calls: Vec<FunctionCall>,
+    user_message: &str,
+    sse: Option<Arc<SseBroadcaster>>,
+) -> Vec<(String, ToolResult)> {
+    let mut futures = Vec::new();
 
-        match function_call.name.as_str() {
-            "read_workspace_file" => {
-                info!("start reading workspace file");
-                let param: ReadWorkSpaceParameters =
-                    serde_json::from_value(function_call.args.clone()).unwrap();
+    for call in function_calls {
+        let dispatcher = dispatcher.clone();
+        let user_message = user_message.to_string();
+        let sse = sse.clone();
+        let call_name = call.name.clone();
+        let args = call.args.clone();
 
-                let result = dispatcher
-                    .dispatch(ArtaTool::ReadWorkspaceFile {
+        futures.push(tokio::spawn(async move {
+            info!(
+                function_name = call_name,
+                args = ?args,
+                "executing function call"
+            );
+
+            // Send tool_start SSE event
+            if let Some(sse) = sse.as_ref() {
+                let _ = sse.send(SseBuilder::new(
+                    SseTarget::broadcast("tool_start".to_string()),
+                    serde_json::json!({ "name": call_name }),
+                )).await;
+            }
+
+            let result = match call_name.as_str() {
+                "read_workspace_file" => {
+                    let param: ReadWorkSpaceParameters = serde_json::from_value(args).unwrap();
+                    dispatcher.dispatch(ArtaTool::ReadWorkspaceFile {
                         params: param,
                         user_message: user_message.clone(),
-                    })
-                    .await;
-
-                info!("result is: {:?}", result);
-                if let Ok(response) = send_prompt(
-                    gemini,
-                    Some(*function_call),
-                    PromptActor::Tool {
-                        history: history_text,
-                        memories: memories_text,
-                        tool_name: function_call.name.clone(),
-                        tool_result: result,
-                        message: user_message,
-                        system_prompt,
-                    },
-                )
-                .await
-                {
-                    info!("end reading workspace file:success ");
-                    Ok(response)
-                } else {
-                    info!("end reading workspace file:error");
-                    Err("failed sending prompt".to_string())
+                    }).await
                 }
-            }
-            "execute_read_query" => {
-                let param: ExecuteReadQueryParameters =
-                    serde_json::from_value(function_call.args.clone()).unwrap();
-
-                let result = dispatcher
-                    .dispatch(ArtaTool::ExecuteSqlQuery {
+                "execute_read_query" => {
+                    let param: ExecuteReadQueryParameters = serde_json::from_value(args).unwrap();
+                    dispatcher.dispatch(ArtaTool::ExecuteSqlQuery {
                         params: param,
                         user_message: user_message.clone(),
-                    })
-                    .await;
-                info!("result is: from executed query");
-                if let Ok(response) = send_prompt(
-                    gemini,
-                    Some(*function_call),
-                    PromptActor::Tool {
-                        history: history_text,
-                        memories: memories_text,
-                        tool_name: function_call.name.clone(),
-                        tool_result: result,
-                        message: user_message,
-                        system_prompt,
-                    },
-                )
-                .await
-                {
-                    info!("end execute query result: success");
-                    Ok(response)
-                } else {
-                    info!("end execute query result: err ");
-                    Err("failed sending prompt".to_string())
+                    }).await
                 }
-            }
-            "update_nomi_soul" | "update_conversation_soul" => {
-                info!("updating conversation soul asynchronously");
-                let param: UpdateConversationSoulParameters =
-                    serde_json::from_value(function_call.args.clone()).unwrap();
+                "update_nomi_soul" | "update_conversation_soul" => {
+                    let param: UpdateConversationSoulParameters = serde_json::from_value(args).unwrap();
+                    dispatcher.dispatch(ArtaTool::UpdateConversationSoul {
+                        params: param,
+                        user_message: user_message.clone(),
+                    }).await
+                }
+                _ => ToolResult {
+                    error: format!("Unknown tool: {}", call_name),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                },
+            };
 
-                let async_dispatcher = dispatcher.clone();
-                let msg_clone = user_message.clone();
-                tokio::spawn(async move {
-                    let _ = async_dispatcher
-                        .dispatch(ArtaTool::UpdateConversationSoul {
-                            params: param,
-                            user_message: msg_clone,
-                        })
-                        .await;
-                });
-
-                let text = llm.text();
-                let parse = parse_llm_output(&text);
-                let payload = ChatStreamChunk {
-                    content: parse.response,
-                    thought: parse.thought,
-                    code_block: parse.code,
-                    tool_call: None,
-                };
-                Ok((llm, payload))
+            // Send tool_end SSE event
+            if let Some(sse) = sse.as_ref() {
+                let _ = sse.send(SseBuilder::new(
+                    SseTarget::broadcast("tool_end".to_string()),
+                    serde_json::json!({ "name": call_name, "success": result.success }),
+                )).await;
             }
-            "web_search" => Err("failed sending prompt".to_string()),
-            _ => Err("failed sending prompt".to_string()),
-        }
-    } else {
-        Err("failed sending prompt".to_string())
+
+            (call_name, result)
+        }));
     }
+
+    let results = futures::future::join_all(futures).await;
+    results.into_iter().map(|r| r.unwrap()).collect()
 }
 
 pub fn build_system_prompt(history: String, memories: String, system_prompt: String) -> String {
@@ -326,7 +273,7 @@ pub fn parse_llm_output(raw_text: &str) -> ChatResponse {
 
     // 3. Clean Message (The "Response")
     // Use a more aggressive cleanup to ensure tags don't leak into the UI
-    let mut clean_content = raw_text
+    let clean_content = raw_text
         .replace(&format!("<thinking>{}</thinking>", thought), "")
         .replace("<thinking>", "")
         .replace("</thinking>", "")

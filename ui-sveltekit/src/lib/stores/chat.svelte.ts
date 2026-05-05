@@ -17,18 +17,32 @@ function createChatStore() {
     let conversationId = $state<string | undefined>(undefined);
     let nextCursor = $state<string | null>(null);
     let hasMore = $state(true);
+    let isTyping = $state(false);
+    let currentThought = $state<string>("");
 
     // Subscribe to SSE events via EventBus
     eventBus.subscribe('sse-message', (data) => {
         if (data.content) {
-            // Only add if it's a new message or update if it's the current streaming message
-            // For now, based on your current SSE logic which just appends:
             messages = [...messages, {
                 id: data.id || crypto.randomUUID(),
                 role: "assistant", 
                 content: data.content,
                 thought: data.thought
             } as Message];
+            currentThought = ""; // Clear thought when message arrives
+            isTyping = false;
+        }
+    });
+
+    eventBus.subscribe('sse-thought', (data) => {
+        if (data.thought) {
+            currentThought = data.thought;
+        }
+    });
+
+    eventBus.subscribe('sse-presence', (data) => {
+        if (data.user_id === 'nomi') {
+            isTyping = data.is_typing;
         }
     });
 
@@ -47,6 +61,12 @@ function createChatStore() {
         },
         get hasMore() {
             return hasMore;
+        },
+        get currentThought() {
+            return currentThought;
+        },
+        get isTyping() {
+            return isTyping;
         },
 
         async fetchMessages(loadMore = false) {

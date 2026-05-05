@@ -6,6 +6,7 @@ pub mod routes;
 
 use crate::common::agent::parse_llm_output;
 use crate::common::sse::sse_emitter::SseBroadcaster;
+use crate::feature::realtime::presence::PresenceManager;
 use axum::Router;
 use dotenvy::dotenv;
 use gemini_rust::{Gemini, Model};
@@ -22,6 +23,7 @@ pub struct AppState {
     pub pool: Pool<Postgres>,
     pub gemini: Arc<Gemini>,
     pub gemini_api_key: String,
+    pub presence: Arc<PresenceManager>,
 }
 
 #[tokio::main]
@@ -55,11 +57,27 @@ async fn main() -> anyhow::Result<()> {
         .expect("Failed to create Gemini client");
     let gemini = Arc::new(gemini);
     let sse = SseBroadcaster::create();
+
+    // Create a temporary state to initialize PresenceManager
+    let partial_state = AppState {
+        sse: sse.clone(),
+        pool: pool.clone(),
+        gemini: gemini.clone(),
+        gemini_api_key: gemini_api_key.clone(),
+        presence: Arc::new(PresenceManager {
+            debouncers: dashmap::DashMap::new(),
+            channel_tx: tokio::sync::mpsc::channel(1).0, // Dummy
+        }),
+    };
+
+    let presence = PresenceManager::new(partial_state);
+
     let state = AppState {
         sse,
         pool,
         gemini,
         gemini_api_key,
+        presence,
     };
 
     // Configure CORS

@@ -1,3 +1,5 @@
+pub mod presence;
+
 use crate::AppState;
 use axum::extract::{Query, State};
 use axum::response::Sse;
@@ -15,12 +17,20 @@ pub struct RegisterPublicSse {
     pub user_id: String,
 }
 
+use axum::http::HeaderMap;
+
 pub async fn register_public_sse(
     state: State<AppState>,
     query: Query<RegisterPublicSse>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    state
+) -> (HeaderMap, Sse<impl Stream<Item = Result<Event, Infallible>>>) {
+    let mut headers = HeaderMap::new();
+    headers.insert("X-Accel-Buffering", "no".parse().unwrap());
+    headers.insert("Cache-Control", "no-cache".parse().unwrap());
+
+    let sse = state
         .sse
         .new_client(query.user_id.clone(), query.device_id.clone())
-        .await
+        .await;
+
+    (headers, sse)
 }

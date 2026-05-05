@@ -10,14 +10,14 @@ pub enum PromptActor {
         message: String,
         system_prompt: String,
     },
-    #[serde(rename = "tool_prompt")]
-    Tool {
+    #[serde(rename = "multi_tool_prompt")]
+    MultiTool {
         history: String,
         memories: String,
-        tool_name: String,
-        tool_result: ToolResult,
         message: String,
         system_prompt: String,
+        tool_results: Vec<(String, ToolResult)>, // (tool_name, result)
+        previous_calls: Vec<gemini_rust::FunctionCall>,
     },
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]

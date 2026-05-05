@@ -67,7 +67,7 @@ impl SseBroadcaster {
             let mut ok_subs: HashMap<String, Sender<Event>> = HashMap::new();
             for (device, client) in users {
                 if client
-                    .send(Event::default().event(":ping").comment("ping"))
+                    .send(Event::default().event(":ping").json_data("keep-alive").unwrap())
                     .await
                     .is_ok()
                 {
@@ -153,7 +153,12 @@ impl SseBroadcaster {
 
     async fn broadcast<T: serde::Serialize>(&self, event_name: &String, data: &T) {
         let clients = self.inner.lock().unwrap().clients.clone();
-        let event = Event::default().event(event_name).json_data(data).unwrap();
+        let formatted_event_name = if event_name == "message" {
+            event_name.clone()
+        } else {
+            format!(":{}", event_name)
+        };
+        let event = Event::default().event(formatted_event_name).json_data(data).unwrap();
 
         if !clients.is_empty() {
             for (_, users) in clients {
@@ -176,7 +181,12 @@ impl SseBroadcaster {
             match clients.get(user_id) {
                 None => {}
                 Some(users) => {
-                    let event = Event::default().event(event_name).json_data(data).unwrap();
+                    let formatted_event_name = if event_name == "message" {
+                        event_name.clone()
+                    } else {
+                        format!(":{}", event_name)
+                    };
+                    let event = Event::default().event(formatted_event_name).json_data(data).unwrap();
 
                     for (_, client) in users {
                         let _ = client.send(event.clone()).await;
@@ -196,7 +206,12 @@ impl SseBroadcaster {
         let clients = self.inner.lock().unwrap().clients.clone();
         let search_users = clients.get(user_id);
         if search_users.is_some() {
-            let event = Event::default().event(event_name).json_data(data).unwrap();
+            let formatted_event_name = if event_name == "message" {
+                event_name.clone()
+            } else {
+                format!(":{}", event_name)
+            };
+            let event = Event::default().event(formatted_event_name).json_data(data).unwrap();
 
             let client = search_users.unwrap().get(device_id);
             if client.is_some() {

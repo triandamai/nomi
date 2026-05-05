@@ -1,6 +1,7 @@
 import { eventBus } from '$lib/utils';
 
 const BASE_URL = 'http://localhost:8000/api';
+const CHANNEL_URL = 'http://localhost:3001/api';
 
 export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
 	const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -47,7 +48,7 @@ export const chatApi = {
 
 	streamEvent() {
 		// Based on gateway-rust/src/routes.rs, the SSE endpoint is /realtime
-		const sse = new EventSource(`${BASE_URL}/realtime?user_id=9220f30e-b5cb-4161-97bc-95189fa1363d&device_id=9220f30e-b5cb-4161-97bc-95189fa1363d`);
+		const sse = new EventSource(`${BASE_URL}/realtime?user_id=9220f30e-b5cb-4161-97bc-95189fa1363d&device_id=${crypto.randomUUID()}`);
 		
 		sse.onopen = () => {
 			console.log('SSE connection opened');
@@ -57,12 +58,39 @@ export const chatApi = {
 			console.error('SSE error:', error);
 		};
 		sse.addEventListener("message",(event)=>{
-			console.log("incoming",event)
+			console.log("incoming message",event)
 			try {
 				const data = JSON.parse(event.data);
 				eventBus.emit('sse-message', data);
 			} catch (e) {
 				console.error('Failed to parse SSE message', e);
+			}
+		})
+
+		sse.addEventListener(":thought",(event)=>{
+			try {
+				const data = JSON.parse(event.data);
+				eventBus.emit('sse-thought', data);
+			} catch (e) {
+				console.error('Failed to parse SSE thought', e);
+			}
+		})
+
+		sse.addEventListener(":tool_start",(event)=>{
+			try {
+				const data = JSON.parse(event.data);
+				eventBus.emit('sse-tool_start', data);
+			} catch (e) {
+				console.error('Failed to parse SSE tool_start', e);
+			}
+		})
+
+		sse.addEventListener(":presence",(event)=>{
+			try {
+				const data = JSON.parse(event.data);
+				eventBus.emit('sse-presence', data);
+			} catch (e) {
+				console.error('Failed to parse SSE presence', e);
 			}
 		})
 
@@ -111,5 +139,8 @@ export const chatApi = {
 			method: 'POST',
 			body: JSON.stringify({ version })
 		});
+	},
+	getWhatsappQr: () => {
+		return fetch(`${CHANNEL_URL}/whatsapp/qr`).then(res => res.json());
 	}
 };

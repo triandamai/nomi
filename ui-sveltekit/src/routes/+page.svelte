@@ -12,9 +12,13 @@
         chatStore.fetchMessages();
     });
 
-    // Auto-scroll to bottom on new messages
+    // Auto-scroll to bottom on new messages, thoughts, or typing
     $effect(() => {
-        if (chatStore.messages.length && scrollContainer) {
+        const _ = chatStore.messages.length;
+        const __ = chatStore.currentThought;
+        const ___ = chatStore.isTyping;
+        
+        if (scrollContainer) {
             scrollContainer.scrollTo({
                 top: scrollContainer.scrollHeight,
                 behavior: 'smooth'
@@ -71,7 +75,6 @@
                     <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
                         {msg.role === 'user' ? 'Human' : 'Arta AI'}
                     </span>
-                    <span class="text-[10px] text-zinc-600 font-mono">12:45 PM</span>
                     </div>
 
                     {#if msg.toolCalls && msg.toolCalls.length > 0}
@@ -86,6 +89,41 @@
                 </div>
             </div>
         {/each}
+
+        {#if chatStore.currentThought || chatStore.isTyping}
+            <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div class="flex-shrink-0 pt-1">
+                    <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+                        <Bot class="w-4 h-4 text-zinc-400"/>
+                    </div>
+                </div>
+
+                <div class="flex-1 flex flex-col min-w-0 space-y-4">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">Arta AI</span>
+                        {#if chatStore.isTyping}
+                            <div class="flex gap-1 ml-2">
+                                <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce"></div>
+                                <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                                <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                            </div>
+                        {/if}
+                    </div>
+
+                    {#if chatStore.currentThought}
+                        <div class="p-4 rounded-2xl bg-zinc-900/30 border border-zinc-800/50">
+                            <div class="flex items-center gap-2 mb-2">
+                                <Sparkles class="w-3 h-3 text-zinc-500" />
+                                <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Thinking...</span>
+                            </div>
+                            <p class="text-xs text-zinc-400 italic leading-relaxed">
+                                {chatStore.currentThought}
+                            </p>
+                        </div>
+                    {/if}
+                </div>
+            </div>
+        {/if}
 
         {#if chatStore.loading}
             <div class="flex gap-6 animate-pulse opacity-50">
