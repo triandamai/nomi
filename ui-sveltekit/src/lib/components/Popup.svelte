@@ -14,13 +14,14 @@
 
 <!-- Overlay -->
 <div
+		role="button"
 	class="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm"
 	transition:fade={{ duration: 200 }}
 	onclick={handleOutsideClick}
 >
 	<!-- Popup Container -->
 	<div
-		class="absolute inset-y-0 right-0 flex w-full flex-col bg-[#09090b] shadow-2xl border-l border-zinc-800 text-zinc-100 {popup.width}"
+		class="absolute inset-y-0 right-0 flex w-full flex-col bg-[#09090b] shadow-2xl border-l border-zinc-800 text-zinc-100 {popup.width} max-w-1/2"
 		transition:fly={{ x: '100%', duration: 300, opacity: 1 }}
 	>
 		<!-- Header -->

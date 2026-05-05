@@ -3,15 +3,15 @@ use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::response::sse::{Event, KeepAlive};
 use axum::response::Sse;
+use axum::response::sse::{Event, KeepAlive};
 use futures::Stream;
 use tokio::spawn;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
-use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::common::api_response::ApiResponse;
 use crate::common::sse::sse_builder::SseBuilder;
@@ -132,17 +132,19 @@ impl SseBroadcaster {
         } else {
             if target.is_to_device() {
                 for user in target.user_id() {
-                    let _send = self.send_to_user_device(
-                        &user,
-                        target.device_id(),
-                        &target.even_name(),
-                        &builder.data,
-                    )
+                    let _send = self
+                        .send_to_user_device(
+                            &user,
+                            target.device_id(),
+                            &target.even_name(),
+                            &builder.data,
+                        )
                         .await;
                 }
             } else {
                 for user in target.user_id() {
-                    let _send =self.send_to_user(&user, &target.even_name(), &builder.data)
+                    let _send = self
+                        .send_to_user(&user, &target.even_name(), &builder.data)
                         .await;
                 }
             }

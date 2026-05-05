@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::common::tools::tools_model::ToolResult;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
 pub enum PromptActor {
@@ -8,6 +8,7 @@ pub enum PromptActor {
         history: String,
         memories: String,
         message: String,
+        system_prompt: String,
     },
     #[serde(rename = "tool_prompt")]
     Tool {
@@ -16,9 +17,10 @@ pub enum PromptActor {
         tool_name: String,
         tool_result: ToolResult,
         message: String,
+        system_prompt: String,
     },
 }
-#[derive(Serialize,Deserialize,Debug,Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatResponse {
     pub thought: String,
     pub code: String,

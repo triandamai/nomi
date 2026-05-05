@@ -78,18 +78,13 @@ impl SseTarget {
     }
 }
 
-
 impl<T> SseBuilder<T> {
-    pub fn new(
-        target: SseTarget,
-        data: T,
-    ) -> SseBuilder<T> {
+    pub fn new(target: SseTarget, data: T) -> SseBuilder<T> {
         SseBuilder {
             target,
             data: Some(data),
         }
     }
-
 
     pub fn get_target(&self) -> &SseTarget {
         &self.target

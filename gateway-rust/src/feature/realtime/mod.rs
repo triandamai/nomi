@@ -1,12 +1,11 @@
-use std::convert::Infallible;
+use crate::AppState;
 use axum::extract::{Query, State};
 use axum::response::Sse;
 use axum::response::sse::Event;
 use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
 use tokio_stream::Stream;
 use validator::Validate;
-use crate::AppState;
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct RegisterPublicSse {

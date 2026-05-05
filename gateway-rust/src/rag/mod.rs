@@ -4,8 +4,8 @@ use crate::rag::rag_model::EmbeddingResponse;
 use reqwest::Client as ReqwestClient;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{Error, Pool, Postgres};
 use sqlx::postgres::PgQueryResult;
+use sqlx::{Error, Pool, Postgres};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchResult {
@@ -24,7 +24,7 @@ pub async fn get_embedding(api_key: &str, text: &str) -> anyhow::Result<Vec<f32>
             },
             "output_dimensionality":3072}))
         .send().await;
-    
+
     if let Err(err) = res {
         return Err(format!("{:?}", err));
     }
@@ -70,7 +70,7 @@ pub async fn search_similar_with_summaries(
     limit: i32,
 ) -> anyhow::Result<Vec<SearchResult>> {
     // Prioritize summaries by using a union or a conditional ordering
-    // Here we fetch both summaries and normal entries, ordered by similarity, 
+    // Here we fetch both summaries and normal entries, ordered by similarity,
     // but giving a slight boost or priority to summaries if they are relevant enough.
     // For simplicity and directness to requirements, we use a query that handles the metadata filtering.
     let results = sqlx::query_as!(

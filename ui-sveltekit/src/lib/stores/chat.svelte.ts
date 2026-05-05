@@ -1,5 +1,6 @@
 import {chatApi} from '$lib/api/client';
 import {eventBus} from '$lib/utils';
+import {conversationStore} from "$lib/stores/conversation.svelte";
 
 export type Message = {
     role: 'user' | 'assistant' | 'system';
@@ -13,7 +14,7 @@ function createChatStore() {
     let messages = $state<Message[]>([]);
     let loading = $state(false);
     let error = $state<string | null>(null);
-    let conversationId = $state<string | undefined>('9220f30e-b5cb-4161-97bc-95189fa1363d');
+    let conversationId = $state<string | undefined>(undefined);
     let nextCursor = $state<string | null>(null);
     let hasMore = $state(true);
 
@@ -49,6 +50,7 @@ function createChatStore() {
         },
 
         async fetchMessages(loadMore = false) {
+            conversationId = conversationStore.activeConversationId
             if (!conversationId || (loadMore && !hasMore)) return;
 
             loading = true;
@@ -81,6 +83,7 @@ function createChatStore() {
 
 
         async sendMessage(content: string) {
+            conversationId = conversationStore.activeConversationId
             if (!conversationId) {
                 error = 'Conversation ID is missing';
                 return;

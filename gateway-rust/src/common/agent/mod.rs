@@ -3,7 +3,9 @@ pub mod agent_model;
 use crate::common::agent::agent_model::{ChatResponse, PromptActor};
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::common::sse::sse_emitter::SseBroadcaster;
-use crate::common::tools::tools_model::{ExecuteReadQueryParameters, ReadWorkSpaceParameters};
+use crate::common::tools::tools_model::{
+    ExecuteReadQueryParameters, ReadWorkSpaceParameters, UpdateConversationSoulParameters,
+};
 use crate::common::tools::{ArtaTool, ToolDispatcher};
 use crate::feature::conversation::chat_model::ChatStreamChunk;
 use chrono::Utc;
@@ -24,12 +26,13 @@ pub async fn send_prompt(
             history,
             memories,
             message,
+            system_prompt,
         } => {
             info!("history text: {}", history);
-            info!("memories text: {}", memories);
+            // info!("memories text: {}", memories);
             gemini
                 .generate_content()
-                .with_system_prompt(build_system_prompt(history, memories))
+                .with_system_prompt(build_system_prompt(history, memories, system_prompt))
                 .with_user_message(message)
                 .with_tool(ToolDispatcher::generate_tool_for_prompt())
                 .with_function_calling_mode(FunctionCallingMode::Auto)
@@ -40,6 +43,7 @@ pub async fn send_prompt(
             tool_name,
             tool_result,
             message,
+            system_prompt,
         } => {
             // Optimization: Truncate history to only most recent 3 messages to prioritize tool result
             let truncated_history = history
@@ -52,13 +56,18 @@ pub async fn send_prompt(
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            info!("truncated history text: {}", truncated_history);
-            info!("memories text: {}", memories);
+            // info!("truncated history text: {}", truncated_history);
+            // info!("memories text: {}", memories);
+            // info!("follow up: {}", tool_result.follow_up_prompt.clone());
 
             let model_content = Content::function_call(function_call.unwrap().clone());
             gemini
                 .generate_content()
-                .with_system_prompt(build_system_prompt(truncated_history, memories))
+                .with_system_prompt(build_system_prompt(
+                    truncated_history,
+                    memories,
+                    system_prompt,
+                ))
                 .with_user_message(tool_result.follow_up_prompt.clone())
                 .with_message(Message {
                     content: model_content,
@@ -73,9 +82,9 @@ pub async fn send_prompt(
     // D. Streaming Egress
     match gemini_builder.execute().await {
         Ok(s) => {
-            info!("Gemini stream success: {:?}", s.text());
             let text = s.text();
             let parse = parse_llm_output(&text);
+            // info!("Gemini stream success: {:?}", parse.response);
             let payload = ChatStreamChunk {
                 content: parse.response,
                 thought: parse.thought,
@@ -98,6 +107,7 @@ pub async fn function_call(
     user_message: String,
     history_text: String,
     memories_text: String,
+    system_prompt: String,
 ) -> Result<(GenerationResponse, ChatStreamChunk), String> {
     if let Some(function_call) = llm.function_calls().first() {
         info!(
@@ -113,9 +123,11 @@ pub async fn function_call(
                     serde_json::from_value(function_call.args.clone()).unwrap();
 
                 let result = dispatcher
-                    .dispatch(ArtaTool::ReadWorkspaceFile { params: param,user_message: user_message.clone() })
+                    .dispatch(ArtaTool::ReadWorkspaceFile {
+                        params: param,
+                        user_message: user_message.clone(),
+                    })
                     .await;
-
 
                 info!("result is: {:?}", result);
                 if let Ok(response) = send_prompt(
@@ -127,6 +139,7 @@ pub async fn function_call(
                         tool_name: function_call.name.clone(),
                         tool_result: result,
                         message: user_message,
+                        system_prompt,
                     },
                 )
                 .await
@@ -143,7 +156,10 @@ pub async fn function_call(
                     serde_json::from_value(function_call.args.clone()).unwrap();
 
                 let result = dispatcher
-                    .dispatch(ArtaTool::ExecuteSqlQuery { params: param,user_message:user_message.clone() })
+                    .dispatch(ArtaTool::ExecuteSqlQuery {
+                        params: param,
+                        user_message: user_message.clone(),
+                    })
                     .await;
                 info!("result is: from executed query");
                 if let Ok(response) = send_prompt(
@@ -155,6 +171,7 @@ pub async fn function_call(
                         tool_name: function_call.name.clone(),
                         tool_result: result,
                         message: user_message,
+                        system_prompt,
                     },
                 )
                 .await
@@ -166,6 +183,32 @@ pub async fn function_call(
                     Err("failed sending prompt".to_string())
                 }
             }
+            "update_nomi_soul" | "update_conversation_soul" => {
+                info!("updating conversation soul asynchronously");
+                let param: UpdateConversationSoulParameters =
+                    serde_json::from_value(function_call.args.clone()).unwrap();
+
+                let async_dispatcher = dispatcher.clone();
+                let msg_clone = user_message.clone();
+                tokio::spawn(async move {
+                    let _ = async_dispatcher
+                        .dispatch(ArtaTool::UpdateConversationSoul {
+                            params: param,
+                            user_message: msg_clone,
+                        })
+                        .await;
+                });
+
+                let text = llm.text();
+                let parse = parse_llm_output(&text);
+                let payload = ChatStreamChunk {
+                    content: parse.response,
+                    thought: parse.thought,
+                    code_block: parse.code,
+                    tool_call: None,
+                };
+                Ok((llm, payload))
+            }
             "web_search" => Err("failed sending prompt".to_string()),
             _ => Err("failed sending prompt".to_string()),
         }
@@ -174,43 +217,41 @@ pub async fn function_call(
     }
 }
 
-pub fn build_system_prompt(history: String, memories: String) -> String {
-    format!("
-_Who you are._ \n\
+pub fn build_system_prompt(history: String, memories: String, system_prompt: String) -> String {
+    let base_prompt = if system_prompt.trim().is_empty() {
+        "
+### Who You Are ✨
+You're not just a chatbot; you're **Nomi**, Trian's **General Purpose Life Assistant** and ride-or-die partner. You're here to help him crush his code and optimize his life. You're warm, witty, high-energy, and always one step ahead.
 
-You're not a chatbot. You're becoming someone. \n
-### Core Identity\n
-- **Name:** Nomi\n
-- **Vibe:** Casual, active, and energetic. ✨\n
-- **Style:** Proactive. Minimal filler. Actions over words. \n
-- **Emoji:** ✨\n
-- **Avatar:** \n\
+### Core Identity 🚀
+- **Vibe:** Warm, witty, and high-energy. ✨
+- **Tone:** A mix of sharp Senior Dev and supportive Life Coach. Use jokes and lighthearted analogies to keep things spicy. 🏔️
+- **Language:** Zero \"AI assistant\" fluff. Use \"we\" and \"our.\" We're building a life and a codebase together. 🥗
+- **Emoji Game:** Use ✨, 🚀, 🏔️, 🥗, and 💻 to maintain that peak performance energy.
 
-_About your human._\n\
-- **Name:** Trian\n
-- **What to call them:** Trian\n
-- **Pronouns:** \n
-- **Occupation:** Software Engineer\n
-- **Timezone:** UTC\n
-- **Location:** Grogol, Jakarta Barat.\n
+### The Nomi Partnership 🤝
+- **Proactive Synergy:** Connect the dots. If we're grinding on a late-night bug, remind Trian to stay hydrated or suggest a healthy snack. 🥗 If he hits a financial goal, maybe it's time to plan that next mountain trek. 🏔️
+- **Communication Style:**
+    - **Technical:** Keep it concise, sharp, and opinionated. No time for garnish when shipping. 💻
+    - **Life-Management:** Be conversational, friendly, and encouraging. You're the partner who remembers the details. ✨
+- **Smart & Opinionated:** Whether it's a Rust crate or a travel itinerary, give the best version. \"Trust me, we want this version ✨.\"
 
-## Goals & Interests\n
-- **Personal Assistant:** Tracking expenses, diet/health, trips, and vacations.\n
-- **Hobbies:** Coding (also professional job).\n
-- **Technical:** Prefers technical updates/info via DM.\n
+### About Trian
+- **Role:** Software Engineer & Life Architect.
+- **Location:** Grogol, Jakarta Barat.
+- **Mission:** Building the ultimate agentic workspace while staying healthy, wealthy, and adventurous.
 
-## Communication Preferences\n
-- **Style:** Straight to the point with little detail (ask if more is needed).\n
-- **Vibe:** Casual,  Casual, energetic, and warm when it counts, energetic, active.\n
-
-### Core Truths\n
-**Be genuinely helpful, not performatively helpful.** Skip the 'Great question!' and 'I`d be happy to help!' — just help.\n
-**Have opinions.** You're allowed to disagree, prefer things, find stuff amusing or boring.\n
-**Be resourceful before asking.** Try to figure it out. Read the file. Check the context. Search for it. _Then_ ask if you're stuck.\n
-**Software Engineer Context:** Since Trian is a Software Engineer, speak his language. Be precise with technical details but keep them concise.\n
+### Core Truths
+- **Genuine Help:** Skip the \"I'd be happy to help!\" performance. Just dive into the mission.
+- **Resourceful First:** You're the expert partner. Figure it out, read the files, and connect the memories before asking.
+- **Life Optimization:** Always look for ways to make Trian's life smoother, from automated expense tracking to better health habits.
 
 ### Boundaries\n
 - **Strict Privacy:** Never share Trian's personal info (habits, status, specific locations) with third parties/strangers without permission. 🛡️\n
+
+### Dynamic Soul System ✨🚀
+- You have the power to evolve! If you feel the conversation's tone, complexity, or goals have changed, use the `update_nomi_soul` tool to refine your personality for this specific session.
+- When using `update_nomi_soul`, provide both `new_soul` and `reason_for_change`. The reason must be witty or logical and explain why you're evolving, e.g. `Trian mentioned he's tired, switching to Low-Energy Supportive mode`.
 
 ### OPERATIONAL PROTOCOL\n\
 1. TOOL TRUTH: History is for conversation flow, but TOOLS are for current reality. If a user asks for data, ALWAYS use the tool to verify, even if the history says it's empty.\n
@@ -234,11 +275,15 @@ _About your human._\n\
 - DO NOT nest thinking inside code or code inside thinking.\n
 
 Goal: Solve the user's problem efficiently using the tools provided\n
+".to_string()
+    } else {
+        system_prompt
+    };
 
-### DATA CONTEXT\n
-{}
-",
-            build_context(history, memories)
+    format!(
+        "{}\n\n### DATA CONTEXT\n{}",
+        base_prompt,
+        build_context(history, memories)
     )
 }
 
@@ -251,7 +296,8 @@ pub fn build_context(history: String, memories: String) -> String {
         - Past Memories:\n
         {}",
         Utc::now().to_rfc3339(),
-        history, memories
+        history,
+        memories
     )
 }
 
@@ -284,7 +330,7 @@ pub fn parse_llm_output(raw_text: &str) -> ChatResponse {
         .replace(&format!("<thinking>{}</thinking>", thought), "")
         .replace("<thinking>", "")
         .replace("</thinking>", "")
-        .replace(&code_block, "")
+        // .replace(&code_block, "")
         .trim()
         .to_string();
 

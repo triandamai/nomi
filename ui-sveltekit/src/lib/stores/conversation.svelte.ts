@@ -1,5 +1,6 @@
 import { useAvatar } from '$lib/utils';
 import { chatApi } from '$lib/api/client';
+import {chatStore} from "$lib/stores/chat.svelte";
 
 export type Conversation = {
     id: string;
@@ -10,13 +11,9 @@ export type Conversation = {
 };
 
 function createConversationStore() {
-    let conversations = $state<Conversation[]>([
-        { id: '1', name: 'General', active: true, online: true },
-        { id: '2', name: 'Design', active: false, online: false },
-        { id: '3', name: 'Development', active: false, online: true }
-    ]);
+    let conversations = $state<Conversation[]>([]);
     
-    let activeConversationId = $state<string>('1');
+    let activeConversationId = $state<string>('');
 
     return {
         get conversations() {
@@ -25,12 +22,33 @@ function createConversationStore() {
         get activeConversationId() {
             return activeConversationId;
         },
+        async loadConversations() {
+            try {
+                const response = await chatApi.getConversations();
+
+                // Map API response to our Conversation type
+                const loaded = response.data.map((c: any) => ({
+                    id: c.id,
+                    name: c.name || c.title || 'Untitled',
+                    active: c.id === activeConversationId,
+                    online: true
+                }));
+                conversations = loaded;
+                
+                if (conversations.length > 0 && !conversations.find(c => c.id === activeConversationId)) {
+                    this.setActive(conversations[0].id);
+                }
+            } catch (error) {
+                console.error('Failed to load conversations', error);
+            }
+        },
         setActive(id: string) {
             activeConversationId = id;
             conversations = conversations.map(c => ({
                 ...c,
                 active: c.id === id
             }));
+            chatStore.fetchMessages(false).finally()
         },
         async addConversation(name: string) {
             try {

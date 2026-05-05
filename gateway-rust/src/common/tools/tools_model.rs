@@ -48,3 +48,14 @@ pub struct SearchWebParameters {
 pub struct SearchWebResponse {
     pub content: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateConversationSoulParameters {
+    pub new_soul: String,
+    pub reason_for_change: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateConversationSoulResponse {
+    pub content: String,
+}

@@ -89,8 +89,27 @@ export const chatApi = {
 			method: 'DELETE'
 		});
 	},
-
 	searchConversations: (query: string) => {
 		return apiFetch<any[]>(`/conversations/search?q=${encodeURIComponent(query)}`);
+	},
+	getConversations: () => {
+		return apiFetch<any[]>('/conversations',{
+			method:"GET"
+		});
+	},
+	getGraph: () => {
+		return apiFetch<any>('/graph');
+	},
+	searchGraph: (query: string) => {
+		return apiFetch<any>(`/graph/search?q=${encodeURIComponent(query)}`);
+	},
+	getSoulHistory: (conversationId: string) => {
+		return apiFetch<any[]>(`/conversations/${conversationId}/soul-history`);
+	},
+	restoreSoul: (conversationId: string, version: number) => {
+		return apiFetch<any>(`/conversations/${conversationId}/restore-soul`, {
+			method: 'POST',
+			body: JSON.stringify({ version })
+		});
 	}
 };

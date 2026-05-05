@@ -1,20 +1,20 @@
+pub mod common;
+pub mod feature;
 pub mod models;
 pub mod rag;
-pub mod common;
 pub mod routes;
-pub mod feature;
 
+use crate::common::agent::parse_llm_output;
 use crate::common::sse::sse_emitter::SseBroadcaster;
 use axum::Router;
 use dotenvy::dotenv;
 use gemini_rust::{Gemini, Model};
-use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
-use std::{env::var, sync::Arc};
+use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use std::fmt::format;
+use std::{env::var, sync::Arc};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use crate::common::agent::parse_llm_output;
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -51,7 +51,8 @@ async fn main() -> anyhow::Result<()> {
     info!("Database connection established.");
 
     // Using Gemini25Flash which corresponds to gemini-1.5-flash
-    let gemini = Gemini::with_model(&gemini_api_key, Model::Gemini25Flash).expect("Failed to create Gemini client");
+    let gemini = Gemini::with_model(&gemini_api_key, Model::Gemini25Flash)
+        .expect("Failed to create Gemini client");
     let gemini = Arc::new(gemini);
     let sse = SseBroadcaster::create();
     let state = AppState {

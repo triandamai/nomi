@@ -5,10 +5,13 @@
 	import { chatApi } from '$lib/api/client';
 	import PopupManager from '$lib/components/PopupManager.svelte';
 	import DiscordSidebar from "$lib/components/DiscordSidebar.svelte"
+	import Header from '$lib/components/Header.svelte';
+	import { conversationStore } from '$lib/stores/conversation.svelte';
 
 	let { children } = $props();
 
 	onMount(() => {
+		conversationStore.loadConversations();
 		const close = chatApi.streamEvent();
 		return () => close();
 	});
@@ -19,6 +22,7 @@
 <div class="flex h-screen bg-[#09090b] text-zinc-100 font-sans selection:bg-zinc-800">
 	<DiscordSidebar />
 	<div class="flex-1 flex flex-col relative overflow-hidden">
+		<Header />
 		{@render children()}
 	</div>
 </div>
