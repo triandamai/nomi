@@ -143,6 +143,9 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             state_clone.pool.clone(),
             std::env::current_dir().unwrap_or_default(),
             Some(conversation_id),
+            state_clone.gemini.clone(),
+            state_clone.gemini_api_key.clone(),
+            state_clone.sse.clone(),
         );
 
         let conversation = sqlx::query!(

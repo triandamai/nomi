@@ -59,3 +59,25 @@ pub struct UpdateConversationSoulParameters {
 pub struct UpdateConversationSoulResponse {
     pub content: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateKnowledgeBaseParameters {
+    pub content: String,
+    pub category: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateKnowledgeBaseResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct EvolveBootstrapParameters {
+    pub updated_instructions: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct EvolveBootstrapResponse {
+    pub content: String,
+}

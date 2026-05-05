@@ -33,7 +33,7 @@
         <div class="flex items-center gap-2 text-zinc-500">
             <span class="text-xs font-medium hover:text-zinc-300 cursor-pointer transition-colors">Workspace</span>
             <ChevronRight class="w-3.5 h-3.5 text-zinc-700" />
-            <span class="text-xs font-semibold text-zinc-200">Arta Orchestrator</span>
+            <span class="text-xs font-semibold text-zinc-200">{conversationStore.activeConversation?.name || 'No Session'}</span>
         </div>
 
         <!-- Vertical Divider -->

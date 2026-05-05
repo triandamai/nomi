@@ -75,6 +75,12 @@ pub struct MessageListResponse {
     pub next_cursor: Option<DateTime<Utc>>,
 }
 
+#[derive(Serialize)]
+pub struct PairingResponse {
+    pub pairing_code: String,
+    pub expires_at: DateTime<Utc>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ChatStreamChunk {
     pub content: String,    // The main message

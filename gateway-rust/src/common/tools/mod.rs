@@ -1,17 +1,14 @@
 pub mod tools_model;
 
-use crate::common::tools::tools_model::{
-    ExecuteReadQueryParameters, ExecuteReadQueryResponse, ParseToJsonParameters,
-    ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse,
-    ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse,
-};
+use crate::Arc;
+use crate::common::tools::tools_model::{EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters, ExecuteReadQueryResponse, ParseToJsonParameters, ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse, ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse, UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse};
 use gemini_rust::{FunctionDeclaration, Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sqlx::{Column, Pool, Postgres, Row};
 use std::fs;
 use std::path::PathBuf;
-use tracing::debug;
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -42,6 +39,16 @@ pub enum ArtaTool {
         params: UpdateConversationSoulParameters,
         user_message: String,
     },
+    #[serde(rename = "update_knowledge_base")]
+    UpdateKnowledgeBase {
+        params: UpdateKnowledgeBaseParameters,
+        user_message: String,
+    },
+    #[serde(rename = "evolve_bootstrap_content")]
+    EvolveBootstrap {
+        params: EvolveBootstrapParameters,
+        user_message: String,
+    },
 }
 
 #[derive(Clone)]
@@ -49,6 +56,9 @@ pub struct ToolDispatcher {
     pool: Pool<Postgres>,
     workspace_root: PathBuf,
     conversation_id: Option<Uuid>,
+    gemini: Arc<gemini_rust::Gemini>,
+    gemini_api_key: String,
+    sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
 }
 
 impl ToolDispatcher {
@@ -56,11 +66,17 @@ impl ToolDispatcher {
         pool: Pool<Postgres>,
         workspace_root: PathBuf,
         conversation_id: Option<Uuid>,
+        gemini: Arc<gemini_rust::Gemini>,
+        gemini_api_key: String,
+        sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
     ) -> Self {
         Self {
             pool,
             workspace_root,
             conversation_id,
+            gemini,
+            gemini_api_key,
+            sse,
         }
     }
 
@@ -91,6 +107,14 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.update_nomi_soul(params, user_message).await,
+            ArtaTool::UpdateKnowledgeBase {
+                params,
+                user_message,
+            } => self.update_knowledge_base(params, user_message).await,
+            ArtaTool::EvolveBootstrap {
+                params,
+                user_message,
+            } => self.evolve_bootstrap(params, user_message).await,
         }
     }
 
@@ -122,11 +146,31 @@ impl ToolDispatcher {
                 .with_parameters::<UpdateConversationSoulParameters>()
                 .with_response::<UpdateConversationSoulResponse>();
 
+        let update_knowledge_base =
+            FunctionDeclaration::new(
+                "update_knowledge_base",
+                "Save specific facts, preferences, and project details immediately to long-term memory. This updates your permanent knowledge base.",
+                None,
+            )
+                .with_parameters::<UpdateKnowledgeBaseParameters>()
+                .with_response::<UpdateKnowledgeBaseResponse>();
+
+        let evolve_bootstrap_content =
+            FunctionDeclaration::new(
+                "evolve_bootstrap_content",
+                "Update your own personality or mission instructions (System Prompt) dynamically.",
+                None,
+            )
+                .with_parameters::<EvolveBootstrapParameters>()
+                .with_response::<EvolveBootstrapResponse>();
+
         Tool::with_functions(vec![
             read_workspace_file,
             execute_read_query,
             web_search,
             update_nomi_soul,
+            update_knowledge_base,
+            evolve_bootstrap_content,
         ])
     }
 
@@ -295,15 +339,12 @@ impl ToolDispatcher {
         let result: Result<Option<i32>, sqlx::Error> = async {
             let mut tx = self.pool.begin().await?;
 
-            let conversation = sqlx::query("SELECT id FROM conversations WHERE id = $1 FOR UPDATE")
-                .bind(conversation_id)
-                .fetch_optional(&mut *tx)
-                .await?;
-
-            if conversation.is_none() {
-                tx.rollback().await?;
-                return Ok(None);
-            }
+            let convo = sqlx::query!(
+                "SELECT soul_content, bootstrap_content FROM conversations WHERE id = $1 FOR UPDATE",
+                conversation_id
+            )
+            .fetch_one(&mut *tx)
+            .await?;
 
             let next_version: i32 = sqlx::query_scalar(
                 "SELECT (COALESCE(MAX(version_number), 0) + 1)::INT4 FROM soul_history WHERE conversation_id = $1",
@@ -319,10 +360,11 @@ impl ToolDispatcher {
                 .await?;
 
             sqlx::query(
-                "INSERT INTO soul_history (conversation_id, soul_content, change_reason, version_number) VALUES ($1, $2, $3, $4)",
+                "INSERT INTO soul_history (conversation_id, soul_content, bootstrap, change_reason, version_number) VALUES ($1, $2, $3, $4, $5)",
             )
             .bind(conversation_id)
             .bind(&params.new_soul)
+            .bind(convo.bootstrap_content)
             .bind(&params.reason_for_change)
             .bind(next_version)
             .execute(&mut *tx)
@@ -375,6 +417,265 @@ impl ToolDispatcher {
                         "update_nomi_soul".to_string(),
                     ),
                 }
+            }
+        }
+    }
+    async fn evolve_bootstrap(
+        &self,
+        params: EvolveBootstrapParameters,
+        user_message: String,
+    ) -> ToolResult {
+        let conversation_id = match self.conversation_id {
+            Some(id) => id,
+            None => {
+                return ToolResult {
+                    error: "No active conversation to evolve.".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        let result: Result<Option<i32>, sqlx::Error> = async {
+            let mut tx = self.pool.begin().await?;
+
+            let convo = sqlx::query!(
+                "SELECT soul_content, bootstrap_content FROM conversations WHERE id = $1 FOR UPDATE",
+                conversation_id
+            )
+            .fetch_one(&mut *tx)
+            .await?;
+
+            let next_version: i32 = sqlx::query_scalar(
+                "SELECT (COALESCE(MAX(version_number), 0) + 1)::INT4 FROM soul_history WHERE conversation_id = $1",
+            )
+            .bind(conversation_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                "UPDATE conversations SET bootstrap_content = $1, updated_at = NOW() WHERE id = $2",
+            )
+            .bind(&params.updated_instructions)
+            .bind(conversation_id)
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                "INSERT INTO soul_history (conversation_id, soul_content, bootstrap, change_reason, version_number) VALUES ($1, $2, $3, $4, $5)",
+            )
+            .bind(conversation_id)
+            .bind(convo.soul_content)
+            .bind(&params.updated_instructions)
+            .bind(&params.reason)
+            .bind(next_version)
+            .execute(&mut *tx)
+            .await?;
+
+            tx.commit().await?;
+            Ok(Some(next_version))
+        }
+        .await;
+
+        match result {
+            Ok(Some(version)) => {
+                let msg = format!(
+                    "Successfully evolved core instructions to version {}. Reason: {}",
+                    version, params.reason
+                );
+
+                // Publish to Redis
+                if let Ok(redis_url) = std::env::var("REDIS_URL") {
+                    if let Ok(client) = redis::Client::open(redis_url) {
+                        if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
+                            use redis::AsyncCommands;
+                            let payload = serde_json::json!({
+                                "conversation_id": conversation_id,
+                                "type": "evolution",
+                                "version": version,
+                                "reason": params.reason
+                            })
+                            .to_string();
+                            let _ = conn
+                                .publish::<&str, String, ()>("nomi:internal_update", payload)
+                                .await;
+                        }
+                    }
+                }
+
+                // Broadcast SSE
+                let _ = self
+                    .sse
+                    .send(crate::common::sse::sse_builder::SseBuilder::new(
+                        crate::common::sse::sse_builder::SseTarget::broadcast(
+                            "evolution".to_string(),
+                        ),
+                        serde_json::json!({
+                            "conversation_id": conversation_id,
+                            "message": "Nomi has updated her core instructions to better suit your needs. ✨",
+                            "reason": params.reason
+                        }),
+                    ))
+                    .await;
+
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: msg.clone(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        msg,
+                        "evolve_bootstrap_content".to_string(),
+                    ),
+                }
+            }
+            Ok(None) => {
+                let msg = format!("Error: Conversation ID {} not found.", conversation_id);
+                ToolResult {
+                    error: msg.clone(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        msg,
+                        "evolve_bootstrap_content".to_string(),
+                    ),
+                }
+            }
+            Err(e) => {
+                let msg = format!("Database error evolving bootstrap: {}", e);
+                ToolResult {
+                    error: msg.clone(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        msg,
+                        "evolve_bootstrap_content".to_string(),
+                    ),
+                }
+            }
+        }
+    }
+
+    async fn update_knowledge_base(
+        &self,
+        params: UpdateKnowledgeBaseParameters,
+        user_message: String,
+    ) -> ToolResult {
+        let summarizer_prompt = format!(
+            "Analyze the following content and return a JSON object with:
+1. 'summary': A concise summary of the facts or details.
+2. 'nodes': An array of entities ({{'id': 'unique_id', 'label': 'Entity Name', 'node_type': 'Technology|Project|Person|Organization|Memory'}}).
+3. 'edges': An array of relationships ({{'source': 'node_id', 'target': 'node_id', 'relationship': 'Description'}}).
+
+Rules:
+- 'id' should be lowercase and snake_case.
+- Focus on the core 'Atomic Truth' being saved.
+
+Content:
+{}
+",
+            params.content
+        );
+
+        let summary_res = self
+            .gemini
+            .generate_content()
+            .with_user_message(summarizer_prompt)
+            .execute()
+            .await;
+
+        let parsed_data = match summary_res {
+            Ok(resp) => {
+                let raw_json = resp.text();
+                if let Some(start) = raw_json.find('{') {
+                    if let Some(end) = raw_json.rfind('}') {
+                        serde_json::from_str(&raw_json[start..=end]).unwrap_or(serde_json::json!({
+                            "summary": params.content,
+                            "nodes": [],
+                            "edges": []
+                        }))
+                    } else {
+                        serde_json::json!({"summary": params.content, "nodes": [], "edges": []})
+                    }
+                } else {
+                    serde_json::json!({"summary": params.content, "nodes": [], "edges": []})
+                }
+            }
+            Err(_) => {
+                serde_json::json!({"summary": params.content, "nodes": [], "edges": []})
+            }
+        };
+
+        let summary_text = parsed_data["summary"]
+            .as_str()
+            .unwrap_or(&params.content)
+            .to_string();
+
+        if let Ok(embedding) =
+            crate::rag::get_embedding(&self.gemini_api_key, &summary_text).await
+        {
+            let metadata = serde_json::json!({
+                "type": "memory",
+                "category": params.category,
+                "graph": {
+                    "nodes": parsed_data["nodes"],
+                    "links": parsed_data["edges"]
+                }
+            });
+
+            let save_result = crate::rag::save_to_knowledge_base(
+                &self.pool,
+                &summary_text,
+                embedding,
+                Some(metadata),
+            )
+            .await;
+
+            match save_result {
+                Ok(_) => {
+                    let msg = format!(
+                        "Successfully saved to knowledge base: {}",
+                        params.category
+                    );
+                    ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content: msg.clone(),
+                        follow_up_prompt: build_follow_up_prompt(
+                            user_message,
+                            msg,
+                            "update_knowledge_base".to_string(),
+                        ),
+                    }
+                }
+                Err(e) => {
+                    let msg = format!("Error saving to knowledge base: {}", e);
+                    ToolResult {
+                        error: msg.clone(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: build_follow_up_prompt(
+                            user_message,
+                            msg,
+                            "update_knowledge_base".to_string(),
+                        ),
+                    }
+                }
+            }
+        } else {
+            let msg = "Error generating embedding for knowledge base update.".to_string();
+            ToolResult {
+                error: msg.clone(),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: build_follow_up_prompt(
+                    user_message,
+                    msg,
+                    "update_knowledge_base".to_string(),
+                ),
             }
         }
     }

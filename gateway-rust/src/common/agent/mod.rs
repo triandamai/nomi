@@ -4,7 +4,8 @@ use crate::common::agent::agent_model::{ChatResponse, PromptActor};
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::common::sse::sse_emitter::SseBroadcaster;
 use crate::common::tools::tools_model::{
-    ExecuteReadQueryParameters, ReadWorkSpaceParameters, UpdateConversationSoulParameters, ToolResult,
+    ExecuteReadQueryParameters, ReadWorkSpaceParameters, SearchWebParameters, ToolResult,
+    UpdateConversationSoulParameters,
 };
 use crate::common::tools::{ArtaTool, ToolDispatcher};
 use crate::feature::conversation::chat_model::ChatStreamChunk;
@@ -133,9 +134,30 @@ pub async fn execute_tools(
                         user_message: user_message.clone(),
                     }).await
                 }
+                "web_search" => {
+                    let param: SearchWebParameters = serde_json::from_value(args).unwrap();
+                    dispatcher.dispatch(ArtaTool::WebSearch {
+                        params: param,
+                        user_message: user_message.clone(),
+                    }).await
+                }
                 "update_nomi_soul" | "update_conversation_soul" => {
                     let param: UpdateConversationSoulParameters = serde_json::from_value(args).unwrap();
                     dispatcher.dispatch(ArtaTool::UpdateConversationSoul {
+                        params: param,
+                        user_message: user_message.clone(),
+                    }).await
+                }
+                "update_knowledge_base" => {
+                    let param: crate::common::tools::tools_model::UpdateKnowledgeBaseParameters = serde_json::from_value(args).unwrap();
+                    dispatcher.dispatch(ArtaTool::UpdateKnowledgeBase {
+                        params: param,
+                        user_message: user_message.clone(),
+                    }).await
+                }
+                "evolve_bootstrap_content" => {
+                    let param: crate::common::tools::tools_model::EvolveBootstrapParameters = serde_json::from_value(args).unwrap();
+                    dispatcher.dispatch(ArtaTool::EvolveBootstrap {
                         params: param,
                         user_message: user_message.clone(),
                     }).await

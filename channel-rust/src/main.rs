@@ -18,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let state = AppState {
-        qr_code: Arc::new(Mutex::new(None)),
+        qr_code: Arc::new(Mutex::new(None))
     };
 
     let app = Router::new()

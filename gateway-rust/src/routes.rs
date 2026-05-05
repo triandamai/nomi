@@ -1,9 +1,10 @@
 use crate::AppState;
 use crate::common::api_response::ApiResponse;
 use crate::feature::conversation::{
-    handle_chat_stream, handle_create_conversation, handle_delete_conversation,
-    handle_get_conversations, handle_get_messages, handle_get_soul_history,
-    handle_internal_inbound, handle_restore_conversation_soul, handle_update_conversation,
+    handle_chat_stream, handle_create_conversation, handle_create_pairing,
+    handle_delete_conversation, handle_get_conversations, handle_get_messages,
+    handle_get_soul_history, handle_internal_inbound, handle_restore_conversation_soul,
+    handle_update_conversation,
 };
 use axum::extract::Request;
 use axum::http::StatusCode;
@@ -27,6 +28,7 @@ pub fn create_router(state: AppState) -> Router {
             "/conversations/{id}/restore-soul",
             post(handle_restore_conversation_soul),
         )
+        .route("/conversations/{id}/pairing", post(handle_create_pairing))
         .route("/realtime", get(register_public_sse))
         .route("/graph", get(handle_get_graph))
         .route("/graph/search", get(handle_search_graph))

@@ -33,9 +33,9 @@ pub struct GraphData {
 pub async fn handle_get_graph(State(state): State<AppState>) -> ApiResponse<GraphData> {
     let rows = sqlx::query!(
         r#"
-        SELECT metadata->'graph' as graph
+        SELECT metadata->'graph' as graph, metadata->>'type' as entry_type
         FROM knowledge_base
-        WHERE metadata->>'type' = 'summary'
+        WHERE (metadata->>'type' = 'summary' OR metadata->>'type' = 'memory')
         AND metadata->'graph' IS NOT NULL
         "#
     )
@@ -60,6 +60,7 @@ pub async fn handle_get_graph(State(state): State<AppState>) -> ApiResponse<Grap
 
             for row in rows {
                 if let Some(graph_val) = row.graph {
+                    let entry_type = row.entry_type.unwrap_or_else(|| "summary".to_string());
                     if let Ok(graph) = serde_json::from_value::<GraphData>(graph_val) {
                         for mut node in graph.nodes {
                             // Ensure node IDs are cleaned up
@@ -72,9 +73,13 @@ pub async fn handle_get_graph(State(state): State<AppState>) -> ApiResponse<Grap
 
                             // Deterministic color based on ID
                             if node.color.is_none() {
-                                let idx = node.id.chars().map(|c| c as usize).sum::<usize>()
-                                    % colors.len();
-                                node.color = Some(colors[idx].to_string());
+                                if entry_type == "memory" {
+                                    node.color = Some("#fbbf24".to_string()); // Golden for memories
+                                } else {
+                                    let idx = node.id.chars().map(|c| c as usize).sum::<usize>()
+                                        % colors.len();
+                                    node.color = Some(colors[idx].to_string());
+                                }
                             }
                             
                             // Deduplicate by ID, keep the first one or merge labels if needed

@@ -116,6 +116,9 @@ async fn process_debounced_message(
         state.pool.clone(),
         std::env::current_dir().unwrap_or_default(),
         Some(conversation_id),
+        state.gemini.clone(),
+        state.gemini_api_key.clone(),
+        state.sse.clone(),
     );
 
     let conversation = sqlx::query!(

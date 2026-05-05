@@ -46,6 +46,11 @@ function createChatStore() {
         }
     });
 
+    eventBus.subscribe('sse-evolution', (data) => {
+        // Show notification to user
+        alert(data.message || "Nomi has updated her core instructions to better suit your needs. ✨");
+    });
+
     return {
         get messages() {
             return messages;

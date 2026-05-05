@@ -1,5 +1,4 @@
-import { useAvatar } from '$lib/utils';
-import { chatApi } from '$lib/api/client';
+import {chatApi} from '$lib/api/client';
 import {chatStore} from "$lib/stores/chat.svelte";
 
 export type Conversation = {
@@ -14,13 +13,16 @@ function createConversationStore() {
     let conversations = $state<Conversation[]>([]);
     
     let activeConversationId = $state<string>('');
-
-    return {
+    let activeConversation = $state<Conversation|null>(null)
+    return{
         get conversations() {
             return conversations;
         },
         get activeConversationId() {
             return activeConversationId;
+        },
+        get activeConversation():Conversation|null{
+            return activeConversation
         },
         async loadConversations() {
             try {
@@ -44,6 +46,9 @@ function createConversationStore() {
         },
         setActive(id: string) {
             activeConversationId = id;
+            const find = conversations.find(c=>c.id == id)
+
+            activeConversation = find || null
             conversations = conversations.map(c => ({
                 ...c,
                 active: c.id === id
@@ -53,15 +58,17 @@ function createConversationStore() {
         async addConversation(name: string) {
             try {
                 const response = await chatApi.createConversation(name);
-                // For now, if response is dummy, we generate a local one
-                const newConv: Conversation = {
-                    id: response.id || crypto.randomUUID(),
-                    name: response.name || name,
-                    active: false,
-                    online: true
-                };
-                conversations = [...conversations, newConv];
-                return newConv;
+                if(response.data) {
+                    // For now, if response is dummy, we generate a local one
+                    const newConv: Conversation = {
+                        id: response.data.id || crypto.randomUUID(),
+                        name: response.data.name || name,
+                        active: false,
+                        online: true
+                    };
+                    conversations = [...conversations, newConv];
+                    return newConv;
+                }
             } catch (error) {
                 console.error('Failed to create conversation', error);
                 // Fallback for demo/dummy purposes if API fails

@@ -1,10 +1,8 @@
-use crate::common::agent::agent_model::PromptActor;
 use crate::common::api_response::ApiResponse;
-use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
-use crate::common::tools::ToolDispatcher;
 use crate::feature::conversation::chat_model::{
     ChatRequest, ConversationResponse, CreateConversationRequest, MessageItem, MessageListParams,
-    MessageListResponse, RestoreSoulRequest, RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest,
+    MessageListResponse, PairingResponse, RestoreSoulRequest, RestoreSoulResponse,
+    SoulHistoryResponse, UpdateConversationRequest,
 };
 use crate::feature::conversation::internal_model::InboundMessage;
 use crate::feature::realtime::presence::DebounceEvent;
@@ -12,14 +10,57 @@ use crate::{rag, AppState};
 use axum::extract::{Path, State};
 use axum::Json;
 use chrono::Utc;
+
+use rand::{rng, Rng, RngExt};
+use rand::distr::Alphanumeric;
 use serde_json::Value;
 use sqlx::Row;
 use tracing::{error, info};
 use uuid::Uuid;
+use crate::common::agent::agent_model::PromptActor;
+use crate::common::agent::execute_tools;
+use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
+use crate::common::tools::ToolDispatcher;
 
 pub mod chat_model;
 pub mod internal_model;
 
+pub async fn handle_create_pairing(
+    State(state): State<AppState>,
+    Path(conversation_id): Path<Uuid>,
+) -> ApiResponse<PairingResponse> {
+    // Generate a random 6-character alphanumeric code
+    let pairing_code: String = rng()
+        .sample_iter(&Alphanumeric)
+        .take(6)
+        .map(char::from)
+        .collect::<String>()
+        .to_uppercase();
+
+    let expires_at = Utc::now() + chrono::Duration::minutes(10);
+
+    match sqlx::query!(
+        "INSERT INTO pairing_rooms (conversation_id, pairing_code, expires_at) VALUES ($1, $2, $3) RETURNING pairing_code, expires_at",
+        conversation_id,
+        pairing_code,
+        expires_at
+    )
+    .fetch_one(&state.pool)
+    .await
+    {
+        Ok(row) => ApiResponse::ok(
+            PairingResponse {
+                pairing_code: row.pairing_code,
+                expires_at: row.expires_at.unwrap_or(expires_at),
+            },
+            "Pairing code generated",
+        ),
+        Err(e) => {
+            error!("Failed to create pairing room: {}", e);
+            ApiResponse::failed("Failed to create pairing room")
+        }
+    }
+}
 
 pub async fn handle_internal_inbound(
     State(state): State<AppState>,
@@ -47,7 +88,81 @@ pub async fn handle_internal_inbound(
         }
     };
 
-    // 2. Resolve/Create Conversation
+    // 2. Check for Pairing Code
+    // format: /pair CODE or PAIR CODE
+    let text = payload.text.trim();
+    if text.to_uppercase().starts_with("PAIR ") || text.to_uppercase().starts_with("/PAIR ") {
+        let parts: Vec<&str> = text.split_whitespace().collect();
+        if parts.len() >= 2 {
+            let code = parts[1].to_uppercase();
+            
+            // Try to find a valid pairing room
+            let pairing_room = sqlx::query!(
+                "SELECT id, conversation_id FROM pairing_rooms WHERE pairing_code = $1 AND expires_at > now() AND user_id IS NULL",
+                code
+            )
+            .fetch_optional(&state.pool)
+            .await;
+
+            if let Ok(Some(room)) = pairing_room {
+                let conv_id = room.conversation_id;
+
+                // Mark pairing room as used
+                let _ = sqlx::query!(
+                    "UPDATE pairing_rooms SET user_id = $1 WHERE id = $2",
+                    user_id,
+                    room.id
+                ).execute(&state.pool).await;
+
+                // Create channel entry if it doesn't exist
+                let _ = sqlx::query!(
+                    "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
+                    payload.channel,
+                    payload.sender_id,
+                    payload.chat_id,
+                    conv_id
+                ).execute(&state.pool).await;
+
+                // Add member
+                let _ = sqlx::query!(
+                    "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                    conv_id,
+                    user_id
+                ).execute(&state.pool).await;
+
+                // Broadcast to SSE so Web UI shows pairing success
+                let _ = state.sse.send(SseBuilder::new(
+                    SseTarget::broadcast("pairing_success".to_string()),
+                    serde_json::json!({
+                        "conversation_id": conv_id,
+                        "platform": payload.channel,
+                        "message": format!("Successfully paired with {}!", payload.channel)
+                    })
+                )).await;
+
+                // Trigger LLM to send a congratulatory message
+                let congrats_payload = InboundMessage {
+                    sender_id: payload.sender_id.clone(),
+                    chat_id: payload.chat_id.clone(),
+                    channel: payload.channel.clone(),
+                    text: format!("(System: The user has successfully paired their {} account. Please congratulate them briefly and confirm they can now chat from here.)", payload.channel),
+                };
+
+                if let Err(e) = state.presence.channel_tx.send(DebounceEvent::NewMessage(conv_id, congrats_payload)).await {
+                    error!("Failed to send congrats trigger to debouncer: {}", e);
+                }
+
+                // Send success response back to the platform
+                return ApiResponse::ok(serde_json::json!({ 
+                    "status": "paired", 
+                    "conversation_id": conv_id,
+                    "message": "Pairing successful! This conversation is now linked." 
+                }), "Pairing successful");
+            }
+        }
+    }
+
+    // 3. Resolve/Create Conversation (Regular flow)
     let conversation_id = match sqlx::query!(
         "SELECT conversation_id FROM channels WHERE channel_type = $1 AND external_chat_id = $2",
         payload.channel,
@@ -427,6 +542,9 @@ pub async fn handle_chat_stream(
             state.pool.clone(),
             std::env::current_dir().unwrap_or_default(),
             Some(conversation_id),
+            state.gemini.clone(),
+            state.gemini_api_key.clone(),
+            state.sse.clone(),
         );
 
         let conversation = sqlx::query!(
@@ -538,7 +656,7 @@ pub async fn handle_chat_stream(
                     let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
                     previous_calls.extend(current_calls.clone());
 
-                    let tool_results = crate::common::agent::execute_tools(
+                    let tool_results = execute_tools(
                         &dispatcher,
                         current_calls.clone(),
                         &user_message,
