@@ -25,7 +25,7 @@ validator = { version = "0.20.0", features = ["derive"] }
 reqwest = { version = "0.13.3", features = ["json"] }
 schemars = "1.2.1"
 dashmap = "6.1.0"
-rand = "0.10.1"
+rand = "0.8.5"
 jsonwebtoken = "9.3.0"
 bcrypt = "0.17.0"
 cookie = "0.18.0"
