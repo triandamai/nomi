@@ -78,6 +78,17 @@
         });
     }
 
+    function openWhatsappBotManager() {
+        currentPlatform = 'whatsapp';
+        popupStore.open({
+            title: 'WhatsApp Bot Setup',
+            width: 'max-w-md',
+            contentSnippet: whatsappBotSetupSnippet,
+            footerSnippet: pairingFooter
+        });
+        fetchWhatsappQr();
+    }
+
     async function handlePairing(platform: string) {
         if (!conversationStore.activeConversationId) return;
         currentPlatform = platform;
@@ -87,22 +98,12 @@
             const data = await conversationStore.getPairingCode(conversationStore.activeConversationId);
             pairingCode = data.pairing_code;
 
-            if (platform === 'whatsapp') {
-                popupStore.open({
-                    title: `Link WhatsApp`,
-                    width: 'max-w-md',
-                    contentSnippet: pairingContent,
-                    footerSnippet: pairingFooter
-                });
-                await fetchWhatsappQr();
-            } else {
-                popupStore.open({
-                    title: `Link ${platform.charAt(0).toUpperCase() + platform.slice(1)}`,
-                    width: 'max-w-md',
-                    contentSnippet: pairingContent,
-                    footerSnippet: pairingFooter
-                });
-            }
+            popupStore.open({
+                title: `Link ${platform.charAt(0).toUpperCase() + platform.slice(1)}`,
+                width: 'max-w-md',
+                contentSnippet: pairingContent,
+                footerSnippet: pairingFooter
+            });
         } catch (e) {
             console.error(e);
         }
@@ -137,7 +138,15 @@
 
 {#snippet connectionManagementSnippet()}
     <div class="space-y-4 py-2">
-        <p class="text-xs text-zinc-500 font-medium px-1">Manage your connected messaging platforms.</p>
+        <div class="flex items-center justify-between px-1">
+            <p class="text-xs text-zinc-500 font-medium">Manage your connected messaging platforms.</p>
+            <button 
+                onclick={openWhatsappBotManager}
+                class="text-[10px] font-black uppercase tracking-tighter text-emerald-500 hover:text-emerald-400 transition-colors bg-emerald-500/5 px-2 py-1 rounded border border-emerald-500/10"
+            >
+                Bot Setup
+            </button>
+        </div>
         <div class="grid gap-3">
             {#each channels as channel}
                 <div class="flex items-center justify-between p-4 bg-zinc-950 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-colors">
@@ -178,69 +187,78 @@
     </div>
 {/snippet}
 
+{#snippet whatsappBotSetupSnippet()}
+    <div class="space-y-6 py-2">
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-8 flex flex-col items-center gap-6">
+            <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Scan to Connect Bot</p>
+            
+            <div class="relative group">
+                <QRCode data={whatsappQr} size={220} />
+                {#if isLoadingQr}
+                    <div class="absolute inset-0 bg-zinc-950/80 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                        <div class="w-8 h-8 border-4 border-zinc-800 border-t-emerald-500 rounded-full animate-spin"></div>
+                    </div>
+                {/if}
+            </div>
+
+            <button 
+                onclick={fetchWhatsappQr}
+                disabled={isLoadingQr}
+                class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all disabled:opacity-50"
+            >
+                <RefreshCw size={14} class={isLoadingQr ? 'animate-spin' : ''} />
+                <span>Refresh QR Code</span>
+            </button>
+        </div>
+
+        <div class="space-y-3 px-1">
+            <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Bot Instructions</p>
+            <p class="text-sm text-zinc-500 leading-relaxed">
+                Scanning this QR code links your WhatsApp account to our backend service. This allows Arta to send and receive messages as you.
+            </p>
+            <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside mt-2">
+                <li>Open WhatsApp on your phone</li>
+                <li>Go to <span class="text-zinc-200">Linked Devices</span></li>
+                <li>Scan this QR code</li>
+            </ol>
+        </div>
+    </div>
+{/snippet}
+
 {#snippet pairingContent()}
     <div class="space-y-6 py-2">
-        <!--{#if currentPlatform === 'whatsapp'}-->
-            <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-8 flex flex-col items-center gap-6">
-                <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Scan with WhatsApp</p>
-                
-                <div class="relative group">
-                    <QRCode data={whatsappQr} size={220} />
-                    {#if isLoadingQr}
-                        <div class="absolute inset-0 bg-zinc-950/80 rounded-lg flex items-center justify-center backdrop-blur-sm">
-                            <div class="w-8 h-8 border-4 border-zinc-800 border-t-emerald-500 rounded-full animate-spin"></div>
-                        </div>
-                    {/if}
-                </div>
+        <!-- Nomi Internal Pairing Code -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col items-center gap-4">
+            <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Internal Pairing Code</p>
+            <div class="text-5xl font-black text-emerald-400 tracking-[0.2em] font-mono">
+                {pairingCode}
+            </div>
+            <button 
+                onclick={copyToClipboard}
+                class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all"
+            >
+                {#if copied}
+                    <Check size={14} class="text-emerald-400" />
+                    <span class="text-emerald-400">Copied!</span>
+                {:else}
+                    <Copy size={14} />
+                    <span>Copy Code</span>
+                {/if}
+            </button>
+        </div>
 
-                <button 
-                    onclick={fetchWhatsappQr}
-                    disabled={isLoadingQr}
-                    class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all disabled:opacity-50"
-                >
-                    <RefreshCw size={14} class={isLoadingQr ? 'animate-spin' : ''} />
-                    <span>Refresh QR Code</span>
-                </button>
-            </div>
-
-            <div class="space-y-3">
-                <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Instructions</p>
-                <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside">
-                    <li>Open WhatsApp on your phone</li>
-                    <li>Tap <span class="text-zinc-200 font-bold">Menu</span> or <span class="text-zinc-200 font-bold">Settings</span> and select <span class="text-zinc-200 font-bold">Linked Devices</span></li>
-                    <li>Tap on <span class="text-zinc-200 font-bold">Link a Device</span></li>
-                    <li>Point your phone to this screen to capture the QR code</li>
-                </ol>
-            </div>
-        <!--{:else}-->
-            <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col items-center gap-4">
-                <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Your Pairing Code</p>
-                <div class="text-5xl font-black text-emerald-400 tracking-[0.2em] font-mono">
-                    {pairingCode}
-                </div>
-                <button 
-                    onclick={copyToClipboard}
-                    class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all"
-                >
-                    {#if copied}
-                        <Check size={14} class="text-emerald-400" />
-                        <span class="text-emerald-400">Copied!</span>
-                    {:else}
-                        <Copy size={14} />
-                        <span>Copy Code</span>
-                    {/if}
-                </button>
-            </div>
-
-            <div class="space-y-3">
-                <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Instructions</p>
-                <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside">
-                    <li>Open <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-emerald-400 hover:underline">@ArtaOpenAgentBot</a> on Telegram</li>
-                    <li>Send the command: <code class="bg-zinc-900 px-1.5 py-0.5 rounded text-emerald-400 font-mono">/pair {pairingCode}</code></li>
-                    <li>Wait for confirmation here</li>
-                </ol>
-            </div>
-        <!--{/if}-->
+        <div class="space-y-3">
+            <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Instructions</p>
+            <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside">
+                {#if currentPlatform === 'telegram'}
+                    <li>Open <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-emerald-400 hover:underline">@ArtaOpenAgentBot</a></li>
+                {:else}
+                    <li>Open our bot on WhatsApp</li>
+                {/if}
+                <li>Send the command: <code class="bg-zinc-900 px-1.5 py-0.5 rounded text-emerald-400 font-mono">/pair {pairingCode}</code></li>
+                <li>Wait for confirmation here</li>
+            </ol>
+        </div>
     </div>
 {/snippet}
 
