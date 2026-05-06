@@ -2,9 +2,8 @@ FROM rust:1.80-alpine AS builder
 RUN apk add --no-cache musl-dev pkgconfig openssl-dev
 WORKDIR /app
 COPY . .
-# We need to set SQLX_OFFLINE=true if we are not connecting to a DB during build
-# Or we use sqlx-data.json
-RUN cargo build --release
+COPY sqlx-data.json .
+RUN SQLX_OFFLINE=true cargo build --release
 
 FROM alpine:latest
 RUN apk add --no-cache libgcc openssl ca-certificates
