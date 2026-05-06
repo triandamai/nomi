@@ -22,6 +22,7 @@ struct AppState {
     bot: Bot,
     redis: crate::common::redis::RedisClient,
     wa_tx: tokio::sync::mpsc::UnboundedSender<crate::feature::OutboundMessage>,
+    wa_cmd_tx: tokio::sync::mpsc::UnboundedSender<crate::feature::WhatsAppCommand>,
 }
 
 #[tokio::main]
@@ -48,12 +49,15 @@ async fn main() -> anyhow::Result<()> {
     let qr_code = Arc::new(Mutex::new(None));
     let (wa_tx, mut wa_rx) =
         tokio::sync::mpsc::unbounded_channel::<crate::feature::OutboundMessage>();
+    let (wa_cmd_tx, mut wa_cmd_rx) =
+        tokio::sync::mpsc::unbounded_channel::<crate::feature::WhatsAppCommand>();
 
     let state = AppState {
         qr_code: qr_code.clone(),
         bot: bot.clone(),
         redis: redis.clone(),
         wa_tx,
+        wa_cmd_tx,
     };
     info!("AppState created.");
 
@@ -81,10 +85,24 @@ async fn main() -> anyhow::Result<()> {
                     Err(e) => error!("Failed to run WhatsApp bot: {}", e),
                 }
 
-                // Listen for outbound messages for WhatsApp
-                while let Some(msg) = wa_rx.recv().await {
-                    if let Err(e) = worker.send_message(msg.chat_id, msg.text).await {
-                        error!("Failed to send WhatsApp message: {}", e);
+                // Listen for outbound messages and commands for WhatsApp
+                loop {
+                    tokio::select! {
+                        Some(msg) = wa_rx.recv() => {
+                            if let Err(e) = worker.send_message(msg.chat_id, msg.text).await {
+                                error!("Failed to send WhatsApp message: {}", e);
+                            }
+                        }
+                        Some(cmd) = wa_cmd_rx.recv() => {
+                            match cmd {
+                                crate::feature::WhatsAppCommand::Logout => {
+                                    if let Err(e) = worker.logout().await {
+                                        error!("Failed to logout from WhatsApp: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                        else => break,
                     }
                 }
             }
@@ -101,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Configuring Router...");
     let app = Router::new()
         .route("/api/whatsapp/qr", get(get_whatsapp_qr))
+        .route("/api/whatsapp/logout", post(logout_whatsapp))
         .route("/api/outbound", post(handle_outbound))
         .route("/api/presence/typing", post(handle_typing))
         .with_state(state.clone())
@@ -152,6 +171,11 @@ async fn main() -> anyhow::Result<()> {
 async fn get_whatsapp_qr(State(state): State<AppState>) -> Json<serde_json::Value> {
     let qr = state.qr_code.lock().await;
     Json(serde_json::json!({ "qr": *qr }))
+}
+
+async fn logout_whatsapp(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let _ = state.wa_cmd_tx.send(crate::feature::WhatsAppCommand::Logout);
+    Json(serde_json::json!({ "status": "logout_initiated" }))
 }
 
 async fn handle_typing(

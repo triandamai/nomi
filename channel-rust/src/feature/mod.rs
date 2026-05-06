@@ -37,3 +37,8 @@ pub struct PresenceMessage {
     pub channel: String,
     pub status: String,
 }
+
+#[derive(Debug, Clone)]
+pub enum WhatsAppCommand {
+    Logout,
+}

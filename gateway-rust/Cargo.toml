@@ -15,7 +15,7 @@ dotenvy = "0.15.7"
 gemini-rust = "1.7.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "macros"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["json","runtime-tokio-rustls", "postgres", "uuid", "chrono", "macros"] }
 tokio = { version = "1.52.1", features = ["full", "sync", "time"] }
 tower-http = { version = "0.6.2", features = ["cors"] }
 tracing = "0.1.41"
@@ -23,7 +23,7 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 uuid = { version = "1.23.1", features = ["v4", "serde"] }
 log = "0.4.29"
 validator = { version = "0.20.0", features = ["derive"] }
-reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls"] }
+reqwest = { version = "0.13.3", default-features = false, features = ["json", "__rustls"] }
 schemars = "1.2.1"
 dashmap = "6.1.0"
 rand = "0.10.1"

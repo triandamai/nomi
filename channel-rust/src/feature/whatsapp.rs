@@ -137,4 +137,13 @@ impl WhatsAppWorker {
         self.client.send_message(chat, msg).await?;
         Ok(())
     }
+
+    pub async fn logout(&self) -> anyhow::Result<()> {
+        info!("Logging out from WhatsApp...");
+        self.client.disconnect().await;
+        // self.client.logout().await.map_err(|e| anyhow::anyhow!("Logout failed: {}", e))?;
+        let mut qr_lock = self.qr_code.lock().await;
+        *qr_lock = None;
+        Ok(())
+    }
 }

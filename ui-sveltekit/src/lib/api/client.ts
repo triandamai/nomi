@@ -226,5 +226,10 @@ export const chatApi = {
     },
     getWhatsappQr: () => {
         return fetch(`${CHANNEL_URL}/whatsapp/qr`).then(res => res.json());
+    },
+    logoutWhatsapp: () => {
+        return fetch(`${CHANNEL_URL}/whatsapp/logout`, {
+            method: 'POST'
+        }).then(res => res.json());
     }
 };

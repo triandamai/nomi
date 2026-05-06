@@ -123,6 +123,21 @@
         }
     }
 
+    async function handleWhatsappLogout() {
+        isLoadingQr = true;
+        try {
+            await chatApi.logoutWhatsapp();
+            // Wait a bit for the backend to process and reset the QR
+            setTimeout(() => {
+                fetchWhatsappQr();
+            }, 1000);
+        } catch (e) {
+            console.error('Failed to logout from WhatsApp', e);
+        } finally {
+            isLoadingQr = false;
+        }
+    }
+
     function copyToClipboard() {
         navigator.clipboard.writeText(pairingCode);
         copied = true;
@@ -201,14 +216,25 @@
                 {/if}
             </div>
 
-            <button 
-                onclick={fetchWhatsappQr}
-                disabled={isLoadingQr}
-                class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all disabled:opacity-50"
-            >
-                <RefreshCw size={14} class={isLoadingQr ? 'animate-spin' : ''} />
-                <span>Refresh QR Code</span>
-            </button>
+            <div class="flex items-center gap-3">
+                <button 
+                    onclick={fetchWhatsappQr}
+                    disabled={isLoadingQr}
+                    class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all disabled:opacity-50"
+                >
+                    <RefreshCw size={14} class={isLoadingQr ? 'animate-spin' : ''} />
+                    <span>Refresh QR</span>
+                </button>
+
+                <button 
+                    onclick={handleWhatsappLogout}
+                    disabled={isLoadingQr}
+                    class="flex items-center gap-2 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg text-xs text-rose-400 transition-all disabled:opacity-50"
+                >
+                    <RefreshCw size={14} />
+                    <span>Logout & Reset</span>
+                </button>
+            </div>
         </div>
 
         <div class="space-y-3 px-1">
