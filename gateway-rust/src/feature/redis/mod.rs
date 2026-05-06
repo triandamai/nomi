@@ -179,19 +179,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             .await
             .unwrap_or_default();
         
-        let context_results = if !embedding.is_empty() {
-            crate::rag::search_similar_with_summaries(&state_clone.pool, embedding, 5)
+        let memories_text = if !embedding.is_empty() {
+            crate::utils::rag::hybrid_retrieve(&state_clone.pool, &user_text, embedding)
                 .await
                 .unwrap_or_default()
+                .join("\n---\n")
         } else {
-            Vec::new()
+            String::new()
         };
-
-        let memories_text = context_results
-            .iter()
-            .map(|r| r.content.clone())
-            .collect::<Vec<String>>()
-            .join("\n---\n");
 
         // C. Prepare Reasoning Loop
         let dispatcher = crate::common::tools::ToolDispatcher::new(

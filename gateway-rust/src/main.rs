@@ -3,6 +3,7 @@ pub mod feature;
 pub mod models;
 pub mod rag;
 pub mod routes;
+pub mod utils;
 
 
 use crate::common::sse::sse_emitter::SseBroadcaster;

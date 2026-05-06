@@ -141,12 +141,9 @@ pub async fn process_incoming_message(
         .await
         .unwrap_or_default();
     let memories_text = if !embedding.is_empty() {
-        rag::search_similar_with_summaries(&state.pool, embedding, 5)
+        crate::utils::rag::hybrid_retrieve(&state.pool, &text_content, embedding)
             .await
             .unwrap_or_default()
-            .iter()
-            .map(|r| r.content.clone())
-            .collect::<Vec<String>>()
             .join("\n---\n")
     } else {
         String::new()

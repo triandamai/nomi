@@ -50,6 +50,16 @@ pub struct SearchWebResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ReadWebPageParameters {
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ReadWebPageResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UpdateConversationSoulParameters {
     pub new_soul: String,
     pub reason_for_change: String,

@@ -1,10 +1,16 @@
 pub mod tools_model;
 
 use crate::Arc;
-use crate::common::tools::tools_model::{EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters, ExecuteReadQueryResponse, ParseToJsonParameters, ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse, ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse, UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse};
+use crate::common::tools::tools_model::{
+    EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters,
+    ExecuteReadQueryResponse, ParseToJsonParameters, ReadWebPageParameters, ReadWebPageResponse,
+    ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse,
+    ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse,
+    UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse,
+};
 use gemini_rust::{FunctionDeclaration, Tool};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use sqlx::{Column, Pool, Postgres, Row};
 use std::fs;
 use std::path::PathBuf;
@@ -27,6 +33,11 @@ pub enum ArtaTool {
     #[serde(rename = "web_search")]
     WebSearch {
         params: SearchWebParameters,
+        user_message: String,
+    },
+    #[serde(rename = "read_web_page")]
+    ReadWebPage {
+        params: ReadWebPageParameters,
         user_message: String,
     },
     #[serde(rename = "parse_to_json")]
@@ -94,6 +105,10 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.web_search(params.query, user_message).await,
+            ArtaTool::ReadWebPage {
+                params,
+                user_message,
+            } => self.read_web_page(params.url, user_message).await,
             ArtaTool::ParseStringToJson {
                 params,
                 user_message,
@@ -137,6 +152,14 @@ impl ToolDispatcher {
                 .with_parameters::<SearchWebParameters>()
                 .with_response::<SearchWebResponse>();
 
+        let read_web_page = FunctionDeclaration::new(
+            "read_web_page",
+            "Read content of a web page as Markdown. Best for technical docs or news.",
+            None,
+        )
+        .with_parameters::<ReadWebPageParameters>()
+        .with_response::<ReadWebPageResponse>();
+
         let update_nomi_soul =
             FunctionDeclaration::new(
                 "update_nomi_soul",
@@ -168,6 +191,7 @@ impl ToolDispatcher {
             read_workspace_file,
             execute_read_query,
             web_search,
+            read_web_page,
             update_nomi_soul,
             update_knowledge_base,
             evolve_bootstrap_content,
@@ -294,23 +318,128 @@ impl ToolDispatcher {
     }
 
     async fn web_search(&self, query: String, user_message: String) -> ToolResult {
-        debug!(query = %query, "Executing web_search (Mock)");
-        ToolResult {
-            error: "".to_string(),
-            success: true,
-            content: format!(
-                "Search results for '{}':
-1. Result A - info about {}
-2. Result B - more context on {}",
-                query, query, query
-            ),
-            follow_up_prompt: build_follow_up_prompt(
-                "".to_string(),
-                "".to_string(),
-                "web_search".to_string(),
-            ),
+        debug!(query = %query, "Executing web_search");
+
+        let api_key = match std::env::var("TAVILY_API_KEY") {
+            Ok(key) => key,
+            Err(_) => {
+                return ToolResult {
+                    error: "TAVILY_API_KEY not found in environment".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post("https://api.tavily.com/search")
+            .header("Authorization",format!("Bearer {}", api_key))
+            .json(&json!({
+                "query": query,
+                "search_depth": "advanced",
+                "include_answer": true,
+                "max_results": 5
+            }))
+            .send()
+            .await;
+
+        match res {
+            Ok(response) => {
+                let val: Value = response.json().await.unwrap_or(json!({}));
+                let results = val["results"].as_array();
+
+                let mut output = String::new();
+                if let Some(answer) = val["answer"].as_str() {
+                    output.push_str(&format!("Summary: {}\n\n", answer));
+                }
+
+                if let Some(results) = results {
+                    for (i, res) in results.iter().enumerate() {
+                        let title = res["title"].as_str().unwrap_or("No Title");
+                        let url = res["url"].as_str().unwrap_or("No URL");
+                        let content = res["content"].as_str().unwrap_or("");
+                        output.push_str(&format!("{}. {} \nURL: {} \nSnippet: {}\n\n", i + 1, title, url, content));
+                    }
+                }
+
+                info!("get result from web search and returning to agent");
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: output.clone(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        output,
+                        "web_search".to_string(),
+                    ),
+                }
+            }
+            Err(e) => ToolResult {
+                error: format!("Tavily API error: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
         }
     }
+
+    async fn read_web_page(&self, url: String, user_message: String) -> ToolResult {
+        debug!(url = %url, "Executing read_web_page via Jina Reader");
+
+        let client = reqwest::Client::new();
+        let jina_url = format!("https://r.jina.ai/{}", url);
+
+        let api_key = match std::env::var("JINA_API_KEY") {
+            Ok(key) => key,
+            Err(_) => {
+                return ToolResult {
+                    error: "JINA_API_KEY not found in environment".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        let res = client
+            .get(jina_url)
+            .header("X-Return-Format", "markdown")
+            .header("Authorization",format!("Bearer {}", api_key))
+            .send()
+            .await;
+
+        match res {
+            Ok(response) => {
+                let mut content = response.text().await.unwrap_or_default();
+
+                // Safety & Token Budget: Limit to roughly 4000 tokens (~16000 chars)
+                if content.len() > 16000 {
+                    content.truncate(16000);
+                    content.push_str("\n\n[Content truncated for token budget...]");
+                }
+
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: content.clone(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        "Web content retrieved successfully.".to_string(),
+                        "read_web_page".to_string(),
+                    ),
+                }
+            }
+            Err(e) => ToolResult {
+                error: format!("Jina Reader error: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        }
+    }
+
     async fn update_nomi_soul(
         &self,
         params: UpdateConversationSoulParameters,

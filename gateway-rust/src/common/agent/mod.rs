@@ -142,6 +142,13 @@ pub async fn execute_tools(
                         user_message: user_message.clone(),
                     }).await
                 }
+                "read_web_page" => {
+                    let param: crate::common::tools::tools_model::ReadWebPageParameters = serde_json::from_value(args).unwrap();
+                    dispatcher.dispatch(ArtaTool::ReadWebPage {
+                        params: param,
+                        user_message: user_message.clone(),
+                    }).await
+                }
                 "update_nomi_soul" | "update_conversation_soul" => {
                     let param: UpdateConversationSoulParameters = serde_json::from_value(args).unwrap();
                     dispatcher.dispatch(ArtaTool::UpdateConversationSoul {
