@@ -95,18 +95,33 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Configure CORS
+    let app_url = var("APP_URL").unwrap_or_else(|_| "http://localhost:5173".to_string());
+    
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(app_url.parse::<axum::http::HeaderValue>().unwrap())
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+            axum::http::Method::OPTIONS,
+        ])
+        .allow_headers([
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::COOKIE,
+        ])
+        .allow_credentials(true);
 
     // Use the new routes module
     let app = Router::new()
         .nest("/api", routes::create_router(state))
         .layer(cors);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
-    info!("Gateway listening on 0.0.0.0:8000");
+    let port = var("PORT").unwrap_or_else(|_| "8000".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    info!("Gateway listening on {}", addr);
     axum::serve(listener, app).await?;
 
     Ok(())

@@ -3,19 +3,18 @@ use axum::{
     extract::State,
     routing::{get, post},
 };
-use std::net::SocketAddr;
-use std::sync::Arc;
 use dotenvy::dotenv;
+use std::sync::Arc;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
-use tracing_subscriber::{fmt, EnvFilter};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, fmt};
 
-mod feature;
 mod common;
+mod feature;
 
 #[derive(Clone)]
 struct AppState {
@@ -42,11 +41,13 @@ async fn main() -> anyhow::Result<()> {
     let bot = Bot::new(tel_token);
     info!("Telegram Bot initialized.");
 
-    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let redis_url =
+        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
     let redis = crate::common::redis::RedisClient::new(&redis_url)?;
 
     let qr_code = Arc::new(Mutex::new(None));
-    let (wa_tx, mut wa_rx) = tokio::sync::mpsc::unbounded_channel::<crate::feature::OutboundMessage>();
+    let (wa_tx, mut wa_rx) =
+        tokio::sync::mpsc::unbounded_channel::<crate::feature::OutboundMessage>();
 
     let state = AppState {
         qr_code: qr_code.clone(),
@@ -60,12 +61,13 @@ async fn main() -> anyhow::Result<()> {
     let wa_redis = redis.clone();
     let wa_qr = qr_code.clone();
     tokio::spawn(async move {
-        let db_path = std::env::var("WHATSAPP_DB_PATH").unwrap_or_else(|_| "whatsapp.db".to_string());
+        let db_path =
+            std::env::var("WHATSAPP_DB_PATH").unwrap_or_else(|_| "whatsapp.db".to_string());
         match crate::feature::whatsapp::WhatsAppWorker::new(&db_path, wa_redis, wa_qr).await {
             Ok((worker, mut bot)) => {
                 info!("Starting WhatsApp bot...");
                 let client = bot.client();
-                
+
                 // Run the bot event loop and task processor
                 match bot.run().await {
                     Ok(_handle) => {
@@ -102,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/outbound", post(handle_outbound))
         .route("/api/presence/typing", post(handle_typing))
         .with_state(state.clone())
-        .layer(cors);;
+        .layer(cors);
     info!("Router configured.");
 
     // Start Telegram Worker
@@ -126,13 +128,14 @@ async fn main() -> anyhow::Result<()> {
         info!("Redis Listener task finished.");
     });
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8001));
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8001".to_string());
+    let addr = format!("0.0.0.0:{}", port);
     info!("Attempting to bind TcpListener to {}...", addr);
-    let listener = match tokio::net::TcpListener::bind(addr).await {
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(l) => {
             info!("TcpListener bound successfully.");
             l
-        },
+        }
         Err(e) => {
             error!("Failed to bind TcpListener: {}", e);
             return Err(e.into());

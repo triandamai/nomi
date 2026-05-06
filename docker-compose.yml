@@ -1,18 +1,22 @@
 services:
   db:
-    # Use the official pgvector image with Postgres 16
     image: pgvector/pgvector:pg16
     container_name: open-agent-db
+    restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: open_agent
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-open_agent}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d open_agent"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-open_agent}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,14 +24,76 @@ services:
   redis:
     image: redis:alpine
     container_name: open-agent-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 300M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+#
+#  gateway:
+#    build: ./gateway-rust
+#    container_name: open-agent-gateway
+#    restart: unless-stopped
+#    ports:
+#      - "8000:8000"
+#    environment:
+#      - DATABASE_URL=postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-open_agent}
+#      - REDIS_URL=redis://redis:6379
+#      - JWT_SECRET=${JWT_SECRET}
+#      - GEMINI_API_KEY=${GEMINI_API_KEY}
+#      - APP_URL=${APP_URL}
+#    depends_on:
+#      db:
+#        condition: service_healthy
+#      redis:
+#        condition: service_healthy
+#    deploy:
+#      resources:
+#        limits:
+#          memory: 800M
+#
+#  channel:
+#    build: ./channel-rust
+#    container_name: open-agent-channel
+#    restart: unless-stopped
+#    ports:
+#      - "8001:8001"
+#    environment:
+#      - REDIS_URL=redis://redis:6379
+#      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+#      - WHATSAPP_DB_PATH=/app/data/whatsapp.db
+#    volumes:
+#      - channel_data:/app/data
+#    depends_on:
+#      redis:
+#        condition: service_healthy
+#    deploy:
+#      resources:
+#        limits:
+#          memory: 500M
+#
+#  web:
+#    build: ./ui-sveltekit
+#    container_name: open-agent-web
+#    restart: unless-stopped
+#    ports:
+#      - "3000:3000"
+#    environment:
+#      - PUBLIC_GATEWAY_URL=${PUBLIC_GATEWAY_URL}
+#      - PUBLIC_CHANNEL_URL=${PUBLIC_CHANNEL_URL}
+#      - ORIGIN=${APP_URL}
+#    deploy:
+#      resources:
+#        limits:
+#          memory: 600M
 
 volumes:
   postgres_data:
-  redis_data:
+  channel_data:

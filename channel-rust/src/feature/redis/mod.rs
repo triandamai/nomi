@@ -1,7 +1,6 @@
-use crate::feature::{InboundMessage, OutboundMessage, PresenceMessage};
+use crate::feature::{ OutboundMessage, PresenceMessage};
 use tracing::{error, info};
 use tokio_stream::StreamExt;
-use teloxide::prelude::*;
 use crate::AppState;
 
 pub async fn start_redis_listener(state: AppState) -> anyhow::Result<()> {

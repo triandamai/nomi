@@ -1,10 +1,4 @@
 use crate::AppState;
-use crate::common::agent::agent_model::PromptActor;
-use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
-use crate::common::tools::ToolDispatcher;
-use crate::feature::conversation::chat_model::MessageItem;
-use crate::rag;
-use chrono::Utc;
 use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -85,7 +79,9 @@ async fn process_debounced_message(
         "SELECT channel_type FROM channels WHERE user_id = $1 AND conversation_id = $2",
         user_id,
         conversation_id
-    ).fetch_optional(&state.pool).await?;
+    )
+    .fetch_optional(&state.pool)
+    .await?;
 
     let source = match channel_info {
         Some(c) => match c.channel_type.as_str() {
@@ -111,9 +107,12 @@ async fn process_debounced_message(
         }
     }
     user_content.reverse();
-    
+
     if user_content.is_empty() {
-        info!("No new user messages found for conversation {}, skipping", conversation_id);
+        info!(
+            "No new user messages found for conversation {}, skipping",
+            conversation_id
+        );
         return Ok(());
     }
 

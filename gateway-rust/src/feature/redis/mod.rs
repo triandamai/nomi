@@ -1,5 +1,4 @@
 use crate::AppState;
-use crate::common::api_response::ApiResponse;
 use crate::common::identity;
 use crate::common::repository::{channel_repo, message_repo, pairing_repo};
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
@@ -77,7 +76,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 let _ = state
                     .sse
                     .send(SseBuilder::new(
-                        SseTarget::broadcast("pairing_success".to_string()),
+                        SseTarget::sent_to_user(user_id.to_string(), "pairing_success".to_string()),
                         serde_json::json!({
                             "conversation_id": conv_id,
                             "platform": msg.channel,
@@ -372,7 +371,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     let _ = state
         .sse
         .send(SseBuilder::new(
-            SseTarget::broadcast("message".to_string()),
+            SseTarget::sent_to_user(user_id.to_string(), "message".to_string()),
             user_message,
         ))
         .await;
@@ -388,7 +387,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         let _ = state_clone
             .sse
             .send(SseBuilder::new(
-                SseTarget::broadcast("presence".to_string()),
+                SseTarget::sent_to_user(user_id.to_string(), "presence".to_string()),
                 serde_json::json!({
                     "conversation_id": conversation_id,
                     "is_typing": true,
@@ -502,7 +501,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                     // Emit thought
                     if !chunk.thought.is_empty() {
                         let _ = state_clone.sse.send(SseBuilder::new(
-                            SseTarget::broadcast("thought".to_string()),
+                            SseTarget::sent_to_user(user_id.to_string(), "thought".to_string()),
                             serde_json::json!({ "thought": chunk.thought, "conversation_id": conversation_id }),
                         )).await;
                     }
@@ -555,13 +554,13 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             let _ = state_clone
                 .sse
                 .send(SseBuilder::new(
-                    SseTarget::broadcast("message".to_string()),
+                    SseTarget::sent_to_user(user_id.to_string(), "message".to_string()),
                     assistant_message,
                 ))
                 .await;
 
             let _ = state_clone.sse.send(SseBuilder::new(
-                SseTarget::broadcast("presence".to_string()),
+                SseTarget::sent_to_user(user_id.to_string(), "presence".to_string()),
                 serde_json::json!({"conversation_id": conversation_id, "is_typing": false, "user_id": "nomi"}),
             )).await;
 

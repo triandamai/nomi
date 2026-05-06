@@ -1,48 +1,45 @@
+use crate::AppState;
 use crate::common::api_response::ApiResponse;
-use crate::feature::conversation::chat_model::{ChannelStatus, ChatRequest, ConversationResponse, CreateConversationRequest, MessageItem, MessageListParams, MessageListResponse, PairingResponse, RestoreSoulRequest, RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest, UserChannelsResponse};
-use crate::feature::conversation::internal_model::InboundMessage;
-use crate::feature::realtime::presence::DebounceEvent;
-use crate::{rag, AppState};
-use axum::extract::{Path, State, Request};
+use crate::feature::conversation::chat_model::{
+    ChannelStatus, ChatRequest, ConversationResponse, CreateConversationRequest, MessageItem,
+    MessageListParams, MessageListResponse, PairingResponse, RestoreSoulRequest,
+    RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest, UserChannelsResponse,
+};
 use axum::Json;
+use axum::extract::{Path, State};
 use chrono::Utc;
 
-use rand::{rng, Rng, RngExt};
 use rand::distr::Alphanumeric;
+use rand::{RngExt, rng};
 use serde_json::Value;
 use sqlx::Row;
 use tracing::{error, info};
 use uuid::Uuid;
-use crate::common::agent::agent_model::PromptActor;
-use crate::common::agent::execute_tools;
-use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
-use crate::common::tools::ToolDispatcher;
 
+pub mod auth;
 pub mod chat_model;
 pub mod internal_model;
-pub mod auth;
 
 pub async fn handle_get_user_channels(
     State(state): State<AppState>,
 ) -> ApiResponse<UserChannelsResponse> {
-    // Note: In a real app, we'd get user_id from session. 
+    // Note: In a real app, we'd get user_id from session.
     // For this prototype/current state, we might need a default or use the session_id if available.
     // Based on register_public_sse, user_id is passed as a query param there.
     // Here we'll check all channels to see if any are linked.
     // Since we don't have Auth middleware yet, let's look for channels linked to the current active conversations.
-    
-    let result = sqlx::query!(
-        "SELECT DISTINCT channel_type FROM channels"
-    )
-    .fetch_all(&state.pool)
-    .await;
+
+    let result = sqlx::query!("SELECT DISTINCT channel_type FROM channels")
+        .fetch_all(&state.pool)
+        .await;
 
     match result {
         Ok(rows) => {
             let platforms = vec!["telegram".to_string(), "whatsapp".to_string()];
             let mut channels = Vec::new();
-            
-            let linked_platforms: std::collections::HashSet<String> = rows.into_iter().map(|r| r.channel_type).collect();
+
+            let linked_platforms: std::collections::HashSet<String> =
+                rows.into_iter().map(|r| r.channel_type).collect();
 
             for p in platforms {
                 channels.push(ChannelStatus {
@@ -371,7 +368,9 @@ pub async fn handle_delete_conversation(
 
 pub async fn handle_chat_stream(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
+    axum::extract::Extension(claims): axum::extract::Extension<
+        crate::feature::conversation::auth::Claims,
+    >,
     Json(payload): Json<ChatRequest>,
 ) -> ApiResponse<String> {
     info!(conversation_id = %payload.conversation_id, "Received chat stream request");
@@ -391,7 +390,10 @@ pub async fn handle_chat_stream(
             source: crate::feature::message_processor::MessageSource::Web,
         };
 
-        if let Err(e) = crate::feature::message_processor::process_incoming_message(state_clone, unified_msg).await {
+        if let Err(e) =
+            crate::feature::message_processor::process_incoming_message(state_clone, unified_msg)
+                .await
+        {
             error!("Failed to process web message: {}", e);
         }
     });

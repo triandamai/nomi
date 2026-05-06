@@ -1,16 +1,16 @@
+use crate::common::api_response::ApiResponse;
+use crate::common::identity::auth_model::{AuthResponse, OtpRequest, OtpVerify, UserProfile};
+use crate::feature::OutboundMessage;
+use crate::AppState;
 use axum::{
     extract::State,
     http::StatusCode,
     response::IntoResponse,
-    Json,
     Extension,
+    Json,
 };
-use crate::AppState;
-use crate::common::api_response::ApiResponse;
-use crate::common::identity::auth_model::{OtpRequest, OtpVerify, AuthResponse, UserProfile};
-use crate::feature::OutboundMessage;
-use jsonwebtoken::{encode, Header, EncodingKey};
-use rand::{rng, Rng, RngExt};
+use jsonwebtoken::{encode, EncodingKey, Header};
+use rand::{rng, RngExt};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use validator::Validate;
@@ -157,14 +157,20 @@ pub async fn handle_verify_otp(
         }
     };
 
-    // Note: Cookie setting will be handled by the caller or middleware if we want HttpOnly.
-    // For now, we return it in the response for the frontend to store.
+    let cookie = format!(
+        "auth_token={}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age={}",
+        token,
+        7 * 24 * 60 * 60 // 7 days
+    );
 
     info!("[Auth] User verified: {}", user_id);
-    (StatusCode::OK, Json(ApiResponse::ok(AuthResponse {
-        access_token: token,
-        user_id: user_id.to_string(),
-    }, "Login successful")))
+    (
+        StatusCode::OK,
+        Json(ApiResponse::ok(AuthResponse {
+            access_token: token,
+            user_id: user_id.to_string(),
+        }, "Login successful"))
+    )
 }
 
 pub async fn handle_get_profile(
@@ -199,16 +205,8 @@ pub async fn handle_get_profile(
 }
 
 pub async fn handle_logout() -> impl IntoResponse {
-    // Since we use JWT-based auth via headers in the frontend, 
-    // "logout" is primarily a client-side action of clearing the token.
-    // However, if we were using HttpOnly cookies, we would clear them here.
-    // For now, we return a successful response.
-    
     (
         StatusCode::OK,
-        [
-            (axum::http::header::SET_COOKIE, "auth_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax"),
-        ],
         Json(ApiResponse::ok((), "Logged out successfully"))
     )
 }

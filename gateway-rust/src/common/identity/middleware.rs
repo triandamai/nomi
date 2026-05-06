@@ -1,16 +1,16 @@
+use crate::feature::conversation::auth::Claims;
+use crate::AppState;
 use axum::{
     extract::{Request, State},
     http::{header, StatusCode},
     middleware::Next,
     response::Response,
 };
-use crate::AppState;
-use crate::feature::conversation::auth::Claims;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use tracing::error;
 
 pub async fn auth_middleware(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
@@ -21,19 +21,18 @@ pub async fn auth_middleware(
 
     let token = if let Some(auth_header) = auth_header {
         if auth_header.starts_with("Bearer ") {
-            &auth_header[7..]
+            auth_header[7..].to_string()
         } else {
             return Err(StatusCode::UNAUTHORIZED);
         }
     } else {
-        // Fallback to cookie for SSE if needed, but for now we'll stick to Header
         return Err(StatusCode::UNAUTHORIZED);
     };
 
     let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "secret".to_string());
     
     match decode::<Claims>(
-        token,
+        token.as_str(),
         &DecodingKey::from_secret(jwt_secret.as_ref()),
         &Validation::default(),
     ) {

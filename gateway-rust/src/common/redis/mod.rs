@@ -1,6 +1,6 @@
 use redis::AsyncCommands;
 use serde::Serialize;
-use tracing::{error, info};
+use tracing::error;
 
 #[derive(Clone)]
 pub struct RedisClient {
@@ -14,13 +14,20 @@ impl RedisClient {
     }
 
     pub async fn get_connection(&self) -> anyhow::Result<redis::aio::MultiplexedConnection> {
-        self.client.get_multiplexed_async_connection().await.map_err(|e| {
-            error!("Failed to get Redis connection: {}", e);
-            anyhow::anyhow!(e)
-        })
+        self.client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| {
+                error!("Failed to get Redis connection: {}", e);
+                anyhow::anyhow!(e)
+            })
     }
 
-    pub async fn publish_event<T: Serialize>(&self, channel: &str, payload: &T) -> anyhow::Result<()> {
+    pub async fn publish_event<T: Serialize>(
+        &self,
+        channel: &str,
+        payload: &T,
+    ) -> anyhow::Result<()> {
         let mut conn = self.get_connection().await?;
         let json = serde_json::to_string(payload)?;
         let _: () = conn.publish(channel, json).await.map_err(|e| {

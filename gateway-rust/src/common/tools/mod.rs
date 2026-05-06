@@ -10,11 +10,11 @@ use crate::common::tools::tools_model::{
 };
 use gemini_rust::{FunctionDeclaration, Tool};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use sqlx::{Column, Pool, Postgres, Row};
 use std::fs;
 use std::path::PathBuf;
-use tracing::{debug, error, info};
+use tracing::info;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -178,14 +178,13 @@ impl ToolDispatcher {
                 .with_parameters::<UpdateKnowledgeBaseParameters>()
                 .with_response::<UpdateKnowledgeBaseResponse>();
 
-        let evolve_bootstrap_content =
-            FunctionDeclaration::new(
-                "evolve_bootstrap_content",
-                "Update your own personality or mission instructions (System Prompt) dynamically.",
-                None,
-            )
-                .with_parameters::<EvolveBootstrapParameters>()
-                .with_response::<EvolveBootstrapResponse>();
+        let evolve_bootstrap_content = FunctionDeclaration::new(
+            "evolve_bootstrap_content",
+            "Update your own personality or mission instructions (System Prompt) dynamically.",
+            None,
+        )
+        .with_parameters::<EvolveBootstrapParameters>()
+        .with_response::<EvolveBootstrapResponse>();
 
         Tool::with_functions(vec![
             read_workspace_file,
@@ -335,7 +334,7 @@ impl ToolDispatcher {
         let client = reqwest::Client::new();
         let res = client
             .post("https://api.tavily.com/search")
-            .header("Authorization",format!("Bearer {}", api_key))
+            .header("Authorization", format!("Bearer {}", api_key))
             .json(&json!({
                 "query": query,
                 "search_depth": "advanced",
@@ -360,7 +359,13 @@ impl ToolDispatcher {
                         let title = res["title"].as_str().unwrap_or("No Title");
                         let url = res["url"].as_str().unwrap_or("No URL");
                         let content = res["content"].as_str().unwrap_or("");
-                        output.push_str(&format!("{}. {} \nURL: {} \nSnippet: {}\n\n", i + 1, title, url, content));
+                        output.push_str(&format!(
+                            "{}. {} \nURL: {} \nSnippet: {}\n\n",
+                            i + 1,
+                            title,
+                            url,
+                            content
+                        ));
                     }
                 }
 
@@ -406,7 +411,7 @@ impl ToolDispatcher {
         let res = client
             .get(jina_url)
             .header("X-Return-Format", "markdown")
-            .header("Authorization",format!("Bearer {}", api_key))
+            .header("Authorization", format!("Bearer {}", api_key))
             .send()
             .await;
 
@@ -743,8 +748,7 @@ Content:
             .unwrap_or(&params.content)
             .to_string();
 
-        if let Ok(embedding) =
-            crate::rag::get_embedding(&self.gemini_api_key, &summary_text).await
+        if let Ok(embedding) = crate::rag::get_embedding(&self.gemini_api_key, &summary_text).await
         {
             let metadata = serde_json::json!({
                 "type": "memory",
@@ -765,10 +769,7 @@ Content:
 
             match save_result {
                 Ok(_) => {
-                    let msg = format!(
-                        "Successfully saved to knowledge base: {}",
-                        params.category
-                    );
+                    let msg = format!("Successfully saved to knowledge base: {}", params.category);
                     ToolResult {
                         error: "".to_string(),
                         success: true,

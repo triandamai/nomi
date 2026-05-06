@@ -26,8 +26,8 @@
         error = '';
         try {
             const response = await chatApi.verifyOtp(externalId, code);
-            localStorage.setItem('auth_token', response.data.access_token);
-            localStorage.setItem('user_id', response.data.user_id);
+            sessionStorage.setItem('auth_token', response.data.access_token);
+            sessionStorage.setItem('user_id', response.data.user_id);
             goto('/');
         } catch (e: any) {
             error = e.message || 'Invalid OTP';

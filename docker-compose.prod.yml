@@ -1,45 +1,97 @@
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: open-agent-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    container_name: open-agent-redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   gateway:
     image: ${DOCKERHUB_USERNAME}/nomi-gateway:latest
+    container_name: open-agent-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - APP_URL=${APP_URL}
+      - PORT=${PORT}
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 800M
 
   channel:
     image: ${DOCKERHUB_USERNAME}/nomi-channel:latest
+    container_name: open-agent-channel
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
     environment:
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL={REDIS_URL}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - WHATSAPP_DB_PATH=${WHATSAPP_DB_PATH}
+      - PORT=${PORT}
     volumes:
       - channel_data:/app/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 500M
 
-  ui:
+  web:
     image: ${DOCKERHUB_USERNAME}/nomi-ui:latest
+    container_name: open-agent-web
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - PUBLIC_GATEWAY_URL=${PUBLIC_GATEWAY_URL}
-
-  db:
-    image: pgvector/pgvector:pg16
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:alpine
-    volumes:
-      - redis_data:/data
+      - PUBLIC_CHANNEL_URL=${PUBLIC_CHANNEL_URL}
+      - ORIGIN=${APP_URL}
+    deploy:
+      resources:
+        limits:
+          memory: 600M
 
 volumes:
   postgres_data:
-  redis_data:
   channel_data:

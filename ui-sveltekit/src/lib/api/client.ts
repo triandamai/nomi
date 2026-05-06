@@ -1,8 +1,9 @@
 import {eventBus} from '$lib/utils';
 import type {Conversation} from "$lib/stores/conversation.svelte";
+import { PUBLIC_GATEWAY_URL, PUBLIC_CHANNEL_URL } from '$env/static/public';
 
-const BASE_URL = 'http://localhost:8000/api';
-const CHANNEL_URL = 'http://localhost:8001/api';
+const BASE_URL = PUBLIC_GATEWAY_URL || 'http://localhost:8000/api';
+const CHANNEL_URL = PUBLIC_CHANNEL_URL || 'http://localhost:8001/api';
 
 export type Meta = {
     code: number,
@@ -19,7 +20,7 @@ export type  ApiResponse<T> = {
 }
 
 export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
     const response = await fetch(`${BASE_URL}${endpoint}`, {
         ...options,
         headers: {
@@ -67,7 +68,7 @@ export const chatApi = {
     },
 
     streamChat: async (message: string, conversationId: string) => {
-        const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
+        const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
         const response = await fetch(`${BASE_URL}/chat/stream`, {
             method: 'POST',
             headers: {
@@ -80,8 +81,7 @@ export const chatApi = {
     },
 
     streamEvent() {
-        // Based on gateway-rust/src/routes.rs, the SSE endpoint is /realtime
-        const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('user_id') : "9220f30e-b5cb-4161-97bc-95189fa1363d";
+        const userId = typeof window !== 'undefined' ? sessionStorage.getItem('user_id') : null;
         const sse = new EventSource(`${BASE_URL}/realtime?user_id=${userId}&device_id=${crypto.randomUUID()}`);
 
         sse.onopen = () => {

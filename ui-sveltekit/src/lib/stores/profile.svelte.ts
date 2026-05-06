@@ -40,9 +40,9 @@ function createProfileStore() {
         } catch (e) {
             console.error('Logout API failed', e);
         } finally {
-            if (typeof localStorage !== 'undefined') {
-                localStorage.removeItem('auth_token');
-                localStorage.removeItem('user_id');
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem('auth_token');
+                sessionStorage.removeItem('user_id');
             }
             currentUser = null;
             goto('/login');
