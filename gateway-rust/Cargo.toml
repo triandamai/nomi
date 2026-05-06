@@ -23,7 +23,7 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 uuid = { version = "1.23.1", features = ["v4", "serde"] }
 log = "0.4.29"
 validator = { version = "0.20.0", features = ["derive"] }
-reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls"] }
 schemars = "1.2.1"
 dashmap = "6.1.0"
 rand = "0.10.1"
