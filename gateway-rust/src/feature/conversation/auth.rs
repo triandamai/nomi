@@ -10,7 +10,7 @@ use axum::{
     Json,
 };
 use jsonwebtoken::{encode, EncodingKey, Header};
-use rand::{rng, RngExt};
+use rand::{rng, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 use validator::Validate;
