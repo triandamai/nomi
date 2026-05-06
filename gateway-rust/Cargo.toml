@@ -21,13 +21,10 @@ tower-http = { version = "0.6.2", features = ["cors"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 uuid = { version = "1.23.1", features = ["v4", "serde"] }
-log = "0.4.29"
 validator = { version = "0.20.0", features = ["derive"] }
 reqwest = { version = "0.13.3", default-features = false, features = ["json", "__rustls"] }
+rustls-platform-verifier = "0.7.0"
 schemars = "1.2.1"
 dashmap = "6.1.0"
 rand = "0.10.1"
 jsonwebtoken = "9.3.0"
-bcrypt = "0.17.0"
-cookie = "0.18.0"
-tower-cookies = "0.10.0"
