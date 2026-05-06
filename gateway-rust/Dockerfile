@@ -1,5 +1,5 @@
 FROM rust:1.95-alpine AS builder
-RUN apk add --no-cache musl-dev pkgconfig openssl-dev
+RUN apk add --no-cache musl-dev pkgconfig perl make gcc g++
 WORKDIR /app
 COPY . .
 
