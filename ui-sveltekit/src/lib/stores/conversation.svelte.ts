@@ -120,6 +120,15 @@ function createConversationStore() {
                 console.error('Failed to get pairing code', error);
                 throw error;
             }
+        },
+        async getChannels() {
+            try {
+                const response = await chatApi.getChannels();
+                return response.data;
+            } catch (error) {
+                console.error('Failed to get user channels', error);
+                throw error;
+            }
         }
     };
 }

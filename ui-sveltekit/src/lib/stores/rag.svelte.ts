@@ -5,6 +5,7 @@ export interface Node {
     label: string;
     node_type: string;
     color?: string;
+    conversation_id?: string;
     x?: number;
     y?: number;
 }
@@ -43,12 +44,12 @@ function createRagStore() {
         get isSearching() {
             return isSearching
         },
-        async fetchGraph() {
+        async fetchGraph(conversationId?: string) {
             loading = true;
             error = null;
-            console.log("start")
+            console.log("start fetching graph", conversationId)
             try {
-                const result = await chatApi.getGraph();
+                const result = await chatApi.getGraph(conversationId);
                 if (result.data) {
                     graphData = result.data;
                 } else {

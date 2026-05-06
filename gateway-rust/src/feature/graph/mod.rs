@@ -1,10 +1,10 @@
 use crate::AppState;
 use crate::common::api_response::ApiResponse;
-use axum::Json;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tracing::error;
+use uuid::Uuid;
 
 pub mod search;
 pub use search::handle_search_graph;
@@ -15,6 +15,7 @@ pub struct GraphNode {
     pub label: String,
     pub node_type: String,
     pub color: Option<String>,
+    pub conversation_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
@@ -30,14 +31,31 @@ pub struct GraphData {
     pub links: Vec<GraphEdge>,
 }
 
-pub async fn handle_get_graph(State(state): State<AppState>) -> ApiResponse<GraphData> {
+#[derive(Debug, Deserialize)]
+pub struct GraphQuery {
+    pub conversation_id: Option<Uuid>,
+}
+
+pub async fn handle_get_graph(
+    State(state): State<AppState>,
+    Query(query): Query<GraphQuery>,
+) -> ApiResponse<GraphData> {
+    let conv_id_str = query.conversation_id.map(|id| id.to_string());
+    
     let rows = sqlx::query!(
         r#"
-        SELECT metadata->'graph' as graph, metadata->>'type' as entry_type
+        SELECT metadata->'graph' as graph, metadata->>'type' as entry_type, metadata->>'conversation_id' as conversation_id
         FROM knowledge_base
         WHERE (metadata->>'type' = 'summary' OR metadata->>'type' = 'memory')
         AND metadata->'graph' IS NOT NULL
+        AND (
+            $1::text IS NULL 
+            OR metadata->>'conversation_id' = $1 
+            OR metadata->>'conversation_id' IS NULL 
+            OR metadata->>'conversation_id' = 'global'
+        )
         "#,
+        conv_id_str
     )
     .fetch_all(&state.pool)
     .await;
@@ -61,6 +79,8 @@ pub async fn handle_get_graph(State(state): State<AppState>) -> ApiResponse<Grap
             for row in rows {
                 if let Some(graph_val) = row.graph {
                     let entry_type = row.entry_type.unwrap_or_else(|| "summary".to_string());
+                    let row_conv_id = row.conversation_id;
+
                     if let Ok(graph) = serde_json::from_value::<GraphData>(graph_val) {
                         for mut node in graph.nodes {
                             // Ensure node IDs are cleaned up
@@ -69,6 +89,11 @@ pub async fn handle_get_graph(State(state): State<AppState>) -> ApiResponse<Grap
                             // Skip generic "summary" nodes that AI might have hallucinated
                             if node.id == "summary" || node.node_type.to_lowercase() == "summary" {
                                 continue;
+                            }
+
+                            // Set conversation_id from metadata if not already set in node
+                            if node.conversation_id.is_none() {
+                                node.conversation_id = row_conv_id.clone();
                             }
 
                             // Deterministic color based on ID

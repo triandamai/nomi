@@ -67,10 +67,12 @@ export const chatApi = {
 
         sse.onopen = () => {
             console.log('SSE connection opened');
+            eventBus.emit('gateway-status', { online: true });
         };
 
         sse.onerror = (error) => {
             console.error('SSE error:', error);
+            eventBus.emit('gateway-status', { online: false });
         };
         sse.addEventListener("message", (event) => {
             console.log("incoming message", event)
@@ -79,6 +81,15 @@ export const chatApi = {
                 eventBus.emit('sse-message', data);
             } catch (e) {
                 console.error('Failed to parse SSE message', e);
+            }
+        })
+
+        sse.addEventListener(":metadata", (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                eventBus.emit('sse-metadata', data);
+            } catch (e) {
+                console.error('Failed to parse SSE metadata', e);
             }
         })
 
@@ -158,8 +169,9 @@ export const chatApi = {
             method: "GET"
         });
     },
-    getGraph: () => {
-        return apiFetch<any>('/graph');
+    getGraph: (conversationId?: string) => {
+        const url = conversationId ? `/graph?conversation_id=${conversationId}` : '/graph';
+        return apiFetch<any>(url);
     },
     searchGraph: (query: string) => {
         return apiFetch<any>(`/graph/search?q=${encodeURIComponent(query)}`);
@@ -176,6 +188,11 @@ export const chatApi = {
     getPairingCode: (conversationId: string) => {
         return apiFetch<any>(`/conversations/${conversationId}/pairing`, {
             method: 'POST'
+        });
+    },
+    getChannels: () => {
+        return apiFetch<any>('/user/channels', {
+            method: 'GET'
         });
     },
     getWhatsappQr: () => {

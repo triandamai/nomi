@@ -82,6 +82,17 @@ pub struct PairingResponse {
     pub expires_at: DateTime<Utc>,
 }
 
+#[derive(Serialize)]
+pub struct ChannelStatus {
+    pub paired: bool,
+    pub platform: String,
+}
+
+#[derive(Serialize)]
+pub struct UserChannelsResponse {
+    pub channels: Vec<ChannelStatus>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ChatStreamChunk {
     pub content: String,    // The main message

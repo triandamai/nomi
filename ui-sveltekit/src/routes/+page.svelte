@@ -3,10 +3,18 @@
     import {chatStore} from '$lib/stores/chat.svelte';
     import ToolResult from '$lib/components/ToolResult.svelte';
     import ChatBubble from '$lib/components/ChatBubble.svelte';
-    import {onMount} from 'svelte';
+    import {onMount, tick} from 'svelte';
 
     let inputMessage = $state('');
     let scrollContainer = $state<HTMLElement | null>(null);
+    let isNearBottom = true;
+
+    function handleScroll() {
+        if (!scrollContainer) return;
+        const threshold = 150; // pixels from bottom to be considered "near bottom"
+        const position = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+        isNearBottom = position < threshold;
+    }
 
     onMount(() => {
         chatStore.fetchMessages();
@@ -14,22 +22,29 @@
 
     // Auto-scroll to bottom on new messages, thoughts, or typing
     $effect(() => {
-        const _ = chatStore.messages.length;
-        const __ = chatStore.currentThought;
-        const ___ = chatStore.isTyping;
+        // Track dependencies
+        chatStore.messages.length;
+        chatStore.currentThought;
+        chatStore.isTyping;
         
-        if (scrollContainer) {
-            scrollContainer.scrollTo({
-                top: scrollContainer.scrollHeight,
-                behavior: 'smooth'
-            });
-        }
+        tick().then(() => {
+            if (scrollContainer && isNearBottom) {
+                scrollContainer.scrollTo({
+                    top: scrollContainer.scrollHeight,
+                    behavior: 'auto'
+                });
+            }
+        });
     });
 
     async function handleSubmit() {
         if (!inputMessage.trim() || chatStore.loading) return;
         const msg = inputMessage;
         inputMessage = '';
+        
+        // Force scroll to bottom when user sends a message
+        isNearBottom = true;
+        
         await chatStore.sendMessage(msg);
     }
 
@@ -42,7 +57,11 @@
 </script>
 
 <!-- Messages -->
-<main bind:this={scrollContainer} class="flex-1 overflow-y-auto px-6 py-8 space-y-10 scroll-smooth">
+<main 
+    bind:this={scrollContainer} 
+    onscroll={handleScroll}
+    class="flex-1 overflow-y-auto px-6 py-8 space-y-10 scroll-smooth"
+>
     <div class="max-w-4xl mx-auto space-y-10">
         {#if chatStore.hasMore}
             <div class="flex justify-center">
@@ -150,29 +169,31 @@
 <!-- Input -->
 <footer class="p-8 bg-gradient-to-t from-[#09090b] via-[#09090b] to-transparent">
     <div class="max-w-4xl mx-auto">
-        <div class="relative bg-zinc-900/50 border border-zinc-800 rounded-2xl p-1 shadow-2xl focus-within:border-zinc-700 transition-colors">
-            <textarea
-                    bind:value={inputMessage}
-                    onkeydown={handleKeydown}
-                    placeholder="Message Arta..."
-                    class="w-full bg-transparent border-none focus:ring-0 text-sm py-4 px-5 min-h-[60px] max-h-48 resize-none placeholder:text-zinc-600 text-zinc-200"
-            ></textarea>
+        <div class="relative transition-all duration-500 rounded-2xl {chatStore.isTyping ? 'ring-2 ring-emerald-500/20 shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)]' : ''}">
+            <div class="relative bg-zinc-900/50 border border-zinc-800 rounded-2xl p-1 shadow-2xl focus-within:border-zinc-700 transition-colors">
+                <textarea
+                        bind:value={inputMessage}
+                        onkeydown={handleKeydown}
+                        placeholder="Message Arta..."
+                        class="w-full bg-transparent border-none focus:ring-0 text-sm py-4 px-5 min-h-[60px] max-h-48 resize-none placeholder:text-zinc-600 text-zinc-200 focus-within:border-zinc-700 focus:border-0 focus:outline-0"
+                ></textarea>
 
-            <div class="flex items-center justify-between px-3 pb-2 pt-1">
-                <div class="flex items-center gap-1">
-                    <button class="p-2 text-zinc-500 hover:text-zinc-300 transition-colors">
-                        <Sparkles class="w-4 h-4"/>
+                <div class="flex items-center justify-between px-3 pb-2 pt-1">
+                    <div class="flex items-center gap-1">
+                        <button class="p-2 text-zinc-500 hover:text-zinc-300 transition-colors">
+                            <Sparkles class="w-4 h-4"/>
+                        </button>
+                    </div>
+
+                    <button
+                            onclick={handleSubmit}
+                            disabled={!inputMessage.trim() || chatStore.loading}
+                            class="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-950 text-xs font-bold hover:bg-zinc-200 disabled:opacity-20 transition-all shadow-lg"
+                    >
+                        Send
+                        <Send class="w-3.5 h-3.5"/>
                     </button>
                 </div>
-
-                <button
-                        onclick={handleSubmit}
-                        disabled={!inputMessage.trim() || chatStore.loading}
-                        class="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-950 text-xs font-bold hover:bg-zinc-200 disabled:opacity-20 transition-all shadow-lg"
-                >
-                    Send
-                    <Send class="w-3.5 h-3.5"/>
-                </button>
             </div>
         </div>
         <p class="text-[9px] text-zinc-700 text-center mt-4 uppercase tracking-[0.2em] font-bold">

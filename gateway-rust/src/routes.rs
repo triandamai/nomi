@@ -3,8 +3,8 @@ use crate::common::api_response::ApiResponse;
 use crate::feature::conversation::{
     handle_chat_stream, handle_create_conversation, handle_create_pairing,
     handle_delete_conversation, handle_get_conversations, handle_get_messages,
-    handle_get_soul_history, handle_internal_inbound, handle_restore_conversation_soul,
-    handle_update_conversation,
+    handle_get_soul_history, handle_get_user_channels, handle_internal_inbound,
+    handle_restore_conversation_soul, handle_update_conversation,
 };
 use axum::extract::Request;
 use axum::http::StatusCode;
@@ -19,6 +19,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/chat/stream", post(handle_chat_stream))
         .route("/conversations", get(handle_get_conversations))
+        .route("/user/channels", get(handle_get_user_channels))
         .route("/conversations", post(handle_create_conversation))
         .route("/conversations/{id}", put(handle_update_conversation))
         .route("/conversations/{id}", delete(handle_delete_conversation))

@@ -199,7 +199,7 @@ impl ToolDispatcher {
     }
 
     async fn read_workspace_file(&self, path: String, user_message: String) -> ToolResult {
-        debug!(path = %path, "Executing read_workspace_file");
+        info!(path = %path, "Executing read_workspace_file");
 
         let requested_path = PathBuf::from(&path);
 
@@ -245,7 +245,7 @@ impl ToolDispatcher {
     }
 
     async fn execute_sql_query(&self, query: String, user_message: String) -> ToolResult {
-        debug!(query = %query, "Executing execute_sql_query");
+        info!(query = %query, "Executing execute_sql_query");
 
         let trimmed_query = query.trim().to_uppercase();
         if !trimmed_query.starts_with("SELECT") {
@@ -318,7 +318,7 @@ impl ToolDispatcher {
     }
 
     async fn web_search(&self, query: String, user_message: String) -> ToolResult {
-        debug!(query = %query, "Executing web_search");
+        info!(query = %query, "Executing web_search");
 
         let api_key = match std::env::var("TAVILY_API_KEY") {
             Ok(key) => key,
@@ -386,7 +386,7 @@ impl ToolDispatcher {
     }
 
     async fn read_web_page(&self, url: String, user_message: String) -> ToolResult {
-        debug!(url = %url, "Executing read_web_page via Jina Reader");
+        info!(url = %url, "Executing read_web_page via Jina Reader");
 
         let client = reqwest::Client::new();
         let jina_url = format!("https://r.jina.ai/{}", url);
@@ -445,7 +445,7 @@ impl ToolDispatcher {
         params: UpdateConversationSoulParameters,
         user_message: String,
     ) -> ToolResult {
-        debug!(
+        info!(
             new_soul = %params.new_soul,
             reason_for_change = %params.reason_for_change,
             "Executing update_nomi_soul"
