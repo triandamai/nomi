@@ -10,6 +10,7 @@ use wa_rs::Client;
 use wa_rs::Jid;
 use wa_rs::wa_rs_proto::whatsapp::Message;
 use std::str::FromStr;
+use regex::Regex;
 
 use crate::common::redis::RedisClient;
 use crate::feature::InboundMessage;
@@ -35,7 +36,7 @@ impl WhatsAppWorker {
             .with_backend(storage)
             .with_transport_factory(TokioWebSocketTransportFactory::new())
             .with_http_client(UreqHttpClient::new())
-            .on_event(move |event, _client| {
+            .on_event(move |event, client| {
                 let redis = redis_clone.clone();
                 let qr = qr_clone.clone();
                 async move {
@@ -55,11 +56,46 @@ impl WhatsAppWorker {
                                 return;
                             }
 
-                            let text = msg.conversation.or(msg.extended_text_message.and_then(|m| m.text));
+                            let original_text = msg.conversation.clone().or(msg.extended_text_message.as_ref().and_then(|m| m.text.clone()));
                             
-                            if let Some(text) = text {
+                            if let Some(original_text) = original_text {
+                                let mut text = original_text.clone();
                                 let sender_id = info.source.sender.to_string();
                                 let chat_id = info.source.chat.to_string();
+                                let is_group = chat_id.ends_with("@g.us");
+                                let is_private = !is_group;
+
+                                let mut is_mentioned = false;
+
+                                // Task 1: The Mention Gate
+                                let keyword_regex = Regex::new(r"(?i)@?(nomi|nom\s*nom|nomnom|nomiii|nom)\b").unwrap();
+                                if keyword_regex.is_match(&text) {
+                                    is_mentioned = true;
+                                    // Task 3: Clean the Input
+                                    text = keyword_regex.replace_all(&text, "").to_string();
+                                }
+
+                                // Task 2: Handle Native Mentions (WhatsApp)
+                                let mentioned_jids = msg.extended_text_message.as_ref()
+                                    .and_then(|m| m.context_info.as_ref())
+                                    .map(|c| c.mentioned_jid.clone())
+                                    .unwrap_or_default();
+                                
+                                if let Some(own_jid) = client.get_pn().await {
+                                    let own_jid_str = own_jid.to_string();
+                                    if mentioned_jids.contains(&own_jid_str) {
+                                        is_mentioned = true;
+                                        let jid_user = own_jid_str.split('@').next().unwrap_or("");
+                                        let mention_regex = Regex::new(&format!(r"(?i)@{}\b", regex::escape(jid_user))).unwrap();
+                                        text = mention_regex.replace_all(&text, "").to_string();
+                                    }
+                                }
+
+                                if !is_private && !is_mentioned {
+                                    return;
+                                }
+
+                                text = text.trim().to_string();
 
                                 info!("Received WhatsApp message from {}: {}", sender_id, text);
 
