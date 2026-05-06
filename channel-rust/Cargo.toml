@@ -20,7 +20,7 @@ wa-rs-sqlite-storage = "0.2.0"
 wa-rs-tokio-transport = { version = "0.2.0", default-features = false, features = ["danger-skip-tls-verify"] }
 wa-rs-ureq-http = "0.2.0"
 wa-rs-core = "0.2.0"
-teloxide = { version = "0.17.0", default-features = false, features = ["macros", "rustls"] }
+teloxide = { version = "0.17.0", default-features = false, features = ["macros", "rustls",  "ctrlc_handler"] }
 chrono = { version = "0.4.44", features = ["serde"] }
 dotenvy = "0.15.7"
 uuid = { version = "1.23.1", features = ["v4", "serde"] }
