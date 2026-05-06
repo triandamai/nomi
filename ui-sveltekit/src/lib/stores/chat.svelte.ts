@@ -7,6 +7,7 @@ export type Message = {
     content: string;
     thought?: string;
     id: string;
+    user_id?: string;
     toolCalls?: Array<{ tool: any, result?: string }>;
 };
 
@@ -25,9 +26,10 @@ function createChatStore() {
         if (data.content) {
             messages = [...messages, {
                 id: data.id || crypto.randomUUID(),
-                role: "assistant", 
+                role: data.role || "assistant", 
                 content: data.content,
-                thought: data.thought
+                thought: data.thought,
+                user_id: data.user_id
             } as Message];
             currentThought = ""; // Clear thought when message arrives
             isTyping = false;

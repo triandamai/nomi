@@ -3,3 +3,6 @@ pub mod sse;
 
 pub mod agent;
 pub mod tools;
+pub mod redis;
+pub mod repository;
+pub mod identity;

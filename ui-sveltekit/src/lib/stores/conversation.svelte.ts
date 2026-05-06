@@ -111,6 +111,15 @@ function createConversationStore() {
                     this.setActive(conversations[0].id);
                 }
             }
+        },
+        async getPairingCode(id: string) {
+            try {
+                const response = await chatApi.getPairingCode(id);
+                return response.data;
+            } catch (error) {
+                console.error('Failed to get pairing code', error);
+                throw error;
+            }
         }
     };
 }

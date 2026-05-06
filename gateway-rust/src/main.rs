@@ -23,6 +23,7 @@ pub struct AppState {
     pub gemini: Arc<Gemini>,
     pub gemini_api_key: String,
     pub presence: Arc<PresenceManager>,
+    pub redis: crate::common::redis::RedisClient,
 }
 
 #[tokio::main]
@@ -39,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
 
     let database_url = var("DATABASE_URL").expect("DATABASE_URL must be set");
     let gemini_api_key = var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
+    let redis_url = var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
 
     debug!("Connecting to database...");
     let pool = PgPoolOptions::new()
@@ -50,6 +52,8 @@ async fn main() -> anyhow::Result<()> {
             e
         })?;
     info!("Database connection established.");
+
+    let redis = crate::common::redis::RedisClient::new(&redis_url)?;
 
     // Using Gemini25Flash which corresponds to gemini-1.5-flash
     let gemini = Gemini::with_model(&gemini_api_key, Model::Gemini25Flash)
@@ -67,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
             debouncers: dashmap::DashMap::new(),
             channel_tx: tokio::sync::mpsc::channel(1).0, // Dummy
         }),
+        redis: redis.clone(),
     };
 
     let presence = PresenceManager::new(partial_state);
@@ -77,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
         gemini,
         gemini_api_key,
         presence,
+        redis,
     };
 
     // Start Redis Listener

@@ -73,62 +73,90 @@ pub async fn handle_internal_inbound(
         "Received internal inbound message"
     );
 
-    // 1. Resolve/Create User
-    let user_id = match sqlx::query!(
-        "INSERT INTO users (external_id, display_name) VALUES ($1, $2) ON CONFLICT (external_id) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id",
-        payload.sender_id,
-        payload.sender_id // Default display name to sender_id if not provided
-    )
-    .fetch_one(&state.pool)
-    .await {
-        Ok(row) => row.id,
-        Err(e) => {
-            error!("Failed to resolve user: {}", e);
-            return ApiResponse::failed("Failed to resolve user");
-        }
-    };
-
-    // 2. Check for Pairing Code
-    // format: /pair CODE or PAIR CODE
+    // 1. Check for Pairing Code
     let text = payload.text.trim();
     if text.to_uppercase().starts_with("PAIR ") || text.to_uppercase().starts_with("/PAIR ") {
         let parts: Vec<&str> = text.split_whitespace().collect();
         if parts.len() >= 2 {
             let code = parts[1].to_uppercase();
             
+            // Start Transaction for Pairing
+            let mut tx = match state.pool.begin().await {
+                Ok(tx) => tx,
+                Err(e) => {
+                    error!("Failed to start transaction: {}", e);
+                    return ApiResponse::failed("Internal server error");
+                }
+            };
+
             // Try to find a valid pairing room
             let pairing_room = sqlx::query!(
                 "SELECT id, conversation_id FROM pairing_rooms WHERE pairing_code = $1 AND expires_at > now() AND user_id IS NULL",
                 code
             )
-            .fetch_optional(&state.pool)
+            .fetch_optional(&mut *tx)
             .await;
 
             if let Ok(Some(room)) = pairing_room {
                 let conv_id = room.conversation_id;
 
+                // Resolve/Create User
+                let user_id = match sqlx::query!(
+                    "INSERT INTO users (external_id, display_name) VALUES ($1, $2) ON CONFLICT (external_id) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id",
+                    payload.sender_id,
+                    payload.sender_id
+                )
+                .fetch_one(&mut *tx)
+                .await {
+                    Ok(row) => row.id,
+                    Err(e) => {
+                        error!("Failed to resolve user in tx: {}", e);
+                        let _ = tx.rollback().await;
+                        return ApiResponse::failed("Failed to resolve user");
+                    }
+                };
+
                 // Mark pairing room as used
-                let _ = sqlx::query!(
+                if let Err(e) = sqlx::query!(
                     "UPDATE pairing_rooms SET user_id = $1 WHERE id = $2",
                     user_id,
                     room.id
-                ).execute(&state.pool).await;
+                ).execute(&mut *tx).await {
+                    error!("Failed to update pairing room: {}", e);
+                    let _ = tx.rollback().await;
+                    return ApiResponse::failed("Failed to link pairing room");
+                }
 
-                // Create channel entry if it doesn't exist
-                let _ = sqlx::query!(
-                    "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
+                // Create channel entry
+                if let Err(e) = sqlx::query!(
+                    "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id, user_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (channel_type, external_chat_id) DO UPDATE SET external_id = EXCLUDED.external_id, user_id = EXCLUDED.user_id",
                     payload.channel,
                     payload.sender_id,
                     payload.chat_id,
-                    conv_id
-                ).execute(&state.pool).await;
+                    conv_id,
+                    user_id
+                ).execute(&mut *tx).await {
+                    error!("Failed to link channel in tx: {}", e);
+                    let _ = tx.rollback().await;
+                    return ApiResponse::failed("Failed to link channel");
+                }
 
                 // Add member
-                let _ = sqlx::query!(
+                if let Err(e) = sqlx::query!(
                     "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
                     conv_id,
                     user_id
-                ).execute(&state.pool).await;
+                ).execute(&mut *tx).await {
+                    error!("Failed to add conversation member: {}", e);
+                    let _ = tx.rollback().await;
+                    return ApiResponse::failed("Failed to join conversation");
+                }
+
+                // Commit Transaction
+                if let Err(e) = tx.commit().await {
+                    error!("Failed to commit pairing transaction: {}", e);
+                    return ApiResponse::failed("Failed to finalize pairing");
+                }
 
                 // Broadcast to SSE so Web UI shows pairing success
                 let _ = state.sse.send(SseBuilder::new(
@@ -136,6 +164,7 @@ pub async fn handle_internal_inbound(
                     serde_json::json!({
                         "conversation_id": conv_id,
                         "platform": payload.channel,
+                        "user_id": user_id,
                         "message": format!("Successfully paired with {}!", payload.channel)
                     })
                 )).await;
@@ -148,62 +177,99 @@ pub async fn handle_internal_inbound(
                     text: format!("(System: The user has successfully paired their {} account. Please congratulate them briefly and confirm they can now chat from here.)", payload.channel),
                 };
 
-                if let Err(e) = state.presence.channel_tx.send(DebounceEvent::NewMessage(conv_id, congrats_payload)).await {
+                // We need to insert this system message so the debouncer can process it
+                let _ = sqlx::query!(
+                    "INSERT INTO messages (conversation_id, role, content, thought, user_id, created_at) VALUES ($1, 'user', $2, '', $3, now())",
+                    conv_id,
+                    congrats_payload.text,
+                    user_id
+                ).execute(&state.pool).await;
+
+                if let Err(e) = state.presence.channel_tx.send(DebounceEvent::NewMessage(conv_id, user_id)).await {
                     error!("Failed to send congrats trigger to debouncer: {}", e);
                 }
 
-                // Send success response back to the platform
                 return ApiResponse::ok(serde_json::json!({ 
                     "status": "paired", 
                     "conversation_id": conv_id,
                     "message": "Pairing successful! This conversation is now linked." 
                 }), "Pairing successful");
+            } else {
+                let _ = tx.rollback().await;
             }
         }
     }
 
-    // 3. Resolve/Create Conversation (Regular flow)
-    let conversation_id = match sqlx::query!(
-        "SELECT conversation_id FROM channels WHERE channel_type = $1 AND external_chat_id = $2",
+    // 2. Resolve Conversation & User for existing channel messages
+    let (conversation_id, user_id) = match sqlx::query!(
+        "SELECT c.conversation_id, u.id as user_id 
+         FROM channels c 
+         JOIN users u ON u.external_id = c.external_id
+         WHERE c.channel_type = $1 AND c.external_chat_id = $2",
         payload.channel,
         payload.chat_id
     )
     .fetch_optional(&state.pool)
     .await {
-        Ok(Some(row)) => row.conversation_id.unwrap(),
+        Ok(Some(row)) => (row.conversation_id.unwrap(), row.user_id),
         Ok(None) => {
+            // Start transaction for new conversation
+            let mut tx = match state.pool.begin().await {
+                Ok(tx) => tx,
+                Err(e) => {
+                    error!("Failed to start transaction: {}", e);
+                    return ApiResponse::failed("Internal server error");
+                }
+            };
+
+            // Resolve User
+            let u_id = match sqlx::query!(
+                "INSERT INTO users (external_id, display_name) VALUES ($1, $2) ON CONFLICT (external_id) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id",
+                payload.sender_id,
+                payload.sender_id
+            ).fetch_one(&mut *tx).await {
+                Ok(r) => r.id,
+                Err(e) => {
+                    error!("Failed to resolve user: {}", e);
+                    let _ = tx.rollback().await;
+                    return ApiResponse::failed("Failed to resolve user");
+                }
+            };
+
             // Create new conversation
             let conv_id = Uuid::new_v4();
             let title = format!("{} via {}", payload.chat_id, payload.channel);
             
-            if let Err(e) = sqlx::query!(
-                "INSERT INTO conversations (id, title) VALUES ($1, $2)",
-                conv_id,
-                title
-            ).execute(&state.pool).await {
+            if let Err(e) = sqlx::query!("INSERT INTO conversations (id, title) VALUES ($1, $2)", conv_id, title).execute(&mut *tx).await {
                 error!("Failed to create conversation: {}", e);
+                let _ = tx.rollback().await;
                 return ApiResponse::failed("Failed to create conversation");
             }
 
             if let Err(e) = sqlx::query!(
-                "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id) VALUES ($1, $2, $3, $4)",
-                payload.channel,
-                payload.sender_id,
-                payload.chat_id,
-                conv_id
-            ).execute(&state.pool).await {
+                "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id, user_id) VALUES ($1, $2, $3, $4, $5)",
+                payload.channel, payload.sender_id, payload.chat_id, conv_id, u_id
+            ).execute(&mut *tx).await {
                 error!("Failed to link channel: {}", e);
+                let _ = tx.rollback().await;
                 return ApiResponse::failed("Failed to link channel");
             }
 
-            // Add member
-            let _ = sqlx::query!(
+            if let Err(e) = sqlx::query!(
                 "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                conv_id,
-                user_id
-            ).execute(&state.pool).await;
+                conv_id, u_id
+            ).execute(&mut *tx).await {
+                error!("Failed to add member: {}", e);
+                let _ = tx.rollback().await;
+                return ApiResponse::failed("Failed to join conversation");
+            }
 
-            conv_id
+            if let Err(e) = tx.commit().await {
+                error!("Failed to commit new conversation: {}", e);
+                return ApiResponse::failed("Failed to create conversation");
+            }
+
+            (conv_id, u_id)
         }
         Err(e) => {
             error!("Database error: {}", e);
@@ -213,29 +279,39 @@ pub async fn handle_internal_inbound(
 
     // 3. Save incoming message immediately
     let save_res = sqlx::query!(
-        "INSERT INTO messages (conversation_id, role, content, thought, created_at) VALUES ($1, 'user', $2, '', now()) RETURNING id, role, content, thought, created_at",
+        "INSERT INTO messages (conversation_id, role, content, thought, user_id, created_at) VALUES ($1, 'user', $2, '', $3, now()) RETURNING id, role, content, thought, created_at, user_id",
         conversation_id,
-        payload.text
+        payload.text,
+        user_id
     ).fetch_one(&state.pool).await;
 
-    if let Ok(m) = save_res {
-        // Broadcast to SSE so Web UI shows it
-        let _ = state.sse.send(SseBuilder::new(
-            SseTarget::broadcast("message".to_string()),
-            MessageItem {
-                id: m.id,
-                conversation_id,
-                role: m.role,
-                content: m.content,
-                thought: m.thought,
-                created_at: m.created_at.unwrap_or_else(Utc::now),
-            }
-        )).await;
-    }
+    match save_res {
+        Ok(m) => {
+            info!(conversation_id = %conversation_id, message_id = %m.id, "Persisted channel message to DB");
+            
+            // Broadcast to SSE so Web UI shows it
+            let _ = state.sse.send(SseBuilder::new(
+                SseTarget::broadcast("message".to_string()),
+                serde_json::json!({
+                    "id": m.id,
+                    "conversation_id": conversation_id,
+                    "role": m.role,
+                    "content": m.content,
+                    "thought": m.thought,
+                    "user_id": m.user_id,
+                    "created_at": m.created_at.unwrap_or_else(Utc::now),
+                })
+            )).await;
 
-    // 4. Send to Debouncer
-    if let Err(e) = state.presence.channel_tx.send(DebounceEvent::NewMessage(conversation_id, payload)).await {
-        error!("Failed to send to debouncer: {}", e);
+            // 4. Send to Debouncer
+            if let Err(e) = state.presence.channel_tx.send(DebounceEvent::NewMessage(conversation_id, user_id)).await {
+                error!("Failed to send to debouncer: {}", e);
+            }
+        }
+        Err(e) => {
+            error!("Failed to save message: {}", e);
+            return ApiResponse::failed("Failed to save message");
+        }
     }
 
     ApiResponse::ok(serde_json::json!({ "status": "received", "conversation_id": conversation_id }), "Message received")
@@ -259,7 +335,7 @@ pub async fn handle_get_messages(
     let messages_result = sqlx::query_as!(
         MessageItem,
         r#"
-        SELECT id, conversation_id as "conversation_id!", role, content, thought, created_at as "created_at!"
+        SELECT id, conversation_id as "conversation_id!", role, content, thought, user_id, created_at as "created_at!"
         FROM messages
         WHERE conversation_id = $1 AND created_at < $2
         ORDER BY created_at DESC
@@ -523,334 +599,30 @@ pub async fn handle_chat_stream(
 ) -> ApiResponse<String> {
     info!(conversation_id = %payload.conversation_id, "Received chat stream request");
 
-    let gemini_api_key = state.gemini_api_key.clone();
+    let state_clone = state.clone();
     let conversation_id = payload.conversation_id;
     let user_message = payload.message.clone();
 
     tokio::spawn(async move {
-        // Start typing
-        let _ = state.sse.send(SseBuilder::new(
-            SseTarget::broadcast("presence".to_string()),
-            serde_json::json!({
-                "conversation_id": conversation_id,
-                "is_typing": true,
-                "user_id": "nomi"
-            }),
-        )).await;
-
-        let dispatcher = ToolDispatcher::new(
-            state.pool.clone(),
-            std::env::current_dir().unwrap_or_default(),
-            Some(conversation_id),
-            state.gemini.clone(),
-            state.gemini_api_key.clone(),
-            state.sse.clone(),
-        );
-
-        let conversation = sqlx::query!(
-            "SELECT bootstrap_content, soul_content FROM conversations WHERE id = $1",
+        // Resolve user_id from conversation if possible (for Web UI, usually we have a session)
+        let user_id = sqlx::query!(
+            "SELECT s.user_id FROM conversations c LEFT JOIN sessions s ON c.session_id = s.id WHERE c.id = $1",
             conversation_id
         )
-        .fetch_one(&state.pool)
-        .await;
-
-        let system_prompt = match conversation {
-            Ok(c) => {
-                let boot = c.bootstrap_content.unwrap_or_default();
-                let soul = c.soul_content.unwrap_or_default();
-                let mut combined = boot;
-                if !soul.is_empty() {
-                    combined.push_str("\n\n### Current Personality/Soul\n");
-                    combined.push_str(&soul);
-                }
-                combined
-            }
-            Err(_) => String::new(),
-        };
-
-        // A. Fetch last 10 messages for short-term history
-        let history = sqlx::query!(
-            "SELECT created_at, role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 10",
-            conversation_id
-        )
-        .fetch_all(&state.pool)
+        .fetch_one(&state_clone.pool)
         .await
-        .unwrap_or_default();
+        .ok()
+        .and_then(|c| Some(c.user_id));
 
-        let mut history_text = String::new();
-        for msg in history.into_iter().rev() {
-            history_text.push_str(&format!(
-                "-[{}] {}: {}.
-",
-                msg.created_at.unwrap_or(Utc::now()).to_rfc3339(),
-                msg.role,
-                msg.content
-            ));
-        }
-
-        // B. Context Retrieval (RAG)
-        let embedding = rag::get_embedding(&gemini_api_key, &user_message)
-            .await
-            .unwrap_or_default();
-        let context_results = if !embedding.is_empty() {
-            // Updated search to prioritize summaries in the future if we had a more complex query,
-            // but for now we'll just fetch more and filter or rely on the similarity.
-            // The prompt asked to filter/prioritize entries where metadata->>'type' = 'summary'.
-            rag::search_similar_with_summaries(&state.pool, embedding, 5)
-                .await
-                .unwrap_or_default()
-        } else {
-            Vec::new()
+        let unified_msg = crate::feature::message_processor::UnifiedMessage {
+            conversation_id,
+            user_id,
+            text_content: user_message,
+            source: crate::feature::message_processor::MessageSource::Web,
         };
 
-        let memories_text = context_results
-            .iter()
-            .map(|r| r.content.clone())
-            .collect::<Vec<String>>()
-            .join(
-                "
----
-",
-            ); // Improved separator
-
-        // C. Prepare Reasoning Loop
-        let mut loop_count = 0;
-        let max_loops = 5;
-        let mut current_actor = PromptActor::User {
-            history: history_text.clone(),
-            memories: memories_text.clone(),
-            message: user_message.clone(),
-            system_prompt: system_prompt.clone(),
-        };
-
-        let mut final_response = None;
-        let mut previous_calls = Vec::new();
-
-        while loop_count < max_loops {
-            loop_count += 1;
-            info!(loop_count = loop_count, "Starting agentic loop iteration");
-
-            let result = crate::common::agent::send_prompt(&state.gemini, current_actor).await;
-
-            match result {
-                Ok((response, chunk)) => {
-                    // Emit thought
-                    if !chunk.thought.is_empty() {
-                        let _ = state.sse.send(SseBuilder::new(
-                            SseTarget::broadcast("thought".to_string()),
-                            serde_json::json!({ "thought": chunk.thought, "conversation_id": conversation_id }),
-                        )).await;
-                    }
-
-                    let tool_calls = response.function_calls();
-                    
-                    if tool_calls.is_empty() {
-                        info!("No tool calls requested, finishing loop");
-                        final_response = Some((response, chunk));
-                        break;
-                    }
-
-                    info!(count = tool_calls.len(), "Executing parallel tool calls");
-                    
-                    // Track calls for history
-                    let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
-                    previous_calls.extend(current_calls.clone());
-
-                    let tool_results = execute_tools(
-                        &dispatcher,
-                        current_calls.clone(),
-                        &user_message,
-                        Some(state.sse.clone()),
-                    ).await;
-
-                    // Update actor for next turn
-                    current_actor = PromptActor::MultiTool {
-                        history: history_text.clone(),
-                        memories: memories_text.clone(),
-                        message: user_message.clone(),
-                        system_prompt: system_prompt.clone(),
-                        tool_results,
-                        previous_calls: previous_calls.clone(),
-                    };
-                }
-                Err(error) => {
-                    error!("Agentic loop error: {}", error);
-                    break;
-                }
-            }
-        }
-
-        if let Some((_, function_result)) = final_response {
-            // F. Finalization
-            if let Ok(result) = sqlx::query!(
-                "INSERT INTO messages (conversation_id, role, content, thought, created_at) VALUES ($1, 'user', $2, '', now()), ($1, 'assistant', $3, $4, now()) returning id, role, content, thought, created_at",
-                conversation_id,
-                user_message,
-                function_result.content,
-                function_result.thought
-            )
-            .fetch_all(&state.pool)
-            .await
-            {
-                let data = result.iter().find(|m| m.role == "assistant");
-                if let Some(record) = data {
-                    let _ = &state.sse
-                        .send(SseBuilder::new(
-                            SseTarget::broadcast("message".to_string()),
-                            MessageItem {
-                                id: record.id.clone(),
-                                conversation_id,
-                                role: record.role.clone(),
-                                content: record.content.clone(),
-                                thought: record.thought.clone(),
-                                created_at: Default::default(),
-                            },
-                        ))
-                        .await;
-                }
-
-                // Stop typing
-                let _ = state.sse.send(SseBuilder::new(
-                    SseTarget::broadcast("presence".to_string()),
-                    serde_json::json!({
-                        "conversation_id": conversation_id,
-                        "is_typing": false,
-                        "user_id": "nomi"
-                    }),
-                )).await;
-
-                // Hierarchical Memory: Background Consolidation (Last Summarized ID Approach)
-                let pool = state.pool.clone();
-                let gemini = state.gemini.clone();
-                let gemini_api_key = state.gemini_api_key.clone();
-
-                tokio::spawn(async move {
-                    // 1. Get the last summarized message ID from metadata
-                    let last_summary = sqlx::query!(
-                        r#"
-                        SELECT metadata->>'last_message_id' as last_message_id
-                        FROM knowledge_base
-                        WHERE metadata->>'type' = 'summary' 
-                        AND metadata->>'conversation_id' = $1
-                        ORDER BY created_at DESC
-                        LIMIT 1
-                        "#,
-                        conversation_id.to_string()
-                    )
-                    .fetch_optional(&pool)
-                    .await
-                    .unwrap_or_default();
-
-                    let last_msg_id = last_summary
-                        .and_then(|r| r.last_message_id)
-                        .and_then(|id| Uuid::parse_str(&id).ok());
-
-                    // 2. Fetch messages created after that ID
-                    let new_messages = sqlx::query!(
-                        r#"
-                        SELECT id, role, content 
-                        FROM messages 
-                        WHERE conversation_id = $1 
-                        AND ($2::uuid IS NULL OR created_at > (SELECT created_at FROM messages WHERE id = $2))
-                        ORDER BY created_at ASC
-                        "#,
-                        conversation_id,
-                        last_msg_id
-                    )
-                    .fetch_all(&pool)
-                    .await
-                    .unwrap_or_default();
-
-                    // 3. Threshold check (10 or more new messages)
-                    if new_messages.len() >= 10 {
-                        info!(conversation_id = %conversation_id, "Triggering memory consolidation (new messages: {})", new_messages.len());
-
-                        let last_processed_id = new_messages.last().map(|m| m.id).unwrap();
-                        let mut summary_input = String::new();
-                        for msg in new_messages {
-                            summary_input.push_str(&format!("{}: {}
-", msg.role, msg.content));
-                        }
-
-                        // 4. Summarize and extract graph
-                        let summarizer_prompt = format!(
-                            "Analyze the following conversation and return a JSON object with:
-1. 'summary': A concise summary of permanent facts and project context.
-2. 'nodes': An array of entities ({{'id': 'unique_id', 'label': 'Entity Name', 'node_type': 'Technology|Project|Person|Organization'}}).
-3. 'edges': An array of relationships ({{'source': 'node_id', 'target': 'node_id', 'relationship': 'Description'}}).
-
-Rules:
-- NEVER create a node with id 'summary' or that represents the conversation summary itself.
-- Extract individual entities (specific technologies, names, project names).
-- Reuse IDs for the same entities across different parts of the conversation.
-- 'id' should be lowercase and snake_case (e.g., 'rust', 'axum_framework').
-- Focus on technical stack, project goals, and preferences.
-
-Conversation:
-{}
-",
-                            summary_input
-                        );
-
-                        let summary_res = gemini
-                            .generate_content()
-                            .with_user_message(summarizer_prompt)
-                            .execute()
-                            .await;
-
-                        if let Ok(resp) = summary_res {
-                            let raw_json = resp.text();
-
-                            // Try to parse JSON from the response
-                            let parsed_data: serde_json::Value =
-                                if let Some(start) = raw_json.find('{') {
-                                    if let Some(end) = raw_json.rfind('}') {
-                                        serde_json::from_str(&raw_json[start..=end]).unwrap_or(
-                                            serde_json::json!({
-                                                "summary": raw_json,
-                                                "nodes": [],
-                                                "edges": []
-                                            }),
-                                        )
-                                    } else {
-                                        serde_json::json!({"summary": raw_json, "nodes": [], "edges": []})
-                                    }
-                                } else {
-                                    serde_json::json!({"summary": raw_json, "nodes": [], "edges": []})
-                                };
-
-                            let summary_text = parsed_data["summary"]
-                                .as_str()
-                                .unwrap_or(&raw_json)
-                                .to_string();
-
-                            // 5. Embed and Save with last_message_id and graph metadata
-                            if let Ok(embedding) =
-                                rag::get_embedding(&gemini_api_key, &summary_text).await
-                            {
-                                let metadata = serde_json::json!({
-                                    "type": "summary",
-                                    "conversation_id": conversation_id.to_string(),
-                                    "last_message_id": last_processed_id.to_string(),
-                                    "graph": {
-                                        "nodes": parsed_data["nodes"],
-                                        "links": parsed_data["edges"]
-                                    }
-                                });
-
-                                let save_result = rag::save_to_knowledge_base(
-                                    &pool,
-                                    &summary_text,
-                                    embedding,
-                                    Some(metadata),
-                                )
-                                .await;
-                                info!("Memory consolidation complete conversation_id={} with={:?}", conversation_id, save_result);
-                            }
-                        }
-                    }
-                });
-            }
+        if let Err(e) = crate::feature::message_processor::process_incoming_message(state_clone, unified_msg).await {
+            error!("Failed to process web message: {}", e);
         }
     });
 

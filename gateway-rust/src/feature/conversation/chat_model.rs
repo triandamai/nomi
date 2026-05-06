@@ -60,6 +60,7 @@ pub struct MessageItem {
     pub role: String,
     pub content: String,
     pub thought: Option<String>,
+    pub user_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }
 

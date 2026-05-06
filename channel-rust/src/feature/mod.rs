@@ -1,30 +1,38 @@
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-pub mod redis;
 pub mod conversation;
+pub mod redis;
+pub mod telegram;
+pub mod bridge;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InboundMessage {
-    pub external_id: String, // WA JID or Telegram ID
-    pub platform: String,    // "whatsapp" or "telegram"
-    pub display_name: Option<String>,
-    pub content: String,
-    pub timestamp: i64,
+    pub sender_id: String,
+    pub chat_id: String,
+    pub text: String,
+    pub channel: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OutboundMessage {
-    pub external_id: String,
-    pub platform: String,
-    pub content: String,
-    pub thought: Option<String>,
-    pub conversation_id: Uuid,
+    pub sender_id: Option<String>,
+    pub chat_id: String,
+    pub text: String,
+    pub channel: String,
+    pub user_id: Option<uuid::Uuid>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TypingRequest {
+    pub chat_id: String,
+    pub channel: String,
+    pub is_typing: bool,
+    pub user_id: Option<uuid::Uuid>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PresenceMessage {
-    pub external_id: String,
-    pub platform: String,
-    pub status: String, // "typing", "idle"
+    pub sender_id: String,
+    pub chat_id: String,
+    pub channel: String,
+    pub status: String,
 }

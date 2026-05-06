@@ -29,7 +29,7 @@ pub async fn send_prompt(
             message,
             system_prompt,
         } => {
-            info!("history text: {}", history);
+            info!("history text user: {}", history);
             gemini
                 .generate_content()
                 .with_system_prompt(build_system_prompt(history, memories, system_prompt))
@@ -45,6 +45,7 @@ pub async fn send_prompt(
             tool_results,
             previous_calls,
         } => {
+            info!("history text multi tool: {}", history);
             let mut builder = gemini
                 .generate_content()
                 .with_system_prompt(build_system_prompt(history, memories, system_prompt))

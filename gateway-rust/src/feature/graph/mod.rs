@@ -37,7 +37,7 @@ pub async fn handle_get_graph(State(state): State<AppState>) -> ApiResponse<Grap
         FROM knowledge_base
         WHERE (metadata->>'type' = 'summary' OR metadata->>'type' = 'memory')
         AND metadata->'graph' IS NOT NULL
-        "#
+        "#,
     )
     .fetch_all(&state.pool)
     .await;

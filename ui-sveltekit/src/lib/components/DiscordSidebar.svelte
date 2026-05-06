@@ -1,12 +1,21 @@
 <script lang="ts">
-    import { Plus, MoreVertical, Edit2, Trash2 } from 'lucide-svelte';
+    import { Plus, MoreVertical, Edit2, Trash2, Link, Copy, Check } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import { conversationStore, type Conversation } from '$lib/stores/conversation.svelte';
     import { profileStore } from '$lib/stores/profile.svelte';
     import { popupStore } from '$lib/stores/popup.svelte';
+    import { eventBus } from '$lib/utils';
 
     let newConvName = $state('');
     let editingConv = $state<Conversation | null>(null);
+    let pairingCode = $state('');
+    let copied = $state(false);
+
+    eventBus.subscribe('sse-pairing-success', (data: any) => {
+        if (data.conversation_id === conversationStore.activeConversationId || (editingConv && data.conversation_id === editingConv.id)) {
+            popupStore.closeLast();
+        }
+    });
 
     function handleAddConversation() {
         newConvName = '';
@@ -62,6 +71,28 @@
             editingConv = null;
             popupStore.closeLast();
         }
+    }
+
+    async function handlePairing(conv: Conversation) {
+        editingConv = conv;
+        try {
+            const data = await conversationStore.getPairingCode(conv.id);
+            pairingCode = data.pairing_code;
+            popupStore.open({
+                title: 'Link Telegram',
+                width: 'max-w-md',
+                contentSnippet: pairingContent,
+                footerSnippet: pairingFooter
+            });
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function copyToClipboard() {
+        navigator.clipboard.writeText(pairingCode);
+        copied = true;
+        setTimeout(() => copied = false, 2000);
     }
 </script>
 
@@ -156,6 +187,49 @@
     </div>
 {/snippet}
 
+{#snippet pairingContent()}
+    <div class="space-y-6 py-2">
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col items-center gap-4">
+            <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Your Pairing Code</p>
+            <div class="text-5xl font-black text-emerald-400 tracking-[0.2em] font-mono">
+                {pairingCode}
+            </div>
+            <button 
+                onclick={copyToClipboard}
+                class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all"
+            >
+                {#if copied}
+                    <Check size={14} class="text-emerald-400" />
+                    <span class="text-emerald-400">Copied!</span>
+                {:else}
+                    <Copy size={14} />
+                    <span>Copy Code</span>
+                {/if}
+            </button>
+        </div>
+
+        <div class="space-y-3">
+            <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Instructions</p>
+            <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside">
+                <li>Open <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-emerald-400 hover:underline">@ArtaOpenAgentBot</a> on Telegram</li>
+                <li>Send the command: <code class="bg-zinc-900 px-1.5 py-0.5 rounded text-emerald-400 font-mono">/pair {pairingCode}</code></li>
+                <li>Wait for confirmation here</li>
+            </ol>
+        </div>
+    </div>
+{/snippet}
+
+{#snippet pairingFooter()}
+    <div class="flex justify-center w-full">
+        <button
+            onclick={() => popupStore.closeLast()}
+            class="px-8 py-2 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-200 transition-all"
+        >
+            Cancel
+        </button>
+    </div>
+{/snippet}
+
 <aside class="w-[72px] h-screen bg-[#0c0c0e] border-r border-zinc-800 flex flex-col items-center py-3 gap-3">
     <!-- Home / Logo -->
     <div class="mb-2">
@@ -179,6 +253,13 @@
 
                 <!-- Action Tooltip/Menu -->
                 <div class="absolute left-16 hidden group-hover:flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 shadow-2xl z-50">
+                    <button
+                        onclick={() => handlePairing(conv)}
+                        class="p-2 hover:bg-zinc-800 text-zinc-400 hover:text-emerald-400 rounded-md transition-colors"
+                        title="Link Telegram"
+                    >
+                        <Link size={14} />
+                    </button>
                     <button
                         onclick={() => handleEditConversation(conv)}
                         class="p-2 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-md transition-colors"

@@ -109,6 +109,15 @@ export const chatApi = {
             }
         })
 
+        sse.addEventListener(":pairing_success", (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                eventBus.emit('sse-pairing-success', data);
+            } catch (e) {
+                console.error('Failed to parse SSE pairing-success', e);
+            }
+        })
+
         sse.addEventListener(":evolution", (event) => {
             try {
                 const data = JSON.parse(event.data);
@@ -162,6 +171,11 @@ export const chatApi = {
         return apiFetch<any>(`/conversations/${conversationId}/restore-soul`, {
             method: 'POST',
             body: JSON.stringify({version})
+        });
+    },
+    getPairingCode: (conversationId: string) => {
+        return apiFetch<any>(`/conversations/${conversationId}/pairing`, {
+            method: 'POST'
         });
     },
     getWhatsappQr: () => {
