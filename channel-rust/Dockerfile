@@ -6,7 +6,7 @@ COPY . .
 RUN cargo build --release
 
 FROM alpine:latest
-RUN apk add --no-cache libgcc openssl ca-certificates sqlite-libs
+RUN apk add --no-cache libgcc openssl ca-certificates
 WORKDIR /app
 COPY --from=builder /app/target/release/channel-rust .
 EXPOSE 8001
