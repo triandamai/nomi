@@ -1,8 +1,8 @@
 FROM rust:1.95-alpine AS builder
-RUN apk add --no-cache musl-dev pkgconfig perl make gcc g++
+RUN apk add --no-cache musl-dev pkgconfig perl make gcc g++ binutils sqlite-dev
 WORKDIR /app
 COPY . .
-
+ENV RUSTFLAGS="-C target-feature=-crt-static"
 RUN cargo build --release
 
 FROM alpine:latest
