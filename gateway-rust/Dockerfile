@@ -2,7 +2,7 @@ FROM rust:1.80-alpine AS builder
 RUN apk add --no-cache musl-dev pkgconfig openssl-dev
 WORKDIR /app
 COPY . .
-COPY sqlx-data.json .
+
 RUN SQLX_OFFLINE=true cargo build --release
 
 FROM alpine:latest
