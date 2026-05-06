@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT DISTINCT \n            node->>'id' as id, \n            node->>'label' as label, \n            node->>'node_type' as node_type\n        FROM knowledge_base,\n             jsonb_array_elements(metadata->'graph'->'nodes') AS node\n        WHERE (node->>'label' ILIKE $1 OR node->>'id' ILIKE $1 OR content ILIKE $1)\n        LIMIT 10\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "label",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "node_type",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "77ef2bd79804c9d672276372a7f9e3aee5666b154badd984033690f2a291248d"
+}

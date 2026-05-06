@@ -13,7 +13,7 @@ use dotenvy::dotenv;
 use gemini_rust::{Gemini, Model};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use std::{env::var, sync::Arc};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{ CorsLayer};
 use tracing::{debug, error, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 

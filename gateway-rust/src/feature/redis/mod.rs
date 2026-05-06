@@ -3,7 +3,7 @@ use crate::common::identity;
 use crate::common::repository::{channel_repo, message_repo, pairing_repo};
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::feature::InboundMessage;
-use rand::Rng;
+use rand::{RngExt};
 use tokio_stream::StreamExt;
 use tracing::{error, info};
 use uuid::Uuid;

@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO knowledge_base (content, embedding, metadata)\n        VALUES ($1, $2, $3)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        {
+          "Custom": {
+            "name": "halfvec",
+            "kind": "Simple"
+          }
+        },
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4bb3ded0f4ecaee7fa26e9fab109a534fb45bf697b32b9f818ef73353bed2170"
+}

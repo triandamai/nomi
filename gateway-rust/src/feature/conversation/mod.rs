@@ -10,7 +10,7 @@ use axum::extract::{Path, State};
 use chrono::Utc;
 
 use rand::distr::Alphanumeric;
-use rand::{Rng, rng};
+use rand::{ rng, RngExt};
 use serde_json::Value;
 use sqlx::Row;
 use tracing::{error, info};
