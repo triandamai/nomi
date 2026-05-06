@@ -1,6 +1,9 @@
 use uuid::Uuid;
 use sqlx::PgPool;
 
+pub mod auth_model;
+pub mod middleware;
+
 pub struct UserIdentity {
     pub id: Uuid,
     pub display_name: String,

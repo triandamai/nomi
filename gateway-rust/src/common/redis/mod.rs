@@ -36,4 +36,22 @@ impl RedisClient {
             anyhow::anyhow!(e)
         })
     }
+
+    pub async fn set_ex(&self, key: &str, value: &str, seconds: u64) -> anyhow::Result<()> {
+        let mut conn = self.get_connection().await?;
+        let _: () = conn.set_ex(key, value, seconds).await?;
+        Ok(())
+    }
+
+    pub async fn get(&self, key: &str) -> anyhow::Result<Option<String>> {
+        let mut conn = self.get_connection().await?;
+        let val: Option<String> = conn.get(key).await?;
+        Ok(val)
+    }
+
+    pub async fn del(&self, key: &str) -> anyhow::Result<()> {
+        let mut conn = self.get_connection().await?;
+        let _: () = conn.del(key).await?;
+        Ok(())
+    }
 }

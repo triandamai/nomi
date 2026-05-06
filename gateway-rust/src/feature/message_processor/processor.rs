@@ -39,7 +39,10 @@ pub async fn process_incoming_message(
 
     // Broadcast user message to SSE
     let _ = state.sse.send(SseBuilder::new(
-        SseTarget::broadcast("message".to_string()),
+        match user_id {
+            Some(ref id) => SseTarget::sent_to_user(id.to_string(), "message".to_string()),
+            None => SseTarget::broadcast("message".to_string()),
+        },
         json!({
             "id": m.id,
             "conversation_id": conversation_id,
@@ -53,7 +56,10 @@ pub async fn process_incoming_message(
 
     // 2. Start Typing / Presence
     let _ = state.sse.send(SseBuilder::new(
-        SseTarget::broadcast("presence".to_string()),
+        match user_id {
+            Some(ref id) => SseTarget::sent_to_user(id.to_string(), "presence".to_string()),
+            None => SseTarget::broadcast("presence".to_string()),
+        },
         json!({
             "conversation_id": conversation_id,
             "is_typing": true,
@@ -171,7 +177,10 @@ pub async fn process_incoming_message(
             Ok((response, chunk)) => {
                 if !chunk.thought.is_empty() {
                     let _ = state.sse.send(SseBuilder::new(
-                        SseTarget::broadcast("thought".to_string()),
+                        match user_id {
+                            Some(ref id) => SseTarget::sent_to_user(id.to_string(), "thought".to_string()),
+                            None => SseTarget::broadcast("thought".to_string()),
+                        },
                         json!({ "thought": chunk.thought, "conversation_id": conversation_id }),
                     )).await;
                 }
@@ -221,7 +230,10 @@ pub async fn process_incoming_message(
 
         // Broadcast assistant message to SSE
         let _ = state.sse.send(SseBuilder::new(
-            SseTarget::broadcast("message".to_string()),
+            match user_id {
+                Some(ref id) => SseTarget::sent_to_user(id.to_string(), "message".to_string()),
+                None => SseTarget::broadcast("message".to_string()),
+            },
             MessageItem {
                 id: record.id,
                 conversation_id,
@@ -269,7 +281,10 @@ pub async fn process_incoming_message(
 
     // Stop Typing
     let _ = state.sse.send(SseBuilder::new(
-        SseTarget::broadcast("presence".to_string()),
+        match user_id {
+            Some(ref id) => SseTarget::sent_to_user(id.to_string(), "presence".to_string()),
+            None => SseTarget::broadcast("presence".to_string()),
+        },
         json!({
             "conversation_id": conversation_id,
             "is_typing": false,

@@ -19,10 +19,12 @@ export type  ApiResponse<T> = {
 }
 
 export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
     const response = await fetch(`${BASE_URL}${endpoint}`, {
         ...options,
         headers: {
             'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             ...options.headers
         }
     });
@@ -50,11 +52,27 @@ export const chatApi = {
         return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
     },
 
+    requestOtp: (externalId: string, channel: string) => {
+        return apiFetch<any>('/auth/request-otp', {
+            method: 'POST',
+            body: JSON.stringify({external_id: externalId, channel})
+        });
+    },
+
+    verifyOtp: (externalId: string, code: string) => {
+        return apiFetch<{ access_token: string, user_id: string }>('/auth/verify-otp', {
+            method: 'POST',
+            body: JSON.stringify({external_id: externalId, code})
+        });
+    },
+
     streamChat: async (message: string, conversationId: string) => {
+        const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
         const response = await fetch(`${BASE_URL}/chat/stream`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({message, conversation_id: conversationId})
         });
@@ -63,7 +81,8 @@ export const chatApi = {
 
     streamEvent() {
         // Based on gateway-rust/src/routes.rs, the SSE endpoint is /realtime
-        const sse = new EventSource(`${BASE_URL}/realtime?user_id=9220f30e-b5cb-4161-97bc-95189fa1363d&device_id=${crypto.randomUUID()}`);
+        const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('user_id') : "9220f30e-b5cb-4161-97bc-95189fa1363d";
+        const sse = new EventSource(`${BASE_URL}/realtime?user_id=${userId}&device_id=${crypto.randomUUID()}`);
 
         sse.onopen = () => {
             console.log('SSE connection opened');
@@ -193,6 +212,16 @@ export const chatApi = {
     getChannels: () => {
         return apiFetch<any>('/user/channels', {
             method: 'GET'
+        });
+    },
+    getProfile: () => {
+        return apiFetch<any>('/user/profile', {
+            method: 'GET'
+        });
+    },
+    logout: () => {
+        return apiFetch<any>('/auth/logout', {
+            method: 'POST'
         });
     },
     getWhatsappQr: () => {

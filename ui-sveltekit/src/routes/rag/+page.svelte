@@ -1,9 +1,10 @@
 <script lang="ts">
-    import {onMount, onDestroy} from 'svelte';
-    import {X, Info, RefreshCw, AlertCircle, Search, Loader2, Camera} from 'lucide-svelte';
-    import {ragStore, type Node} from '$lib/stores/rag.svelte';
+    import {onMount} from 'svelte';
+    import {AlertCircle, Camera, Info, Loader2, RefreshCw, Search, X} from 'lucide-svelte';
+    import {type Node, ragStore} from '$lib/stores/rag.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
     import * as THREE from 'three';
+    import {eventBus} from "$lib/utils";
 
     let graphContainer: HTMLElement;
     let selectedNode = $state<Node | null>(null);
@@ -301,6 +302,10 @@
             );
         }
     }
+
+    onMount(()=>{
+        eventBus.emit("load",{})
+    })
 </script>
 
 <main class="flex-1 flex flex-col relative overflow-hidden bg-slate-950">

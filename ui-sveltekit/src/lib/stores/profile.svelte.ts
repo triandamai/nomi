@@ -1,26 +1,67 @@
 import { useAvatar } from '$lib/utils';
+import { chatApi } from '$lib/api/client';
+import { goto } from '$app/navigation';
 
 export type Profile = {
     id: string;
-    name: string;
-    avatar: string;
+    external_id: string;
+    display_name: string | null;
+    avatar_url: string | null;
     status: 'online' | 'offline' | 'idle';
 };
 
 function createProfileStore() {
-    let currentUser = $state<Profile>({
-        id: 'user-1',
-        name: 'Admin User',
-        avatar: useAvatar('Admin User'),
-        status: 'online'
-    });
+    let currentUser = $state<Profile | null>(null);
+    let loading = $state(false);
+
+    async function fetchProfile() {
+        if (loading) return;
+        loading = true;
+        try {
+            const response = await chatApi.getProfile();
+            currentUser = {
+                ...response.data,
+                status: 'online'
+            };
+        } catch (e) {
+            console.error('Failed to fetch profile', e);
+            // If unauthorized, redirect to login
+            if (typeof window !== 'undefined' && (e as any).message?.includes('Unauthorized')) {
+                goto('/login');
+            }
+        } finally {
+            loading = false;
+        }
+    }
+
+    async function logout() {
+        try {
+            await chatApi.logout();
+        } catch (e) {
+            console.error('Logout API failed', e);
+        } finally {
+            if (typeof localStorage !== 'undefined') {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('user_id');
+            }
+            currentUser = null;
+            goto('/login');
+        }
+    }
 
     return {
         get currentUser() {
             return currentUser;
         },
+        get loading() {
+            return loading;
+        },
+        fetchProfile,
+        logout,
         updateStatus(status: Profile['status']) {
-            currentUser = { ...currentUser, status };
+            if (currentUser) {
+                currentUser = { ...currentUser, status };
+            }
         }
     };
 }

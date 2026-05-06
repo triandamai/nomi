@@ -11,7 +11,6 @@ pub struct ChatRequest {
 
 #[derive(Deserialize)]
 pub struct CreateConversationRequest {
-    pub session_id: Option<Uuid>,
     pub title: Option<String>,
     pub name: Option<String>, // Frontend uses 'name'
     pub soul_content: Option<String>,
@@ -22,7 +21,6 @@ pub struct CreateConversationRequest {
 pub struct ConversationResponse {
     pub id: Uuid,
     pub name: String,
-    pub session_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

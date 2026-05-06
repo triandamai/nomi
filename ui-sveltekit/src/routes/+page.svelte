@@ -4,6 +4,7 @@
     import ToolResult from '$lib/components/ToolResult.svelte';
     import ChatBubble from '$lib/components/ChatBubble.svelte';
     import {onMount, tick} from 'svelte';
+    import {eventBus} from "$lib/utils";
 
     let inputMessage = $state('');
     let scrollContainer = $state<HTMLElement | null>(null);
@@ -54,6 +55,9 @@
             handleSubmit();
         }
     }
+    onMount(()=>{
+        eventBus.emit("load",{})
+    })
 </script>
 
 <!-- Messages -->

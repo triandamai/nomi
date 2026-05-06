@@ -28,12 +28,12 @@
     }
 
     :root.dark {
-        --bg-main: var(--color-cash-black);
-        --text-main: var(--color-cash-white);
-        --text-muted: #d1d1d1;
-        --bg-card: var(--color-cash-gray-900);
-        --border-main: var(--color-cash-gray-800);
-        --bg-secondary: var(--color-cash-gray-800);
+        --bg-main: #000000;
+        --text-main: #ffffff;
+        --text-muted: #9ca3af;
+        --bg-card: #0a0a0a;
+        --border-main: #171717;
+        --bg-secondary: #171717;
     }
 
     body {

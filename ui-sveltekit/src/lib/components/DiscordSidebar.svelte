@@ -1,15 +1,21 @@
 <script lang="ts">
-    import { Plus, MoreVertical, Edit2, Trash2, Link, Copy, Check } from 'lucide-svelte';
+    import { Plus, MoreVertical, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import { conversationStore, type Conversation } from '$lib/stores/conversation.svelte';
     import { profileStore } from '$lib/stores/profile.svelte';
     import { popupStore } from '$lib/stores/popup.svelte';
-    import { eventBus } from '$lib/utils';
+    import { eventBus, useAvatar } from '$lib/utils';
+    import { onMount } from 'svelte';
 
     let newConvName = $state('');
     let editingConv = $state<Conversation | null>(null);
     let pairingCode = $state('');
     let copied = $state(false);
+    let showUserMenu = $state(false);
+
+    onMount(() => {
+        profileStore.fetchProfile();
+    });
 
     eventBus.subscribe('sse-pairing-success', (data: any) => {
         if (data.conversation_id === conversationStore.activeConversationId || (editingConv && data.conversation_id === editingConv.id)) {
@@ -93,6 +99,15 @@
         navigator.clipboard.writeText(pairingCode);
         copied = true;
         setTimeout(() => copied = false, 2000);
+    }
+
+    function toggleUserMenu() {
+        showUserMenu = !showUserMenu;
+    }
+
+    async function handleLogout() {
+        showUserMenu = false;
+        await profileStore.logout();
     }
 </script>
 
@@ -293,12 +308,58 @@
         </button>
 
         <!-- Current User -->
-        <Avatar
-            name={profileStore.currentUser.name}
-            active={false}
-            online={profileStore.currentUser.status === 'online'}
-            onClick={() => {}}
-        />
+        <div class="relative w-full flex justify-center">
+            <Avatar
+                name={profileStore.currentUser?.display_name || profileStore.currentUser?.external_id || 'User'}
+                active={showUserMenu}
+                online={profileStore.currentUser?.status === 'online'}
+                onClick={toggleUserMenu}
+            />
+
+            {#if showUserMenu}
+                <div 
+                    class="absolute bottom-0 left-16 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-[100] py-2 overflow-hidden animate-in fade-in slide-in-from-left-2 duration-200"
+                >
+                    <div class="px-4 py-3 border-b border-zinc-900 mb-1">
+                        <p class="text-sm font-bold text-zinc-100 truncate">
+                            {profileStore.currentUser?.display_name || 'Anonymous User'}
+                        </p>
+                        <p class="text-[10px] text-zinc-500 truncate font-mono mt-0.5">
+                            {profileStore.currentUser?.external_id}
+                        </p>
+                    </div>
+
+                    <button class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors">
+                        <User size={14} />
+                        <span>Profile Settings</span>
+                    </button>
+                    
+                    <button class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors">
+                        <Settings size={14} />
+                        <span>Preferences</span>
+                    </button>
+
+                    <div class="h-px bg-zinc-900 my-1"></div>
+
+                    <button 
+                        onclick={handleLogout}
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-900/20 transition-colors"
+                    >
+                        <LogOut size={14} />
+                        <span>Sign Out</span>
+                    </button>
+                </div>
+
+                <!-- Backdrop to close menu -->
+                <div 
+                    class="fixed inset-0 z-[90]" 
+                    onclick={() => showUserMenu = false}
+                    onkeydown={(e) => e.key === 'Escape' && (showUserMenu = false)}
+                    role="button"
+                    tabindex="0"
+                ></div>
+            {/if}
+        </div>
     </div>
 </aside>
 

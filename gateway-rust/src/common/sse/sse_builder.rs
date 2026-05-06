@@ -38,6 +38,16 @@ impl SseTarget {
         }
     }
 
+    pub fn sent_to_user(user_id: String, event_name: String) -> Self {
+        SseTarget {
+            user_id: vec![user_id],
+            device_id: "".to_string(),
+            event_name,
+            is_broadcast: false,
+            is_to_device: false,
+        }
+    }
+
     pub fn set_event_name(mut self, event_name: String) -> Self {
         self.event_name = event_name;
         self
