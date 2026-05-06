@@ -1,9 +1,9 @@
 import {eventBus} from '$lib/utils';
 import type {Conversation} from "$lib/stores/conversation.svelte";
-import { PUBLIC_GATEWAY_URL, PUBLIC_CHANNEL_URL } from '$env/static/public';
+import { env } from '$env/dynamic/public';
 
-const BASE_URL = PUBLIC_GATEWAY_URL || 'http://localhost:8000/api';
-const CHANNEL_URL = PUBLIC_CHANNEL_URL || 'http://localhost:8001/api';
+const BASE_URL = env.PUBLIC_GATEWAY_URL || 'http://localhost:8000/api';
+const CHANNEL_URL = env.PUBLIC_CHANNEL_URL || 'http://localhost:8001/api';
 
 export type Meta = {
     code: number,
