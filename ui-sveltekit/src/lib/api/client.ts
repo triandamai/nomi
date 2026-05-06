@@ -2,7 +2,7 @@ import {eventBus} from '$lib/utils';
 import type {Conversation} from "$lib/stores/conversation.svelte";
 
 const BASE_URL = 'http://localhost:8000/api';
-const CHANNEL_URL = 'http://localhost:3001/api';
+const CHANNEL_URL = 'http://localhost:8001/api';
 
 export type Meta = {
     code: number,

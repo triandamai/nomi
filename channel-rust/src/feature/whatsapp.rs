@@ -1,0 +1,104 @@
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tracing::{error, info};
+use wa_rs::bot::Bot;
+use wa_rs_sqlite_storage::SqliteStore;
+use wa_rs_tokio_transport::TokioWebSocketTransportFactory;
+use wa_rs_ureq_http::UreqHttpClient;
+use wa_rs::types::events::Event;
+use wa_rs::Client;
+use wa_rs::Jid;
+use wa_rs::wa_rs_proto::whatsapp::Message;
+use std::str::FromStr;
+
+use crate::common::redis::RedisClient;
+use crate::feature::InboundMessage;
+
+pub struct WhatsAppWorker {
+    client: Arc<Client>,
+    redis: RedisClient,
+    qr_code: Arc<Mutex<Option<String>>>,
+}
+
+impl WhatsAppWorker {
+    pub async fn new(
+        db_path: &str,
+        redis: RedisClient,
+        qr_code: Arc<Mutex<Option<String>>>,
+    ) -> anyhow::Result<(Self, Bot)> {
+        let storage = Arc::new(SqliteStore::new(db_path).await?);
+        
+        let redis_clone = redis.clone();
+        let qr_clone = qr_code.clone();
+
+        let bot = Bot::builder()
+            .with_backend(storage)
+            .with_transport_factory(TokioWebSocketTransportFactory::new())
+            .with_http_client(UreqHttpClient::new())
+            .on_event(move |event, _client| {
+                let redis = redis_clone.clone();
+                let qr = qr_clone.clone();
+                async move {
+                    match event {
+                        Event::PairingQrCode { code, .. } => {
+                            info!("New WhatsApp QR Code received");
+                            let mut qr_lock = qr.lock().await;
+                            *qr_lock = Some(code);
+                        }
+                        Event::Connected(_) => {
+                            info!("WhatsApp connected successfully!");
+                            let mut qr_lock = qr.lock().await;
+                            *qr_lock = None;
+                        }
+                        Event::Message(msg, info) => {
+                            if info.source.is_from_me {
+                                return;
+                            }
+
+                            let text = msg.conversation.or(msg.extended_text_message.and_then(|m| m.text));
+                            
+                            if let Some(text) = text {
+                                let sender_id = info.source.sender.to_string();
+                                let chat_id = info.source.chat.to_string();
+
+                                info!("Received WhatsApp message from {}: {}", sender_id, text);
+
+                                let inbound = InboundMessage {
+                                    sender_id,
+                                    chat_id,
+                                    text,
+                                    channel: "whatsapp".to_string(),
+                                };
+
+                                if let Err(e) = redis.publish_event("nomi:inbound", &inbound).await {
+                                    error!("Failed to publish WhatsApp inbound to Redis: {}", e);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            })
+            .build()
+            .await?;
+
+        let client = bot.client().clone();
+        
+        Ok((Self {
+            client,
+            redis,
+            qr_code,
+        }, bot))
+    }
+
+    pub async fn send_message(&self, chat_id: String, text: String) -> anyhow::Result<()> {
+        let chat = Jid::from_str(&chat_id).map_err(|e| anyhow::anyhow!("Invalid chat id: {}", e))?;
+        let formatted_text = crate::common::format::markdown_to_whatsapp(&text);
+        
+        let mut msg = Message::default();
+        msg.conversation = Some(formatted_text);
+
+        self.client.send_message(chat, msg).await?;
+        Ok(())
+    }
+}

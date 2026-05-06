@@ -1,15 +1,20 @@
 <script lang="ts">
-    import {Check, ChevronRight, Copy, Cpu, Link, MessageSquare, Network, Settings2} from 'lucide-svelte';
+    import {Check, ChevronRight, Copy, Cpu, Link, MessageSquare, Network, Settings2, RefreshCw} from 'lucide-svelte';
     import {page} from '$app/state';
     import SoulTimeline from './SoulTimeline.svelte';
+    import QRCode from './QRCode.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
     import {popupStore} from '$lib/stores/popup.svelte';
+    import {chatApi} from '$lib/api/client';
     import {eventBus} from '$lib/utils';
     import {onMount} from "svelte";
 
     let activeTab = $derived(page.url.pathname === '/rag' ? 'RAG' : 'Chat');
     let pairingCode = $state('');
+    let whatsappQr = $state('');
+    let currentPlatform = $state('');
     let copied = $state(false);
+    let isLoadingQr = $state(false);
 
     // Task 2: Liveness Monitor
     let isGatewayOnline = $state(false);
@@ -75,17 +80,45 @@
 
     async function handlePairing(platform: string) {
         if (!conversationStore.activeConversationId) return;
+        currentPlatform = platform;
+        
         try {
+            // Always fetch internal pairing code first
             const data = await conversationStore.getPairingCode(conversationStore.activeConversationId);
             pairingCode = data.pairing_code;
-            popupStore.open({
-                title: `Link ${platform.charAt(0).toUpperCase() + platform.slice(1)}`,
-                width: 'max-w-md',
-                contentSnippet: pairingContent,
-                footerSnippet: pairingFooter
-            });
+
+            if (platform === 'whatsapp') {
+                popupStore.open({
+                    title: `Link WhatsApp`,
+                    width: 'max-w-md',
+                    contentSnippet: pairingContent,
+                    footerSnippet: pairingFooter
+                });
+                await fetchWhatsappQr();
+            } else {
+                popupStore.open({
+                    title: `Link ${platform.charAt(0).toUpperCase() + platform.slice(1)}`,
+                    width: 'max-w-md',
+                    contentSnippet: pairingContent,
+                    footerSnippet: pairingFooter
+                });
+            }
         } catch (e) {
             console.error(e);
+        }
+    }
+
+    async function fetchWhatsappQr() {
+        isLoadingQr = true;
+        try {
+            const res = await chatApi.getWhatsappQr();
+            if (res && res.qr) {
+                whatsappQr = res.qr;
+            }
+        } catch (e) {
+            console.error('Failed to fetch WhatsApp QR', e);
+        } finally {
+            isLoadingQr = false;
         }
     }
 
@@ -147,33 +180,67 @@
 
 {#snippet pairingContent()}
     <div class="space-y-6 py-2">
-        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col items-center gap-4">
-            <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Your Pairing Code</p>
-            <div class="text-5xl font-black text-emerald-400 tracking-[0.2em] font-mono">
-                {pairingCode}
-            </div>
-            <button 
-                onclick={copyToClipboard}
-                class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all"
-            >
-                {#if copied}
-                    <Check size={14} class="text-emerald-400" />
-                    <span class="text-emerald-400">Copied!</span>
-                {:else}
-                    <Copy size={14} />
-                    <span>Copy Code</span>
-                {/if}
-            </button>
-        </div>
+        <!--{#if currentPlatform === 'whatsapp'}-->
+            <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-8 flex flex-col items-center gap-6">
+                <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Scan with WhatsApp</p>
+                
+                <div class="relative group">
+                    <QRCode data={whatsappQr} size={220} />
+                    {#if isLoadingQr}
+                        <div class="absolute inset-0 bg-zinc-950/80 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                            <div class="w-8 h-8 border-4 border-zinc-800 border-t-emerald-500 rounded-full animate-spin"></div>
+                        </div>
+                    {/if}
+                </div>
 
-        <div class="space-y-3">
-            <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Instructions</p>
-            <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside">
-                <li>Open <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-emerald-400 hover:underline">@ArtaOpenAgentBot</a> on Telegram</li>
-                <li>Send the command: <code class="bg-zinc-900 px-1.5 py-0.5 rounded text-emerald-400 font-mono">/pair {pairingCode}</code></li>
-                <li>Wait for confirmation here</li>
-            </ol>
-        </div>
+                <button 
+                    onclick={fetchWhatsappQr}
+                    disabled={isLoadingQr}
+                    class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all disabled:opacity-50"
+                >
+                    <RefreshCw size={14} class={isLoadingQr ? 'animate-spin' : ''} />
+                    <span>Refresh QR Code</span>
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Instructions</p>
+                <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside">
+                    <li>Open WhatsApp on your phone</li>
+                    <li>Tap <span class="text-zinc-200 font-bold">Menu</span> or <span class="text-zinc-200 font-bold">Settings</span> and select <span class="text-zinc-200 font-bold">Linked Devices</span></li>
+                    <li>Tap on <span class="text-zinc-200 font-bold">Link a Device</span></li>
+                    <li>Point your phone to this screen to capture the QR code</li>
+                </ol>
+            </div>
+        <!--{:else}-->
+            <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col items-center gap-4">
+                <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Your Pairing Code</p>
+                <div class="text-5xl font-black text-emerald-400 tracking-[0.2em] font-mono">
+                    {pairingCode}
+                </div>
+                <button 
+                    onclick={copyToClipboard}
+                    class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all"
+                >
+                    {#if copied}
+                        <Check size={14} class="text-emerald-400" />
+                        <span class="text-emerald-400">Copied!</span>
+                    {:else}
+                        <Copy size={14} />
+                        <span>Copy Code</span>
+                    {/if}
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Instructions</p>
+                <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside">
+                    <li>Open <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-emerald-400 hover:underline">@ArtaOpenAgentBot</a> on Telegram</li>
+                    <li>Send the command: <code class="bg-zinc-900 px-1.5 py-0.5 rounded text-emerald-400 font-mono">/pair {pairingCode}</code></li>
+                    <li>Wait for confirmation here</li>
+                </ol>
+            </div>
+        <!--{/if}-->
     </div>
 {/snippet}
 

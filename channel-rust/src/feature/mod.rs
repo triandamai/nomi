@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 pub mod conversation;
 pub mod redis;
 pub mod telegram;
+pub mod whatsapp;
 pub mod bridge;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

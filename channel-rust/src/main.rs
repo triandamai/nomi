@@ -8,6 +8,7 @@ use std::sync::Arc;
 use dotenvy::dotenv;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
+use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
 use tracing_subscriber::{fmt, EnvFilter};
 use tracing_subscriber::layer::SubscriberExt;
@@ -21,6 +22,7 @@ struct AppState {
     qr_code: Arc<Mutex<Option<String>>>,
     bot: Bot,
     redis: crate::common::redis::RedisClient,
+    wa_tx: tokio::sync::mpsc::UnboundedSender<crate::feature::OutboundMessage>,
 }
 
 #[tokio::main]
@@ -43,19 +45,64 @@ async fn main() -> anyhow::Result<()> {
     let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
     let redis = crate::common::redis::RedisClient::new(&redis_url)?;
 
+    let qr_code = Arc::new(Mutex::new(None));
+    let (wa_tx, mut wa_rx) = tokio::sync::mpsc::unbounded_channel::<crate::feature::OutboundMessage>();
+
     let state = AppState {
-        qr_code: Arc::new(Mutex::new(None)),
+        qr_code: qr_code.clone(),
         bot: bot.clone(),
         redis: redis.clone(),
+        wa_tx,
     };
     info!("AppState created.");
+
+    // WhatsApp Worker
+    let wa_redis = redis.clone();
+    let wa_qr = qr_code.clone();
+    tokio::spawn(async move {
+        let db_path = std::env::var("WHATSAPP_DB_PATH").unwrap_or_else(|_| "whatsapp.db".to_string());
+        match crate::feature::whatsapp::WhatsAppWorker::new(&db_path, wa_redis, wa_qr).await {
+            Ok((worker, mut bot)) => {
+                info!("Starting WhatsApp bot...");
+                let client = bot.client();
+                
+                // Run the bot event loop and task processor
+                match bot.run().await {
+                    Ok(_handle) => {
+                        // Connect the client to WhatsApp
+                        tokio::spawn(async move {
+                            if let Err(e) = client.connect().await {
+                                error!("WhatsApp client connection failed: {}", e);
+                            }
+                        });
+                    }
+                    Err(e) => error!("Failed to run WhatsApp bot: {}", e),
+                }
+
+                // Listen for outbound messages for WhatsApp
+                while let Some(msg) = wa_rx.recv().await {
+                    if let Err(e) = worker.send_message(msg.chat_id, msg.text).await {
+                        error!("Failed to send WhatsApp message: {}", e);
+                    }
+                }
+            }
+            Err(e) => error!("Failed to initialize WhatsApp worker: {}", e),
+        }
+    });
+
+    // Configure CORS
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
     info!("Configuring Router...");
     let app = Router::new()
         .route("/api/whatsapp/qr", get(get_whatsapp_qr))
         .route("/api/outbound", post(handle_outbound))
         .route("/api/presence/typing", post(handle_typing))
-        .with_state(state.clone());
+        .with_state(state.clone())
+        .layer(cors);;
     info!("Router configured.");
 
     // Start Telegram Worker
@@ -127,16 +174,24 @@ async fn handle_outbound(
 ) -> Json<serde_json::Value> {
     info!("Outbound message: {:?}", payload);
 
-    if payload.channel == "telegram" {
-        if let Err(e) = crate::feature::telegram::send_telegram_message(
-            state.bot.clone(),
-            payload.chat_id,
-            payload.text,
-        )
-        .await
-        {
-            error!("Failed to send Telegram message: {}", e);
-            return Json(serde_json::json!({ "status": "error", "message": e.to_string() }));
+    match payload.channel.as_str() {
+        "telegram" => {
+            if let Err(e) = crate::feature::telegram::send_telegram_message(
+                state.bot.clone(),
+                payload.chat_id,
+                payload.text,
+            )
+            .await
+            {
+                error!("Failed to send Telegram message: {}", e);
+                return Json(serde_json::json!({ "status": "error", "message": e.to_string() }));
+            }
+        }
+        "whatsapp" => {
+            let _ = state.wa_tx.send(payload);
+        }
+        _ => {
+            error!("Unknown channel: {}", payload.channel);
         }
     }
 
