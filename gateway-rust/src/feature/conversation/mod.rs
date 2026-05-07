@@ -22,16 +22,19 @@ pub mod internal_model;
 
 pub async fn handle_get_user_channels(
     State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
 ) -> ApiResponse<UserChannelsResponse> {
-    // Note: In a real app, we'd get user_id from session.
-    // For this prototype/current state, we might need a default or use the session_id if available.
-    // Based on register_public_sse, user_id is passed as a query param there.
-    // Here we'll check all channels to see if any are linked.
-    // Since we don't have Auth middleware yet, let's look for channels linked to the current active conversations.
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid user ID in token"),
+    };
 
-    let result = sqlx::query!("SELECT DISTINCT channel_type FROM channels")
-        .fetch_all(&state.pool)
-        .await;
+    let result = sqlx::query!(
+        "SELECT DISTINCT channel_type FROM channels WHERE user_id = $1",
+        user_id
+    )
+    .fetch_all(&state.pool)
+    .await;
 
     match result {
         Ok(rows) => {
@@ -59,8 +62,32 @@ pub async fn handle_get_user_channels(
 
 pub async fn handle_create_pairing(
     State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResponse<PairingResponse> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid user ID in token"),
+    };
+
+    // Verify membership
+    let membership = sqlx::query!(
+        "SELECT 1 as one FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
+        conversation_id,
+        user_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match membership {
+        Ok(Some(_)) => (),
+        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Err(e) => {
+            error!("Failed to verify membership: {}", e);
+            return ApiResponse::failed("Internal server error");
+        }
+    }
+
     // Generate a random 6-character alphanumeric code
     let pairing_code: String = rng()
         .sample_iter(&Alphanumeric)
@@ -96,14 +123,39 @@ pub async fn handle_create_pairing(
 
 pub async fn handle_get_messages(
     State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
     Path(conversation_id): Path<Uuid>,
     axum::extract::Query(params): axum::extract::Query<MessageListParams>,
 ) -> ApiResponse<MessageListResponse> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid user ID in token"),
+    };
+
+    // Verify membership
+    let membership = sqlx::query!(
+        "SELECT 1 as one FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
+        conversation_id,
+        user_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match membership {
+        Ok(Some(_)) => (),
+        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Err(e) => {
+            error!("Failed to verify membership: {}", e);
+            return ApiResponse::failed("Internal server error");
+        }
+    }
+
     let limit = params.limit.unwrap_or(20);
     let cursor = params.cursor.unwrap_or_else(Utc::now);
 
     info!(
         conversation_id = %conversation_id,
+        user_id = %user_id,
         cursor = %cursor,
         limit = limit,
         "Fetching messages"
@@ -145,11 +197,24 @@ pub async fn handle_get_messages(
 
 pub async fn handle_get_conversations(
     State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
 ) -> ApiResponse<Vec<ConversationResponse>> {
-    info!("Fetching all conversations");
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid user ID in token"),
+    };
+
+    info!(user_id = %user_id, "Fetching user conversations");
 
     let result = sqlx::query!(
-        "SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC"
+        r#"
+        SELECT c.id, c.title, c.created_at, c.updated_at 
+        FROM conversations c
+        INNER JOIN conversation_members cm ON c.id = cm.conversation_id
+        WHERE cm.user_id = $1
+        ORDER BY c.updated_at DESC
+        "#,
+        user_id
     )
     .fetch_all(&state.pool)
     .await;
@@ -176,9 +241,15 @@ pub async fn handle_get_conversations(
 
 pub async fn handle_create_conversation(
     State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
     Json(payload): Json<CreateConversationRequest>,
 ) -> ApiResponse<ConversationResponse> {
-    info!("Creating new conversation");
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid user ID in token"),
+    };
+
+    info!(user_id = %user_id, "Creating new conversation");
 
     let id = Uuid::new_v4();
     let title = payload
@@ -186,28 +257,42 @@ pub async fn handle_create_conversation(
         .or(payload.title)
         .unwrap_or_else(|| "New Conversation".to_string());
 
-    let result = sqlx::query!(
-        "INSERT INTO conversations (id, title, soul_content, bootstrap_content) VALUES ($1, $2, $3, $4) RETURNING id, title, created_at, updated_at",
-        id,
-        title,
-        payload.soul_content,
-        payload.bootstrap_content
-    )
-    .fetch_one(&state.pool)
+    let result: Result<ConversationResponse, sqlx::Error> = async {
+        let mut tx = state.pool.begin().await?;
+
+        let row = sqlx::query!(
+            "INSERT INTO conversations (id, title, soul_content, bootstrap_content) VALUES ($1, $2, $3, $4) RETURNING id, title, created_at, updated_at",
+            id,
+            title,
+            payload.soul_content,
+            payload.bootstrap_content
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+
+        sqlx::query!(
+            "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2)",
+            id,
+            user_id
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(ConversationResponse {
+            id: row.id,
+            name: row.title.unwrap_or_default(),
+            created_at: row.created_at.unwrap_or_else(Utc::now),
+            updated_at: row.updated_at.unwrap_or_else(Utc::now),
+        })
+    }
     .await;
 
     match result {
-        Ok(row) => {
-            info!(conversation_id = %id, "Conversation created successfully");
-            ApiResponse::ok(
-                ConversationResponse {
-                    id: row.id,
-                    name: row.title.unwrap_or_default(),
-                    created_at: row.created_at.unwrap_or_else(Utc::now),
-                    updated_at: row.updated_at.unwrap_or_else(Utc::now),
-                },
-                "Conversation created",
-            )
+        Ok(response) => {
+            info!(conversation_id = %id, user_id = %user_id, "Conversation created successfully");
+            ApiResponse::ok(response, "Conversation created")
         }
         Err(e) => {
             error!("Failed to create conversation: {}", e);
@@ -218,10 +303,34 @@ pub async fn handle_create_conversation(
 
 pub async fn handle_update_conversation(
     State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateConversationRequest>,
 ) -> ApiResponse<ConversationResponse> {
-    info!(conversation_id = %id, "Updating conversation");
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid user ID in token"),
+    };
+
+    // Verify membership
+    let membership = sqlx::query!(
+        "SELECT 1 as one FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
+        id,
+        user_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match membership {
+        Ok(Some(_)) => (),
+        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Err(e) => {
+            error!("Failed to verify membership: {}", e);
+            return ApiResponse::failed("Internal server error");
+        }
+    }
+
+    info!(conversation_id = %id, user_id = %user_id, "Updating conversation");
 
     let result = sqlx::query!(
         "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at",
@@ -250,9 +359,33 @@ pub async fn handle_update_conversation(
 
 pub async fn handle_get_soul_history(
     State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResponse<Vec<SoulHistoryResponse>> {
-    info!(conversation_id = %id, "Fetching soul history");
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid user ID in token"),
+    };
+
+    // Verify membership
+    let membership = sqlx::query!(
+        "SELECT 1 as one FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
+        id,
+        user_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match membership {
+        Ok(Some(_)) => (),
+        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Err(e) => {
+            error!("Failed to verify membership: {}", e);
+            return ApiResponse::failed("Internal server error");
+        }
+    }
+
+    info!(conversation_id = %id, user_id = %user_id, "Fetching soul history");
 
     let result = sqlx::query!(
         "SELECT id, version_number, change_reason, soul_content, created_at FROM soul_history WHERE conversation_id = $1 ORDER BY version_number DESC",
@@ -284,11 +417,36 @@ pub async fn handle_get_soul_history(
 
 pub async fn handle_restore_conversation_soul(
     State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
     Path(id): Path<Uuid>,
     Json(payload): Json<RestoreSoulRequest>,
 ) -> ApiResponse<RestoreSoulResponse> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid user ID in token"),
+    };
+
+    // Verify membership
+    let membership = sqlx::query!(
+        "SELECT 1 as one FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
+        id,
+        user_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match membership {
+        Ok(Some(_)) => (),
+        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Err(e) => {
+            error!("Failed to verify membership: {}", e);
+            return ApiResponse::failed("Internal server error");
+        }
+    }
+
     info!(
         conversation_id = %id,
+        user_id = %user_id,
         version = %payload.version,
         "Restoring conversation soul"
     );
@@ -344,9 +502,33 @@ pub async fn handle_restore_conversation_soul(
 
 pub async fn handle_delete_conversation(
     State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResponse<Value> {
-    info!(conversation_id = %id, "Deleting conversation");
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid user ID in token"),
+    };
+
+    // Verify membership
+    let membership = sqlx::query!(
+        "SELECT 1 as one FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
+        id,
+        user_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match membership {
+        Ok(Some(_)) => (),
+        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Err(e) => {
+            error!("Failed to verify membership: {}", e);
+            return ApiResponse::failed("Internal server error");
+        }
+    }
+
+    info!(conversation_id = %id, user_id = %user_id, "Deleting conversation");
 
     // First delete messages
     let _ = sqlx::query!("DELETE FROM messages WHERE conversation_id = $1", id)

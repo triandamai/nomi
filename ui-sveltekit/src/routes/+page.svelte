@@ -1,10 +1,12 @@
 <script lang="ts">
-    import {Send, Bot, User, Sparkles} from 'lucide-svelte';
+    import {Send, Bot, User, Sparkles, MessageSquarePlus, Share2} from 'lucide-svelte';
     import {chatStore} from '$lib/stores/chat.svelte';
+    import {conversationStore} from '$lib/stores/conversation.svelte';
     import ToolResult from '$lib/components/ToolResult.svelte';
     import ChatBubble from '$lib/components/ChatBubble.svelte';
     import {onMount, tick} from 'svelte';
     import {eventBus} from "$lib/utils";
+    import {goto} from '$app/navigation';
 
     let inputMessage = $state('');
     let scrollContainer = $state<HTMLElement | null>(null);
@@ -39,7 +41,7 @@
     });
 
     async function handleSubmit() {
-        if (!inputMessage.trim() || chatStore.loading) return;
+        if (!inputMessage.trim() || chatStore.loading || !conversationStore.activeConversationId) return;
         const msg = inputMessage;
         inputMessage = '';
         
@@ -55,6 +57,13 @@
             handleSubmit();
         }
     }
+
+    function startFirstConversation() {
+        conversationStore.addConversation("My First Soul").then(conv => {
+            if (conv) conversationStore.setActive(conv.id);
+        });
+    }
+
     onMount(()=>{
         eventBus.emit("load",{})
     })
@@ -66,108 +75,146 @@
     onscroll={handleScroll}
     class="flex-1 overflow-y-auto px-6 py-8 space-y-10 scroll-smooth"
 >
-    <div class="max-w-4xl mx-auto space-y-10">
-        {#if chatStore.hasMore}
-            <div class="flex justify-center">
+    {#if conversationStore.conversations.length === 0}
+        <div class="h-full flex flex-col items-center justify-center max-w-lg mx-auto text-center space-y-8 animate-in fade-in zoom-in duration-700">
+            <div class="relative">
+                <div class="absolute -inset-4 bg-emerald-500/10 blur-3xl rounded-full"></div>
+                <div class="w-20 h-20 bg-zinc-900 border border-zinc-800 rounded-[28px] flex items-center justify-center relative">
+                    <Sparkles class="w-10 h-10 text-emerald-500" />
+                </div>
+            </div>
+            
+            <div class="space-y-3">
+                <h2 class="text-2xl font-black text-zinc-100 tracking-tight">Your Agentic Workspace</h2>
+                <p class="text-sm text-zinc-400 leading-relaxed">
+                    Arta is ready to help you orchestrate your AI agents. Start a conversation to begin your journey.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 <button 
-                    onclick={() => chatStore.fetchMessages(true)}
-                    disabled={chatStore.loading}
-                    class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50"
+                    onclick={startFirstConversation}
+                    class="group p-6 bg-zinc-900/50 hover:bg-emerald-900/20 border border-zinc-800 hover:border-emerald-500/50 rounded-2xl text-left transition-all"
                 >
-                    {chatStore.loading ? 'Loading...' : 'Load Previous Messages'}
+                    <MessageSquarePlus class="w-6 h-6 text-zinc-500 group-hover:text-emerald-400 mb-4 transition-colors" />
+                    <h3 class="text-sm font-bold text-zinc-200 group-hover:text-emerald-300 transition-colors">Start your first Soul</h3>
+                    <p class="text-[11px] text-zinc-500 group-hover:text-emerald-400/70 mt-1 transition-colors leading-snug">Create a new sandbox for your AI interactions.</p>
+                </button>
+
+                <button 
+                    onclick={() => goto('/rag')}
+                    class="group p-6 bg-zinc-900/50 hover:bg-blue-900/20 border border-zinc-800 hover:border-blue-500/50 rounded-2xl text-left transition-all"
+                >
+                    <Share2 class="w-6 h-6 text-zinc-500 group-hover:text-blue-400 mb-4 transition-colors" />
+                    <h3 class="text-sm font-bold text-zinc-200 group-hover:text-blue-300 transition-colors">Knowledge Base</h3>
+                    <p class="text-[11px] text-zinc-500 group-hover:text-blue-400/70 mt-1 transition-colors leading-snug">Upload documents to make Arta even smarter.</p>
                 </button>
             </div>
-        {/if}
-
-        {#each chatStore.messages as msg (msg.id)}
-            <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div class="flex-shrink-0 pt-1">
-                    {#if msg.role === 'user'}
-                        <div class="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center">
-                            <User class="w-4 h-4 text-zinc-950"/>
-                        </div>
-                    {:else}
-                        <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-                            <Bot class="w-4 h-4 text-zinc-400"/>
-                        </div>
-                    {/if}
+        </div>
+    {:else}
+        <div class="max-w-4xl mx-auto space-y-10">
+            {#if chatStore.hasMore}
+                <div class="flex justify-center">
+                    <button 
+                        onclick={() => chatStore.fetchMessages(true)}
+                        disabled={chatStore.loading}
+                        class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50"
+                    >
+                        {chatStore.loading ? 'Loading...' : 'Load Previous Messages'}
+                    </button>
                 </div>
+            {/if}
 
-                <div class="flex-1 flex flex-col min-w-0 space-y-4">
-                    <div class="flex items-center gap-2">
-                    <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                        {msg.role === 'user' ? 'Human' : 'Arta AI'}
-                    </span>
-                    </div>
-
-                    {#if msg.toolCalls && msg.toolCalls.length > 0}
-                    <div class="space-y-3">
-                        {#each msg.toolCalls as tc}
-                            <ToolResult args="" tool={tc.tool} result={tc.result} />
-                        {/each}
-                    </div>
-                    {/if}
-
-                    <ChatBubble content={msg.content} thought={msg.thought} />
-                </div>
-            </div>
-        {/each}
-
-        {#if chatStore.currentThought || chatStore.isTyping}
-            <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div class="flex-shrink-0 pt-1">
-                    <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-                        <Bot class="w-4 h-4 text-zinc-400"/>
-                    </div>
-                </div>
-
-                <div class="flex-1 flex flex-col min-w-0 space-y-4">
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">Arta AI</span>
-                        {#if chatStore.isTyping}
-                            <div class="flex gap-1 ml-2">
-                                <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce"></div>
-                                <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-                                <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+            {#each chatStore.messages as msg (msg.id)}
+                <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div class="flex-shrink-0 pt-1">
+                        {#if msg.role === 'user'}
+                            <div class="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center">
+                                <User class="w-4 h-4 text-zinc-950"/>
+                            </div>
+                        {:else}
+                            <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+                                <Bot class="w-4 h-4 text-zinc-400"/>
                             </div>
                         {/if}
                     </div>
 
-                    {#if chatStore.currentThought}
-                        <div class="p-4 rounded-2xl bg-zinc-900/30 border border-zinc-800/50">
-                            <div class="flex items-center gap-2 mb-2">
-                                <Sparkles class="w-3 h-3 text-zinc-500" />
-                                <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Thinking...</span>
-                            </div>
-                            <p class="text-xs text-zinc-400 italic leading-relaxed">
-                                {chatStore.currentThought}
-                            </p>
+                    <div class="flex-1 flex flex-col min-w-0 space-y-4">
+                        <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                            {msg.role === 'user' ? 'Human' : 'Arta AI'}
+                        </span>
                         </div>
-                    {/if}
-                </div>
-            </div>
-        {/if}
 
-        {#if chatStore.loading}
-            <div class="flex gap-6 animate-pulse opacity-50">
-                <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800"></div>
-                <div class="flex-1 space-y-4 pt-1">
-                    <div class="h-2.5 w-24 bg-zinc-800 rounded"></div>
-                    <div class="space-y-2">
-                        <div class="h-2 w-full bg-zinc-800 rounded"></div>
-                        <div class="h-2 w-[90%] bg-zinc-800 rounded"></div>
+                        {#if msg.toolCalls && msg.toolCalls.length > 0}
+                        <div class="space-y-3">
+                            {#each msg.toolCalls as tc}
+                                <ToolResult args="" tool={tc.tool} result={tc.result} />
+                            {/each}
+                        </div>
+                        {/if}
+
+                        <ChatBubble content={msg.content} thought={msg.thought} />
                     </div>
                 </div>
-            </div>
-        {/if}
+            {/each}
 
-        {#if chatStore.error}
-            <div class="p-4 rounded-xl bg-red-500/5 border border-red-500/10 flex items-center gap-3">
-                <div class="w-2 h-2 rounded-full bg-red-500"></div>
-                <p class="text-xs font-medium text-red-400">{chatStore.error}</p>
-            </div>
-        {/if}
-    </div>
+            {#if chatStore.currentThought || chatStore.isTyping}
+                <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div class="flex-shrink-0 pt-1">
+                        <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+                            <Bot class="w-4 h-4 text-zinc-400"/>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 flex flex-col min-w-0 space-y-4">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">Arta AI</span>
+                            {#if chatStore.isTyping}
+                                <div class="flex gap-1 ml-2">
+                                    <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce"></div>
+                                    <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                                    <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                                </div>
+                            {/if}
+                        </div>
+
+                        {#if chatStore.currentThought}
+                            <div class="p-4 rounded-2xl bg-zinc-900/30 border border-zinc-800/50">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <Sparkles class="w-3 h-3 text-zinc-500" />
+                                    <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Thinking...</span>
+                                </div>
+                                <p class="text-xs text-zinc-400 italic leading-relaxed">
+                                    {chatStore.currentThought}
+                                </p>
+                            </div>
+                        {/if}
+                    </div>
+                </div>
+            {/if}
+
+            {#if chatStore.loading}
+                <div class="flex gap-6 animate-pulse opacity-50">
+                    <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800"></div>
+                    <div class="flex-1 space-y-4 pt-1">
+                        <div class="h-2.5 w-24 bg-zinc-800 rounded"></div>
+                        <div class="space-y-2">
+                            <div class="h-2 w-full bg-zinc-800 rounded"></div>
+                            <div class="h-2 w-[90%] bg-zinc-800 rounded"></div>
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
+            {#if chatStore.error}
+                <div class="p-4 rounded-xl bg-red-500/5 border border-red-500/10 flex items-center gap-3">
+                    <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                    <p class="text-xs font-medium text-red-400">{chatStore.error}</p>
+                </div>
+            {/if}
+        </div>
+    {/if}
 </main>
 
 <!-- Input -->

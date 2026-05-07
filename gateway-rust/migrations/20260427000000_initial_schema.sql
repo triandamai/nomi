@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS soul_history (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     soul_content TEXT NOT NULL,
-    bootstrap TEXT NOT NULL,
+    bootstrap TEXT,
     change_reason TEXT NOT NULL,
     version_number INTEGER NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
