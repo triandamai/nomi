@@ -97,15 +97,17 @@ pub async fn save_to_knowledge_base(
     content: &str,
     embedding: Vec<f32>,
     metadata: Option<serde_json::Value>,
+    conversation_id: Option<uuid::Uuid>,
 ) -> Result<PgQueryResult, Error> {
     sqlx::query!(
         r#"
-        INSERT INTO knowledge_base (content, embedding, metadata)
-        VALUES ($1, $2, $3)
+        INSERT INTO knowledge_base (content, embedding, metadata, conversation_id)
+        VALUES ($1, $2, $3, $4)
         "#,
         content,
         embedding as Vec<f32>,
-        metadata.unwrap_or(json!({}))
+        metadata.unwrap_or(json!({})),
+        conversation_id
     )
     .execute(pool)
     .await

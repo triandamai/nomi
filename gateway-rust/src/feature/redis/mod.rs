@@ -461,7 +461,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             .unwrap_or_default();
 
         let memories_text = if !embedding.is_empty() {
-            crate::utils::rag::hybrid_retrieve(&state_clone.pool, &user_text, embedding)
+            crate::utils::rag::hybrid_retrieve(&state_clone.pool, &user_text, embedding, Some(conversation_id))
                 .await
                 .unwrap_or_default()
                 .join("\n---\n")

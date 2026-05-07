@@ -109,10 +109,9 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.read_web_page(params.url, user_message).await,
-            ArtaTool::ParseStringToJson {
-                params,
-                user_message,
-            } => ToolResult {
+            ArtaTool::ParseStringToJson{
+                ..
+            }  => ToolResult {
                 error: "".to_string(),
                 success: false,
                 content: "".to_string(),
@@ -764,6 +763,7 @@ Content:
                 &summary_text,
                 embedding,
                 Some(metadata),
+                self.conversation_id,
             )
             .await;
 

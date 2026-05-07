@@ -19,6 +19,7 @@ pub async fn hybrid_retrieve(
     pool: &Pool<Postgres>,
     query_text: &str,
     embedding: Vec<f32>,
+    conversation_id: Option<uuid::Uuid>,
 ) -> anyhow::Result<Vec<String>> {
     // Task 1: Hybrid Vector + Keyword Search
     // Fetch candidates using both vector similarity and keyword search
@@ -29,6 +30,7 @@ pub async fn hybrid_retrieve(
             SELECT id, content, metadata, created_at, 
                    (1.0 - (embedding <=> $1::vector))::float8 as score
             FROM knowledge_base
+            WHERE ($3::uuid IS NULL OR conversation_id IS NULL OR conversation_id = $3)
             ORDER BY embedding <=> $1::vector
             LIMIT 15
         ),
@@ -37,6 +39,7 @@ pub async fn hybrid_retrieve(
                    ts_rank_cd(to_tsvector('english', content), plainto_tsquery('english', $2))::float8 as score
             FROM knowledge_base
             WHERE to_tsvector('english', content) @@ plainto_tsquery('english', $2)
+              AND ($3::uuid IS NULL OR conversation_id IS NULL OR conversation_id = $3)
             LIMIT 15
         )
         SELECT 
@@ -50,7 +53,8 @@ pub async fn hybrid_retrieve(
         FULL OUTER JOIN keyword_candidates k ON v.id = k.id
         "#,
         embedding as Vec<f32>,
-        query_text
+        query_text,
+        conversation_id
     )
     .fetch_all(pool)
     .await?;

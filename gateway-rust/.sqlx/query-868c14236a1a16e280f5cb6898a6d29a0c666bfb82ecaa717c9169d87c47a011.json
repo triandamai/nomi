@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO knowledge_base (content, embedding, metadata)\n        VALUES ($1, $2, $3)\n        ",
+  "query": "\n        INSERT INTO knowledge_base (content, embedding, metadata, conversation_id)\n        VALUES ($1, $2, $3, $4)\n        ",
   "describe": {
     "columns": [],
     "parameters": {
@@ -12,10 +12,11 @@
             "kind": "Simple"
           }
         },
-        "Jsonb"
+        "Jsonb",
+        "Uuid"
       ]
     },
     "nullable": []
   },
-  "hash": "4bb3ded0f4ecaee7fa26e9fab109a534fb45bf697b32b9f818ef73353bed2170"
+  "hash": "868c14236a1a16e280f5cb6898a6d29a0c666bfb82ecaa717c9169d87c47a011"
 }

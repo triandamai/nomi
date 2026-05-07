@@ -147,7 +147,7 @@ pub async fn process_incoming_message(
         .await
         .unwrap_or_default();
     let memories_text = if !embedding.is_empty() {
-        crate::utils::rag::hybrid_retrieve(&state.pool, &text_content, embedding)
+        crate::utils::rag::hybrid_retrieve(&state.pool, &text_content, embedding, Some(conversation_id))
             .await
             .unwrap_or_default()
             .join("\n---\n")
@@ -417,7 +417,7 @@ Conversation:
                 }
             });
 
-            rag::save_to_knowledge_base(&pool, &summary_text, embedding, Some(metadata)).await?;
+            rag::save_to_knowledge_base(&pool, &summary_text, embedding, Some(metadata), Some(conversation_id.clone())).await?;
             info!(conversation_id = %conversation_id, "Memory consolidation complete");
         }
     }

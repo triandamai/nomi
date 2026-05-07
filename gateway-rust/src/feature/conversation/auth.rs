@@ -157,11 +157,6 @@ pub async fn handle_verify_otp(
         }
     };
 
-    let cookie = format!(
-        "auth_token={}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age={}",
-        token,
-        7 * 24 * 60 * 60 // 7 days
-    );
 
     info!("[Auth] User verified: {}", user_id);
     (
