@@ -10,9 +10,7 @@ use crate::common::tools::tools_model::{
 use crate::common::tools::{ArtaTool, ToolDispatcher};
 use crate::feature::conversation::chat_model::ChatStreamChunk;
 use chrono::Utc;
-use gemini_rust::{
-    Content, FunctionCall, FunctionCallingMode, Gemini, GenerationResponse, Message, Role,
-};
+use gemini_rust::{Content, FunctionCall, FunctionCallingMode, Gemini, GenerationResponse, Message, Role, UsageMetadata};
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -82,12 +80,30 @@ pub async fn send_prompt(
         Ok(s) => {
             let text = s.text();
             let parse = parse_llm_output(&text);
-            // info!("Gemini stream success: {:?}", parse.response);
+            
+            let usage = s.usage_metadata.clone().unwrap_or(
+                UsageMetadata{
+                    prompt_token_count: None,
+                    candidates_token_count: None,
+                    total_token_count: None,
+                    thoughts_token_count: None,
+                    prompt_tokens_details: None,
+                    cached_content_token_count: None,
+                    cache_tokens_details: None,
+                }
+            );
+            let prompt_tokens = usage.prompt_token_count.unwrap_or(0);
+            let answer_tokens = usage.candidates_token_count.unwrap_or(0);
+            let total_tokens = usage.total_token_count.unwrap_or(0);
+
             let payload = ChatStreamChunk {
                 content: parse.response,
                 thought: parse.thought,
                 code_block: parse.code,
                 tool_call: None,
+                prompt_tokens,
+                answer_tokens,
+                total_tokens,
             };
             Ok((s, payload))
         }

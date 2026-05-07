@@ -388,6 +388,8 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             error!("Failed to publish OTP to nomi:outbound: {}", e);
             return Ok(());
         }
+
+        return Ok(());
     }
 
     // ================================== NOT REGISTERED STOP HERE ============================//
@@ -410,6 +412,9 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         &msg.text,
         None,
         Some(user_id),
+        0,
+        0,
+        0,
     )
     .await?;
 
@@ -536,8 +541,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 Ok((response, chunk)) => {
                     // Emit thought
                     if !chunk.thought.is_empty() {
-                        let _ = state_clone.send_sse_to_user(user_id.to_string().as_str(), "thought", serde_json::json ! ({ "thought": chunk.thought, "conversation_id": conversation_id }))
-.await;
+                        let _ = state_clone.send_sse_to_user(user_id.to_string().as_str(), "thought", serde_json::json ! ({ "thought": chunk.thought, "conversation_id": conversation_id })).await;
                     }
 
                     let tool_calls = response.function_calls();
@@ -581,6 +585,9 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 &chunk.content,
                 Some(&chunk.thought),
                 None,
+                chunk.prompt_tokens,
+                chunk.answer_tokens,
+                chunk.total_tokens,
             )
             .await
             .unwrap();
@@ -594,15 +601,8 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .await;
 
             let _ = state_clone.send_presence_to_user(
-user_id.to_string().as_str(),
-serde_json::json! ({"conversation_id": conversation_id, "is_typing": false, "user_id": "nomi"}),
-& crate::feature::PresenceMessage {
-sender_id: sender_id.clone(),
-chat_id: chat_id.clone(),
-channel: channel.clone(),
-status: "idle".to_string(),
-},
-).await;
+                user_id.to_string().as_str(),json! ({"conversation_id": conversation_id, "is_typing": false, "user_id": "nomi"}),
+& crate::feature::PresenceMessage { sender_id: sender_id.clone(), chat_id: chat_id.clone(),channel: channel.clone(),status: "idle".to_string() }).await;
 
             let _ = state_clone
                 .publish_outbond(&crate::feature::OutboundMessage {

@@ -36,7 +36,7 @@ services:
       retries: 5
 
   gateway:
-    image: ${DOCKERHUB_USERNAME}/nomi-gateway:v0.0.6
+    image: ${DOCKERHUB_USERNAME}/nomi-gateway:v0.0.7
     container_name: open-agent-gateway
     restart: unless-stopped
     environment:
@@ -78,7 +78,7 @@ services:
           memory: 500M
 
   web:
-    image: ${DOCKERHUB_USERNAME}/nomi-ui:v0.0.6
+    image: ${DOCKERHUB_USERNAME}/nomi-ui:v0.0.7
     container_name: open-agent-web
     restart: unless-stopped
     environment:

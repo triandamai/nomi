@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT r.id, r.user_id, r.conversation_id, r.content, r.due_at, \n               r.frequency, r.interval_count, r.max_repeats, r.current_runs,\n               c.channel_type as \"channel_type?\", c.external_chat_id as \"external_chat_id?\", c.external_id as \"external_id?\"\n        FROM reminders r\n        LEFT JOIN channels c ON (r.conversation_id = c.conversation_id AND r.user_id = c.user_id)\n        WHERE r.status = 'pending' AND r.due_at <= NOW()\n        LIMIT 20\n        ",
+  "query": "\n        SELECT r.id, r.user_id, r.conversation_id, r.content, r.due_at, \n               r.frequency, r.interval_count, r.max_repeats, r.current_runs\n        FROM reminders r\n        WHERE r.status = 'pending' AND r.due_at <= NOW()\n        LIMIT 20\n        ",
   "describe": {
     "columns": [
       {
@@ -47,21 +47,6 @@
         "ordinal": 8,
         "name": "current_runs",
         "type_info": "Int4"
-      },
-      {
-        "ordinal": 9,
-        "name": "channel_type?",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 10,
-        "name": "external_chat_id?",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 11,
-        "name": "external_id?",
-        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -76,11 +61,8 @@
       true,
       true,
       true,
-      true,
-      false,
-      false,
-      false
+      true
     ]
   },
-  "hash": "2db00b2470f41a7ed13cdcfeb01f8c40d5feae78e87d68e706fe70735a8503df"
+  "hash": "29387e82021a9fc7671d9b9c51a043ce25f6951e5f3d1653da799c7682586f8b"
 }

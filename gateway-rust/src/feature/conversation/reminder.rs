@@ -1,6 +1,6 @@
+use crate::AppState;
 use crate::common::repository::message_repo::save_message;
 use crate::feature::OutboundMessage;
-use crate::AppState;
 use chrono::{DateTime, Duration, Months, Utc};
 use serde_json::json;
 use tracing::{error, info};
@@ -23,10 +23,8 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
     let due_reminders = sqlx::query!(
         r#"
         SELECT r.id, r.user_id, r.conversation_id, r.content, r.due_at, 
-               r.frequency, r.interval_count, r.max_repeats, r.current_runs,
-               c.channel_type as "channel_type?", c.external_chat_id as "external_chat_id?", c.external_id as "external_id?"
+               r.frequency, r.interval_count, r.max_repeats, r.current_runs
         FROM reminders r
-        LEFT JOIN channels c ON (r.conversation_id = c.conversation_id AND r.user_id = c.user_id)
         WHERE r.status = 'pending' AND r.due_at <= NOW()
         LIMIT 20
         "#
@@ -36,81 +34,52 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
 
     for reminder in due_reminders {
         info!("Processing due reminder: {}", reminder.id);
-
         // 2. Determine target channel
-        let (channel, chat_id, sender_id) = if let (
-            Some(ch),
-            Some(cid),
-            Some(sid),
-        ) = (
-            reminder.channel_type,
-            reminder.external_chat_id,
-            reminder.external_id
-        ) {
-            (ch, cid, sid)
-        } else {
-            // Fallback: try to find the most recent channel for this user
-            let fallback = sqlx::query!(
+
+        // Fallback: try to find the most recent channel for this user
+        let channels = sqlx::query!(
                 "SELECT channel_type, external_chat_id, external_id,conversation_id FROM channels WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
                 reminder.user_id
-            ).fetch_optional(&state.pool).await?;
+            ).fetch_all(&state.pool).await?;
 
-            if let Some(fb) = fallback {
-                (
-                    fb.channel_type,
-                    fb.external_chat_id,
-                    fb.external_id
-                )
-            } else {
-                error!(
-                    "No channel found for user {} to send reminder {}",
-                    reminder.user_id, reminder.id
-                );
-                sqlx::query!(
-                    "UPDATE reminders SET status = 'error', updated_at = NOW() WHERE id = $1",
-                    reminder.id
-                )
-                .execute(&state.pool)
-                .await?;
-                continue;
-            }
-        };
+        if channels.len() < 1 {
+            error!(
+                "No channel found for user {} to send reminder {}",
+                reminder.user_id, reminder.id
+            );
+            sqlx::query!(
+                "UPDATE reminders SET status = 'error', updated_at = NOW() WHERE id = $1",
+                reminder.id
+            )
+            .execute(&state.pool)
+            .await?;
+            continue;
+        }
 
-        // 3. Construct and publish outbound message
-        let outbound_text = format!(
-            "⏰ *REMINDER:*\n{}\n\n_Reply 'done' to complete or 'snooze' to delay._\n(Ref: {})",
-            reminder.content, reminder.id
-        );
-
-        let outbound = OutboundMessage {
-            is_group: chat_id.contains("-") || chat_id.contains("@g.us"),
-            sender_id: sender_id.clone(),
-            chat_id,
-            text: outbound_text.clone(),
-            channel,
-            metadata: Some(serde_json::json!({
-                "reminder_id": reminder.id,
-                "type": "reminder"
-            })),
-        };
-
-        info!("Sending reminder: {:?}", outbound);
         match reminder.conversation_id {
             Some(conversation_id) => {
                 info!("saving reminder message");
+                let outbound_text = format!(
+                    "⏰ *REMINDER:*\n{}\n\n_Reply 'done' to complete or 'snooze' to delay._\n(Ref: {})",
+                    reminder.content, reminder.id
+                );
+
                 if let Ok(m) = save_message(
                     &state.pool,
                     conversation_id,
                     "assistant",
-                    outbound_text.as_str(),
+                    outbound_text.clone().as_str(),
                     None,
                     Some(reminder.user_id),
+                    0,
+                    0,
+                    0,
                 )
                 .await
                 {
                     let _ = state
-                        .send_to_user(
-                            sender_id.to_string().as_str(),
+                        .send_sse_to_user(
+                            reminder.user_id.to_string().as_str(),
                             "message",
                             json!({
                                 "id": m.id,
@@ -121,15 +90,36 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
                                 "user_id": m.user_id,
                                 "created_at": m.created_at,
                             }),
-                            &outbound,
                         )
                         .await;
+                }
+
+                for channel in channels {
+                    let state = state.clone();
+                    let content = outbound_text.clone();
+                    tokio::spawn(async move {
+                        // 3. Construct and publish outbound message
+                        let outbound = OutboundMessage {
+                            is_group: channel.external_chat_id.contains("-")
+                                || channel.external_chat_id.contains("@g.us"),
+                            sender_id: channel.external_id.clone(),
+                            chat_id: channel.external_chat_id.clone(),
+                            text: content,
+                            channel: channel.channel_type.clone(),
+                            metadata: Some(json!({
+                                "reminder_id": reminder.id,
+                                "type": "reminder"
+                            })),
+                        };
+                        let _ = state.publish_outbond(&outbound).await;
+                        info!("Sending reminder: {:?}", outbound);
+                    });
                 }
             }
             None => {
                 info!(
                     "No conversation found for user {} to send reminder",
-                    sender_id
+                    reminder.user_id
                 );
             }
         }
@@ -150,8 +140,8 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
                 next_run,
                 reminder.id
             )
-            .execute(&state.pool)
-            .await?;
+                .execute(&state.pool)
+                .await?;
         } else {
             let next_due = calculate_next_due(reminder.due_at, freq);
             sqlx::query!(
@@ -160,8 +150,8 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
                 next_run,
                 reminder.id
             )
-            .execute(&state.pool)
-            .await?;
+                .execute(&state.pool)
+                .await?;
         }
     }
 

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO messages (conversation_id, role, content, thought, user_id) \n         VALUES ($1, $2, $3, $4, $5) \n         RETURNING id, created_at",
+  "query": "INSERT INTO messages (conversation_id, role, content, thought, user_id,prompt_tokens,answer_tokens,total_tokens)\n         VALUES ($1, $2, $3, $4, $5,$6,$7,$8)\n         RETURNING id, created_at",
   "describe": {
     "columns": [
       {
@@ -20,7 +20,10 @@
         "Text",
         "Text",
         "Text",
-        "Uuid"
+        "Uuid",
+        "Int4",
+        "Int4",
+        "Int4"
       ]
     },
     "nullable": [
@@ -28,5 +31,5 @@
       true
     ]
   },
-  "hash": "3230b09958ea116e877ff465b7b4e8dbb73bda5cf6537724991bea4826796422"
+  "hash": "92cb80218bd7161763ff860592df9590b4dcd8ba5ee8c3704f2d9ed43e85c372"
 }

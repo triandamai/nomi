@@ -97,6 +97,9 @@ pub struct ChatStreamChunk {
     pub thought: String,    // Content from <thinking>
     pub code_block: String, // Content from ```
     pub tool_call: Option<Value>,
+    pub prompt_tokens: i32,
+    pub answer_tokens: i32,
+    pub total_tokens: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
