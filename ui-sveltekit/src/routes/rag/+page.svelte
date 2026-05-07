@@ -1,8 +1,9 @@
 <script lang="ts">
     import {onMount} from 'svelte';
-    import {AlertCircle, Camera, Info, Loader2, RefreshCw, Search, X} from 'lucide-svelte';
+    import {AlertCircle, Camera, Info, Loader2, Network, RefreshCw, Search, X} from 'lucide-svelte';
     import {type Node, ragStore} from '$lib/stores/rag.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
+    import {popupStore} from '$lib/stores/popup.svelte';
     import * as THREE from 'three';
     import {eventBus} from "$lib/utils";
 
@@ -117,8 +118,7 @@
                             })
                             .linkOpacity(0.3)
                             .onNodeClick((node: any) => {
-                                selectedNode = node;
-                                highlightedNodeId = node.id;
+                                openNodeInfo(node);
                                 handleInteraction();
 
                                 const distance = 120;
@@ -265,7 +265,7 @@
                 fn,
                 2000
             );
-            selectedNode = fullNode;
+            openNodeInfo(fullNode);
         }
         showDropdown = false;
         searchQuery = node.label;
@@ -303,16 +303,82 @@
         }
     }
 
+    function openNodeInfo(node: Node) {
+        selectedNode = node;
+        highlightedNodeId = node.id;
+        popupStore.open({
+            title: 'Entity Details',
+            width: 'w-full max-w-lg',
+            contentSnippet: nodeInfoSnippet
+        });
+    }
+
     onMount(()=>{
         eventBus.emit("load",{})
     })
 </script>
 
+{#snippet nodeInfoSnippet()}
+    {#if selectedNode}
+        <div class="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                        {selectedNode.node_type}
+                    </span>
+                    {#if selectedNode.conversation_id && selectedNode.conversation_id !== 'global'}
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            Current Soul
+                        </span>
+                    {/if}
+                </div>
+                <h2 class="text-3xl font-black text-zinc-100 tracking-tight">{selectedNode.label}</h2>
+            </div>
+
+            <div class="grid gap-6">
+                <div class="bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-6 space-y-4">
+                    <div class="flex items-center gap-2 text-zinc-400">
+                        <span class="text-xs font-bold uppercase tracking-wider">Entity Details</span>
+                    </div>
+                    
+                    <div class="space-y-4 overflow-x-auto">
+                        <div class="prose prose-invert prose-sm max-w-none">
+                            <p class="text-zinc-400 leading-relaxed">
+                                This entity was extracted from your interactions. It represents a key concept, person, or object within the knowledge graph of this workspace.
+                            </p>
+                            
+                            <div class="mt-4 grid grid-cols-2 gap-4">
+                                <div class="p-4 rounded-xl bg-zinc-950 border border-zinc-900">
+                                    <p class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Node ID</p>
+                                    <p class="text-xs font-mono text-zinc-300 truncate">{selectedNode.id}</p>
+                                </div>
+                                <div class="p-4 rounded-xl bg-zinc-950 border border-zinc-900">
+                                    <p class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Type</p>
+                                    <p class="text-xs font-bold text-emerald-500 capitalize">{selectedNode.node_type}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="flex items-center gap-2 text-zinc-500 px-2">
+                        <span class="text-[10px] font-bold uppercase tracking-widest">Related Connections</span>
+                    </div>
+                    <p class="text-sm text-zinc-500 px-2 italic">
+                        Connections are being calculated based on semantic proximity and co-occurrence in your chat history.
+                    </p>
+                </div>
+            </div>
+        </div>
+    {/if}
+{/snippet}
+
 <main class="flex-1 flex flex-col relative overflow-hidden bg-slate-950">
-    <div bind:this={graphContainer} class="flex-1 w-full h-full cursor-grab active:cursor-grabbing"></div>
+    <div bind:this={graphContainer} class="w-full h-full cursor-grab active:cursor-grabbing"></div>
 
     <!-- Floating Search Bar -->
-    <div class="absolute top-4 left-4 w-80 z-30">
+    <div class="absolute top-4 left-4 w-[calc(100%-2rem)] sm:w-80 z-30">
         <div class="relative group">
             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 {#if ragStore.isSearching}
@@ -326,7 +392,7 @@
                     bind:value={searchQuery}
                     oninput={handleSearch}
                     onfocus={() => searchQuery.length > 1 && (showDropdown = true)}
-                    placeholder="Search entities or topics..."
+                    placeholder="Search entities..."
                     class="block w-full pl-10 pr-10 py-2.5 bg-zinc-900/90 border border-zinc-800 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 text-zinc-100 placeholder-zinc-500 rounded-xl backdrop-blur-md shadow-2xl transition-all outline-none text-sm"
             />
             {#if searchQuery}
@@ -364,35 +430,9 @@
         {/if}
     </div>
 
-    {#if ragStore.loading}
-        <div class="absolute inset-0 flex items-center justify-center bg-slate-950/50 backdrop-blur-sm z-10">
-            <div class="flex flex-col items-center gap-4">
-                <div class="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                <p class="text-slate-400 font-medium">Extracting Knowledge Graph...</p>
-            </div>
-        </div>
-    {/if}
-
-    {#if ragStore.error}
-        <div class="absolute inset-0 flex items-center justify-center bg-slate-950/50 backdrop-blur-sm z-10">
-            <div class="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl max-w-sm text-center space-y-4">
-                <AlertCircle class="w-12 h-12 text-red-500 mx-auto"/>
-                <h2 class="text-zinc-100 font-bold">Failed to Load Graph</h2>
-                <p class="text-zinc-500 text-sm">{ragStore.error}</p>
-                <button
-                        onclick={() => ragStore.fetchGraph()}
-                        class="w-full py-2 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-xl transition-colors flex items-center justify-center gap-2"
-                >
-                    <RefreshCw class="w-4 h-4"/>
-                    Retry
-                </button>
-            </div>
-        </div>
-    {/if}
-
-    <!-- Header/Controls -->
-    <div class="absolute top-4 right-4 flex items-center gap-4 z-10">
-        <div class="bg-zinc-900/80 border border-zinc-800 backdrop-blur-sm rounded-xl p-1.5 flex items-center gap-1">
+    <!-- Controls -->
+    <div class="absolute top-4 right-4 flex items-center gap-2 z-10">
+        <div class="bg-zinc-900/80 border border-zinc-800 backdrop-blur-sm rounded-xl p-1 flex items-center">
             <button
                     onclick={resetCamera}
                     class="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-100 transition-all"
@@ -411,58 +451,42 @@
         </div>
     </div>
 
-    <!-- Side Drawer for Node Info -->
-    {#if selectedNode}
-        <div class="absolute right-0 top-0 bottom-0 w-80 bg-zinc-900/90 border-l border-zinc-800 backdrop-blur-md p-6 shadow-2xl transition-transform transform translate-x-0 z-20">
-            <div class="flex justify-between items-start mb-6">
-                <div class="flex items-center gap-2">
-                    <Info class="w-5 h-5 text-emerald-500"/>
-                    <h2 class="text-lg font-bold text-zinc-100">Entity Details</h2>
-                </div>
-                <button onclick={() => selectedNode = null} class="p-1 hover:bg-zinc-800 rounded-lg transition-colors">
-                    <X class="w-5 h-5 text-zinc-400"/>
-                </button>
+    <!-- Legend (Hidden on mobile) -->
+    <div class="absolute left-6 bottom-6 p-4 bg-zinc-900/80 border border-zinc-800 backdrop-blur-sm rounded-xl space-y-2 z-10 pointer-events-none hidden lg:block">
+        <h3 class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">Recent Entities</h3>
+        {#each ragStore.graphData.nodes.filter((v,idx,)=>idx < 6) as row}
+            <div class="flex items-center gap-3">
+                <div class="w-2.5 h-2.5 rounded-full" style="background-color: {row.color}"></div>
+                <span class="text-[11px] text-zinc-300 truncate max-w-[120px]">{row.label}</span>
             </div>
+        {/each}
+    </div>
 
-            <div class="space-y-6">
-                <div>
-                    <label class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Label</label>
-                    <p class="text-xl font-semibold text-zinc-100">{selectedNode.label}</p>
-                </div>
-
-                <div>
-                    <label class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Type</label>
-                    <div class="mt-1">
-						<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-							{selectedNode.node_type}
-						</span>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Node ID</label>
-                    <p class="text-sm font-mono text-zinc-400 mt-1">{selectedNode.id}</p>
-                </div>
-
-                <div class="pt-6 border-t border-zinc-800">
-                    <p class="text-xs text-zinc-500 italic">
-                        Entities are automatically extracted from your conversations during background summarization.
-                    </p>
-                </div>
+    {#if ragStore.loading}
+        <div class="absolute inset-0 flex items-center justify-center bg-slate-950/50 backdrop-blur-sm z-50">
+            <div class="flex flex-col items-center gap-4">
+                <div class="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                <p class="text-slate-400 font-medium">Extracting Knowledge Graph...</p>
             </div>
         </div>
     {/if}
 
-    <!-- Legend -->
-    <div class="absolute left-6 bottom-6 p-4 bg-zinc-900/80 border border-zinc-800 backdrop-blur-sm rounded-xl space-y-2 z-10 pointer-events-none">
-        <h3 class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">Legend</h3>
-        {#each ragStore.graphData.nodes.filter((v,idx,)=>idx < 6) as row}
-            <div class="flex items-center gap-3">
-                <div class="w-3 h-3 rounded-full bg-[{row.color}]"></div>
-                <span class="text-xs text-zinc-300">{row.label}</span>
+    {#if ragStore.error}
+        <div class="absolute inset-0 flex items-center justify-center bg-slate-950/50 backdrop-blur-sm z-50">
+            <div class="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl max-w-sm text-center space-y-4">
+                <AlertCircle class="w-12 h-12 text-red-500 mx-auto"/>
+                <h2 class="text-zinc-100 font-bold">Failed to Load Graph</h2>
+                <p class="text-zinc-500 text-sm">{ragStore.error}</p>
+                <button
+                        onclick={() => ragStore.fetchGraph()}
+                        class="w-full py-2 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                    <RefreshCw class="w-4 h-4"/>
+                    Retry
+                </button>
             </div>
-        {/each}
-    </div>
+        </div>
+    {/if}
 </main>
 
 <style>

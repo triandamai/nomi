@@ -53,7 +53,7 @@ function createRagStore() {
                 if (result.data) {
                     graphData = result.data;
                 } else {
-                    error = result.message || 'Failed to fetch graph';
+                    error = result.meta?.message || 'Failed to fetch graph';
                 }
             } catch (e: any) {
                 console.error('Failed to fetch graph data:', e);

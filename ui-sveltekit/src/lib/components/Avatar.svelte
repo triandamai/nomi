@@ -1,23 +1,25 @@
 <script lang="ts">
     import { useAvatar } from '$lib/utils';
 
+    interface Props {
+        name: string;
+        active?: boolean;
+        online?: boolean;
+        size?: 'sm' | 'md' | 'lg';
+        onClick?: () => void;
+    }
+
     let { 
         name, 
         active = false, 
         online = false, 
         size = 'md',
         onClick = () => {} 
-    } = $props<{
-        name: string;
-        active?: boolean;
-        online?: boolean;
-        size?: 'sm' | 'md' | 'lg';
-        onClick?: () => void;
-    }>();
+    }: Props = $props();
 
-    const avatarUrl = useAvatar(name);
+    let avatarUrl = $derived(useAvatar(name));
 
-    const sizeClasses = {
+    const sizeClasses: Record<'sm' | 'md' | 'lg', string> = {
         sm: 'w-8 h-8',
         md: 'w-12 h-12',
         lg: 'w-14 h-14'

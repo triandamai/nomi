@@ -8,7 +8,7 @@
         conversationId: string;
     }
 
-    let { conversationId } = $props<Props>();
+    let { conversationId }: Props = $props();
 
     let expandedVersion = $state<number | null>(null);
 

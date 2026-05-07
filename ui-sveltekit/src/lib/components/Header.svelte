@@ -1,5 +1,6 @@
 <script lang="ts">
-    import {Check, ChevronRight, Copy, Cpu, Link, MessageSquare, Network, Settings2, RefreshCw} from 'lucide-svelte';
+    import {Check, ChevronRight, Copy, Cpu, Link, MessageSquare, Network, Settings2, RefreshCw, Menu, X} from 'lucide-svelte';
+    import {slide} from 'svelte/transition';
     import {page} from '$app/state';
     import SoulTimeline from './SoulTimeline.svelte';
     import QRCode from './QRCode.svelte';
@@ -15,6 +16,7 @@
     let currentPlatform = $state('');
     let copied = $state(false);
     let isLoadingQr = $state(false);
+    let isMenuOpen = $state(false);
 
     // Task 2: Liveness Monitor
     let isGatewayOnline = $state(false);
@@ -303,16 +305,16 @@
     <div class="flex items-center gap-6">
         <!-- Breadcrumbs -->
         <div class="flex items-center gap-2 text-zinc-500">
-            <span class="text-xs font-medium hover:text-zinc-300 cursor-pointer transition-colors">Workspace</span>
-            <ChevronRight class="w-3.5 h-3.5 text-zinc-700" />
-            <span class="text-xs font-semibold text-zinc-200">{conversationStore.activeConversation?.name || 'No Session'}</span>
+            <span class="text-xs font-medium hover:text-zinc-300 cursor-pointer transition-colors hidden sm:inline">Workspace</span>
+            <ChevronRight class="w-3.5 h-3.5 text-zinc-700 hidden sm:block" />
+            <span class="text-xs font-semibold text-zinc-200 truncate max-w-[120px] sm:max-w-none">{conversationStore.activeConversation?.name || 'No Session'}</span>
         </div>
 
         <!-- Vertical Divider -->
-        <div class="h-4 w-[1px] bg-zinc-800"></div>
+        <div class="h-4 w-[1px] bg-zinc-800 hidden md:block"></div>
 
         <!-- Tabs -->
-        <nav class="flex items-center gap-1">
+        <nav class="hidden md:flex items-center gap-1">
             {#each tabs as tab}
                 <a
                     href={tab.href}
@@ -325,7 +327,7 @@
         </nav>
     </div>
 
-    <div class="flex items-center gap-3">
+    <div class="hidden md:flex items-center gap-3">
         {#if conversationStore.activeConversationId}
         <!-- App Connection Button -->
         <button 
@@ -373,4 +375,91 @@
             <span class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{modelInfo.model} {modelInfo.version}</span>
         </div>
     </div>
+
+    <!-- Mobile Menu Button -->
+    <button 
+        class="md:hidden p-2 text-zinc-400 hover:text-zinc-200 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+        onclick={() => isMenuOpen = !isMenuOpen}
+        aria-label="Toggle Menu"
+    >
+        {#if isMenuOpen}
+            <X class="w-6 h-6" />
+        {:else}
+            <Menu class="w-6 h-6" />
+        {/if}
+    </button>
 </header>
+
+{#if isMenuOpen}
+    <!-- Mobile Menu Drawer -->
+    <div 
+        transition:slide
+        class="md:hidden fixed inset-x-0 top-14 bottom-0 bg-[#09090b] z-30 border-t border-zinc-800 flex flex-col p-4 space-y-6 overflow-y-auto"
+    >
+        <!-- Mobile Tabs -->
+        <div class="space-y-2">
+            <p class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 px-2">Navigation</p>
+            <div class="grid gap-1">
+                {#each tabs as tab}
+                    <a
+                        href={tab.href}
+                        onclick={() => isMenuOpen = false}
+                        class="flex items-center gap-3 px-4 py-4 rounded-xl text-sm font-medium transition-all {activeTab === tab.name ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-zinc-400 hover:bg-zinc-900'}"
+                    >
+                        <tab.icon class="w-5 h-5" />
+                        {tab.name}
+                    </a>
+                {/each}
+            </div>
+        </div>
+
+        {#if conversationStore.activeConversationId}
+            <div class="space-y-2">
+                <p class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 px-2">Soul Controls</p>
+                <div class="grid gap-2">
+                    <button 
+                        class="flex items-center gap-3 px-4 py-4 rounded-xl transition-all {isPaired ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-zinc-900 border border-zinc-800 text-zinc-400'} min-h-[44px]"
+                        onclick={() => { isMenuOpen = false; openConnectionManager(); }}
+                    >
+                        {#if isPaired}
+                            <Check class="w-5 h-5" />
+                            <span class="text-sm font-bold">Linked App</span>
+                        {:else}
+                            <Link class="w-5 h-5" />
+                            <span class="text-sm font-bold">Link App</span>
+                        {/if}
+                    </button>
+
+                    <button 
+                        class="flex items-center gap-3 px-4 py-4 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 min-h-[44px]"
+                        onclick={() => { isMenuOpen = false; openTimeline(); }}
+                    >
+                        <Settings2 class="w-5 h-5" />
+                        <span class="text-sm font-bold">Soul Settings</span>
+                    </button>
+                </div>
+            </div>
+        {/if}
+
+        <!-- Status & Model info at bottom -->
+        <div class="mt-auto pt-6 border-t border-zinc-900 space-y-4">
+            <div class="flex items-center justify-between p-4 rounded-xl bg-zinc-900/50 border border-zinc-800">
+                <div class="flex items-center gap-2">
+                    <div class="relative flex h-2.5 w-2.5">
+                        {#if isGatewayOnline}
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        {:else}
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                        {/if}
+                    </div>
+                    <span class="text-sm font-bold text-zinc-300">Gateway {isGatewayOnline ? 'Online' : 'Offline'}</span>
+                </div>
+                <div class="flex items-center gap-2 text-zinc-500">
+                    <Cpu class="w-4 h-4"/>
+                    <span class="text-xs font-bold uppercase tracking-tighter">{modelInfo.model} {modelInfo.version}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}

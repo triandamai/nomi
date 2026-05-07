@@ -5,17 +5,16 @@ pub mod rag;
 pub mod routes;
 pub mod utils;
 
-
 use crate::common::sse::sse_emitter::SseBroadcaster;
 use crate::feature::realtime::presence::PresenceManager;
 use axum::Router;
 use dotenvy::dotenv;
 use gemini_rust::{Gemini, Model};
-use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use std::{env::var, sync::Arc};
-use tower_http::cors::{ CorsLayer};
+use tower_http::cors::CorsLayer;
 use tracing::{debug, error, info};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -96,8 +95,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Configure CORS
     let app_url = var("APP_URL").unwrap_or_else(|_| "http://localhost:5173".to_string());
-    
+    let localhost = "http://localhost:5173";
+
     let cors = CorsLayer::new()
+        .allow_origin(localhost.parse::<axum::http::HeaderValue>().unwrap())
         .allow_origin(app_url.parse::<axum::http::HeaderValue>().unwrap())
         .allow_methods([
             axum::http::Method::GET,

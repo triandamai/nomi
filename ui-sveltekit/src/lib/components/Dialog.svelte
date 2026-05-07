@@ -23,7 +23,7 @@
 		footer,
 		maxWidth = 'max-w-2xl',
 		maxHeight = 'max-h-[85vh]'
-	} = $props<Props>();
+	}: Props = $props();
 
 	function handleOutsideClick(e: MouseEvent) {
 		if (clickOutside && e.target === e.currentTarget) {
