@@ -38,9 +38,9 @@ pub async fn link_channel(
     external_chat_id: &str,
     conversation_id: Uuid,
     user_id: Uuid,
+    display_name: Option<String>,
 ) -> anyhow::Result<()> {
-
-    sqlx::query!(
+    let _ = sqlx::query!(
         "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id, user_id) 
          VALUES ($1, $2, $3, $4, $5) 
          ON CONFLICT (channel_type, external_chat_id) 
@@ -52,17 +52,26 @@ pub async fn link_channel(
         user_id
     )
     .execute(pool)
-    .await?;
+    .await;
 
     // Also ensure they are conversation members
-    sqlx::query!(
+    let _ = sqlx::query!(
         "INSERT INTO conversation_members (conversation_id, user_id) 
          VALUES ($1, $2) ON CONFLICT DO NOTHING",
         conversation_id,
         user_id
     )
     .execute(pool)
-    .await?;
+    .await;
 
+    if let Some(display_name) = display_name {
+        let _ = sqlx::query!(
+            "UPDATE users  SET display_name = $1 WHERE id = $2",
+            display_name,
+            user_id
+        )
+            .execute(pool)
+            .await;
+    }
     Ok(())
 }

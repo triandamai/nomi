@@ -259,6 +259,12 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Start Reminder Worker
+    let reminder_state = state.clone();
+    tokio::spawn(async move {
+        crate::feature::conversation::reminder::start_reminder_worker(reminder_state).await;
+    });
+
     // Configure CORS
     let app_url = var("APP_URL").unwrap_or_else(|_| "http://localhost:5173".to_string());
     let localhost = "http://localhost:5173";

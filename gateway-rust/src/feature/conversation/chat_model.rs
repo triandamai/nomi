@@ -98,3 +98,13 @@ pub struct ChatStreamChunk {
     pub code_block: String, // Content from ```
     pub tool_call: Option<Value>,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ReminderResponse {
+    pub id: Uuid,
+    pub content: String,
+    pub due_at: DateTime<Utc>,
+    pub frequency: Option<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}

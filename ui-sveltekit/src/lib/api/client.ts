@@ -198,6 +198,9 @@ export const chatApi = {
     getSoulHistory: (conversationId: string) => {
         return apiFetch<any[]>(`/conversations/${conversationId}/soul-history`);
     },
+    getReminders: () => {
+        return apiFetch<any[]>('/reminders');
+    },
     restoreSoul: (conversationId: string, version: number) => {
         return apiFetch<any>(`/conversations/${conversationId}/restore-soul`, {
             method: 'POST',

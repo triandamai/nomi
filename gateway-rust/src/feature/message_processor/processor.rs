@@ -93,6 +93,7 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
     let dispatcher = ToolDispatcher::new(
         state.pool.clone(),
         std::env::current_dir().unwrap_or_default(),
+        user_id.clone(),
         Some(conversation_id),
         state.gemini.clone(),
         state.gemini_api_key.clone(),

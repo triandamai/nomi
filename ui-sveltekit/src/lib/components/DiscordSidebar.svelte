@@ -1,23 +1,37 @@
 <script lang="ts">
-    import { Plus, MoreVertical, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings } from 'lucide-svelte';
+    import { Plus, MoreVertical, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings, Bell } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import { conversationStore, type Conversation } from '$lib/stores/conversation.svelte';
     import { profileStore } from '$lib/stores/profile.svelte';
     import { popupStore } from '$lib/stores/popup.svelte';
     import { eventBus, useAvatar } from '$lib/utils';
     import { onMount } from 'svelte';
+    import { chatApi } from '$lib/api/client';
 
     let newConvName = $state('');
     let editingConv = $state<Conversation | null>(null);
     let pairingCode = $state('');
     let copied = $state(false);
     let showUserMenu = $state(false);
+    let reminders = $state<any[]>([]);
 
     onMount(() => {
         profileStore.fetchProfile();
     });
 
+    async function fetchReminders() {
+        try {
+            const response = await chatApi.getReminders();
+            if (response.data) {
+                reminders = response.data;
+            }
+        } catch (e) {
+            console.error('Failed to fetch reminders', e);
+        }
+    }
+
     eventBus.subscribe('sse-pairing-success', (data: any) => {
+
         if (data.conversation_id === conversationStore.activeConversationId || (editingConv && data.conversation_id === editingConv.id)) {
             popupStore.closeLast();
         }
@@ -95,6 +109,17 @@
         }
     }
 
+    async function handleShowReminders() {
+        showUserMenu = false;
+        await fetchReminders();
+        popupStore.open({
+            title: 'Your Reminders',
+            width: 'max-w-md',
+            contentSnippet: remindersContent,
+            footerSnippet: remindersFooter
+        });
+    }
+
     function copyToClipboard() {
         navigator.clipboard.writeText(pairingCode);
         copied = true;
@@ -103,6 +128,9 @@
 
     function toggleUserMenu() {
         showUserMenu = !showUserMenu;
+        if (showUserMenu) {
+            fetchReminders();
+        }
     }
 
     async function handleLogout() {
@@ -198,6 +226,60 @@
             class="px-6 py-2 text-xs font-bold uppercase tracking-wider bg-rose-600 hover:bg-rose-500 rounded-lg text-white transition-all"
         >
             Delete
+        </button>
+    </div>
+{/snippet}
+
+{#snippet remindersContent()}
+    <div class="space-y-4">
+        {#if reminders.length === 0}
+            <div class="text-center py-8">
+                <Bell class="w-12 h-12 text-zinc-800 mx-auto mb-3" />
+                <p class="text-sm text-zinc-400">You have no upcoming reminders.</p>
+                <p class="text-xs text-zinc-600 mt-1">Ask the AI to set a reminder for you!</p>
+            </div>
+        {:else}
+            <div class="space-y-3">
+                {#each reminders as reminder}
+                    <div class="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-4 transition-all hover:bg-zinc-900">
+                        <div class="flex justify-between items-start gap-4">
+                            <p class="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{reminder.content}</p>
+                            {#if reminder.frequency && reminder.frequency !== 'once'}
+                                <span class="shrink-0 text-[10px] px-2 py-1 bg-zinc-800/80 text-zinc-400 rounded-md uppercase font-bold tracking-wider">
+                                    {reminder.frequency}
+                                </span>
+                            {/if}
+                        </div>
+                        <div class="flex items-center justify-between mt-3 text-xs text-zinc-500">
+                            <div class="flex items-center gap-1.5 font-mono bg-black/20 px-2 py-1 rounded">
+                                <span class="text-emerald-500/70">
+                                    {new Date(reminder.due_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                </span>
+                                <span>&middot;</span>
+                                <span class="text-emerald-500">
+                                    {new Date(reminder.due_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            </div>
+                            {#if reminder.status === 'completed'}
+                                <span class="text-emerald-600 font-medium">Completed</span>
+                            {:else if reminder.status === 'archived'}
+                                <span class="text-zinc-600 font-medium">Archived</span>
+                            {/if}
+                        </div>
+                    </div>
+                {/each}
+            </div>
+        {/if}
+    </div>
+{/snippet}
+
+{#snippet remindersFooter()}
+    <div class="flex justify-end">
+        <button
+            onclick={() => popupStore.closeLast()}
+            class="px-6 py-2 text-xs font-bold uppercase tracking-wider bg-zinc-800 hover:bg-zinc-700 rounded-lg text-white transition-all"
+        >
+            Close
         </button>
     </div>
 {/snippet}
@@ -337,6 +419,16 @@
                     <button class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors">
                         <Settings size={14} />
                         <span>Preferences</span>
+                    </button>
+
+                    <div class="h-px bg-zinc-900 my-1"></div>
+
+                    <button 
+                        onclick={handleShowReminders}
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+                    >
+                        <Bell size={14} />
+                        <span>Reminders</span>
                     </button>
 
                     <div class="h-px bg-zinc-900 my-1"></div>

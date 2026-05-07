@@ -1,7 +1,7 @@
+use crate::AppState;
 use crate::common::identity;
 use crate::common::repository::{channel_repo, message_repo, pairing_repo};
 use crate::feature::InboundMessage;
-use crate::AppState;
 use rand::RngExt;
 use serde_json::json;
 use tokio_stream::StreamExt;
@@ -63,6 +63,13 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         if parts.len() >= 2 {
             let code = parts[1].to_uppercase();
             if let Some(conv_id) = pairing_repo::validate_pairing_code(&state.pool, &code).await? {
+                let display_name = match msg.metadata.clone() {
+                    None => None,
+                    Some(meta) => meta
+                        .get("display_name")
+                        .map_or_else(|| None, |v| Some(v.to_string())),
+                };
+
                 pairing_repo::complete_pairing(&state.pool, &code, user_id).await?;
                 channel_repo::link_channel(
                     &state.pool,
@@ -71,6 +78,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                     &msg.chat_id,
                     conv_id,
                     user_id,
+                    display_name,
                 )
                 .await?;
 
@@ -161,11 +169,18 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         };
 
         info!("begin create user \n");
-        // Resolve/Create User
+
+        let display_name = match msg.metadata.clone() {
+            None => msg.sender_id.clone(),
+            Some(meta) => meta
+                .get("display_name")
+                .map_or_else(|| msg.sender_id.clone(), |v| v.to_string()),
+        };
+
         let u_id = match sqlx::query!(
             "INSERT INTO users (external_id, display_name) VALUES ($1, $2) ON CONFLICT (external_id) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id",
             msg.sender_id,
-            msg.sender_id
+            display_name
         ).fetch_one(&mut *tx).await {
             Ok(r) => r.id,
             Err(e) => {
@@ -493,6 +508,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         let dispatcher = crate::common::tools::ToolDispatcher::new(
             state_clone.pool.clone(),
             std::env::current_dir().unwrap_or_default(),
+            Some(user_id),
             Some(conversation_id),
             state_clone.gemini.clone(),
             state_clone.gemini_api_key.clone(),

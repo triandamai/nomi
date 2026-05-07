@@ -1,13 +1,7 @@
 pub mod tools_model;
 
 use crate::Arc;
-use crate::common::tools::tools_model::{
-    EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters,
-    ExecuteReadQueryResponse, ParseToJsonParameters, ReadWebPageParameters, ReadWebPageResponse,
-    ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse,
-    ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse,
-    UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse,
-};
+use crate::common::tools::tools_model::{CreateReminderParameters, CreateReminderResponse, EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters, ExecuteReadQueryResponse, ModifyReminderParameters, ModifyReminderResponse, ParseToJsonParameters, ReadWebPageParameters, ReadWebPageResponse, ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse, ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse, UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse};
 use gemini_rust::{FunctionDeclaration, Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -60,12 +54,23 @@ pub enum ArtaTool {
         params: EvolveBootstrapParameters,
         user_message: String,
     },
+    #[serde(rename = "create_reminder")]
+    CreateReminder {
+        params: CreateReminderParameters,
+        user_message: String,
+    },
+    #[serde(rename = "modify_reminder")]
+    ModifyReminder {
+        params: ModifyReminderParameters,
+        user_message: String,
+    },
 }
 
 #[derive(Clone)]
 pub struct ToolDispatcher {
     pool: Pool<Postgres>,
     workspace_root: PathBuf,
+    user_id: Option<Uuid>,
     conversation_id: Option<Uuid>,
     gemini: Arc<gemini_rust::Gemini>,
     gemini_api_key: String,
@@ -76,6 +81,7 @@ impl ToolDispatcher {
     pub fn new(
         pool: Pool<Postgres>,
         workspace_root: PathBuf,
+        user_id: Option<Uuid>,
         conversation_id: Option<Uuid>,
         gemini: Arc<gemini_rust::Gemini>,
         gemini_api_key: String,
@@ -84,6 +90,7 @@ impl ToolDispatcher {
         Self {
             pool,
             workspace_root,
+            user_id,
             conversation_id,
             gemini,
             gemini_api_key,
@@ -129,6 +136,14 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.evolve_bootstrap(params, user_message).await,
+            ArtaTool::CreateReminder {
+                params,
+                user_message,
+            } => self.create_reminder(params, user_message).await,
+            ArtaTool::ModifyReminder {
+                params,
+                user_message,
+            } => self.modify_reminder(params, user_message).await,
         }
     }
 
@@ -185,6 +200,22 @@ impl ToolDispatcher {
         .with_parameters::<EvolveBootstrapParameters>()
         .with_response::<EvolveBootstrapResponse>();
 
+        let create_reminder = FunctionDeclaration::new(
+            "create_reminder",
+            "Schedule a new reminder for the user. Supports natural language descriptions and recurrence (daily, weekly, monthly).  Always convert relative times (e.g., 'in 2 minutes') into an absolute ISO 8601 UTC timestamp based on the current time provided in the system prompt.",
+            None,
+        )
+        .with_parameters::<CreateReminderParameters>()
+        .with_response::<CreateReminderResponse>();
+
+        let modify_reminder = FunctionDeclaration::new(
+            "modify_reminder",
+            "Modify an existing reminder: snooze it to a new time, cancel it, or mark it as done.",
+            None,
+        )
+        .with_parameters::<ModifyReminderParameters>()
+        .with_response::<ModifyReminderResponse>();
+
         Tool::with_functions(vec![
             read_workspace_file,
             execute_read_query,
@@ -193,7 +224,145 @@ impl ToolDispatcher {
             update_nomi_soul,
             update_knowledge_base,
             evolve_bootstrap_content,
+            create_reminder,
+            modify_reminder,
         ])
+    }
+
+    async fn create_reminder(&self, params: CreateReminderParameters, _user_message: String) -> ToolResult {
+        info!("Creating reminder: {}", params.description);
+        
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => return ToolResult {
+                error: "User ID not found in context".to_string(),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        };
+
+        let due_at = match chrono::DateTime::parse_from_rfc3339(&params.due_at) {
+            Ok(dt) => dt.with_timezone(&chrono::Utc),
+            Err(e) => return ToolResult {
+                error: format!("Invalid date format: {}. Please use ISO 8601.", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        };
+
+        let frequency = params.frequency.unwrap_or_else(|| "once".to_string());
+        
+        let result = sqlx::query!(
+            "INSERT INTO reminders (user_id, conversation_id, content, due_at, frequency, max_repeats) 
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+            user_id,
+            self.conversation_id,
+            params.description,
+            due_at,
+            frequency,
+            params.max_repeats
+        )
+        .fetch_one(&self.pool)
+        .await;
+
+        info!("Created reminder: {:?}", result);
+        match result {
+            Ok(row) => ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: format!("Reminder created successfully with ID: {}", row.id),
+                follow_up_prompt: "".to_string(),
+            },
+            Err(e) => ToolResult {
+                error: format!("Failed to create reminder: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        }
+    }
+
+    async fn modify_reminder(&self, params: ModifyReminderParameters, _user_message: String) -> ToolResult {
+        info!("Modifying reminder: {} with action: {}", params.reminder_id, params.action);
+        
+        let reminder_id = match Uuid::parse_str(&params.reminder_id) {
+            Ok(id) => id,
+            Err(e) => return ToolResult {
+                error: format!("Invalid reminder ID: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        };
+
+        let result = match params.action.as_str() {
+            "done" | "completed" => {
+                sqlx::query!(
+                    "UPDATE reminders SET status = 'completed', updated_at = NOW() WHERE id = $1",
+                    reminder_id
+                )
+                .execute(&self.pool)
+                .await
+            },
+            "cancel" | "archived" => {
+                sqlx::query!(
+                    "UPDATE reminders SET status = 'archived', updated_at = NOW() WHERE id = $1",
+                    reminder_id
+                )
+                .execute(&self.pool)
+                .await
+            },
+            "snooze" => {
+                let snooze_until = match params.snooze_until {
+                    Some(ref s) => match chrono::DateTime::parse_from_rfc3339(s) {
+                        Ok(dt) => dt.with_timezone(&chrono::Utc),
+                        Err(e) => return ToolResult {
+                            error: format!("Invalid snooze date format: {}. Please use ISO 8601.", e),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                        },
+                    },
+                    None => return ToolResult {
+                        error: "Snooze action requires 'snooze_until' parameter.".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                    },
+                };
+
+                sqlx::query!(
+                    "UPDATE reminders SET due_at = $1, status = 'pending', snooze_count = snooze_count + 1, updated_at = NOW() WHERE id = $2",
+                    snooze_until,
+                    reminder_id
+                )
+                .execute(&self.pool)
+                .await
+            },
+            _ => return ToolResult {
+                error: format!("Invalid action: {}", params.action),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        };
+
+        match result {
+            Ok(_) => ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: format!("Reminder {} successfully.", params.action),
+                follow_up_prompt: "".to_string(),
+            },
+            Err(e) => ToolResult {
+                error: format!("Failed to modify reminder: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        }
     }
 
     async fn read_workspace_file(&self, path: String, user_message: String) -> ToolResult {
@@ -321,8 +490,9 @@ impl ToolDispatcher {
         let api_key = match std::env::var("TAVILY_API_KEY") {
             Ok(key) => key,
             Err(_) => {
+                info!("TAVILY_API_KEY not found in environment");
                 return ToolResult {
-                    error: "TAVILY_API_KEY not found in environment".to_string(),
+                    error: "Cannot reach website search".to_string(),
                     success: false,
                     content: "".to_string(),
                     follow_up_prompt: "".to_string(),
@@ -380,11 +550,14 @@ impl ToolDispatcher {
                     ),
                 }
             }
-            Err(e) => ToolResult {
-                error: format!("Tavily API error: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
+            Err(e) => {
+                info!("Error execute tavily: {}", e);
+                ToolResult {
+                    error: format!("Web search API error: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                }
             },
         }
     }
@@ -398,8 +571,9 @@ impl ToolDispatcher {
         let api_key = match std::env::var("JINA_API_KEY") {
             Ok(key) => key,
             Err(_) => {
+                info!("JINA_API_KEY not found in environment");
                 return ToolResult {
-                    error: "JINA_API_KEY not found in environment".to_string(),
+                    error: "Failed read web page".to_string(),
                     success: false,
                     content: "".to_string(),
                     follow_up_prompt: "".to_string(),
@@ -435,11 +609,14 @@ impl ToolDispatcher {
                     ),
                 }
             }
-            Err(e) => ToolResult {
-                error: format!("Jina Reader error: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
+            Err(e) => {
+                info!("Error execute jina: {}", e);
+                ToolResult {
+                    error: format!("Web Reader error: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                }
             },
         }
     }

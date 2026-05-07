@@ -178,6 +178,20 @@ pub async fn execute_tools(
                         user_message: user_message.clone(),
                     }).await
                 }
+                "create_reminder" => {
+                    let param: crate::common::tools::tools_model::CreateReminderParameters = serde_json::from_value(args).unwrap();
+                    dispatcher.dispatch(ArtaTool::CreateReminder {
+                        params: param,
+                        user_message: user_message.clone(),
+                    }).await
+                },
+                "modify_reminder" => {
+                    let param: crate::common::tools::tools_model::ModifyReminderParameters = serde_json::from_value(args).unwrap();
+                    dispatcher.dispatch(ArtaTool::ModifyReminder {
+                        params: param,
+                        user_message: user_message.clone(),
+                    }).await
+                }
                 _ => ToolResult {
                     error: format!("Unknown tool: {}", call_name),
                     success: false,

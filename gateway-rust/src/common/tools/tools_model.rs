@@ -91,3 +91,29 @@ pub struct EvolveBootstrapParameters {
 pub struct EvolveBootstrapResponse {
     pub content: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateReminderParameters {
+    pub description: String,
+    pub due_at: String, // ISO 8601 string
+    pub frequency: Option<String>, // 'once', 'daily', 'weekly', 'monthly'
+    pub max_repeats: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateReminderResponse {
+    pub reminder_id: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ModifyReminderParameters {
+    pub reminder_id: String,
+    pub action: String, // 'snooze', 'cancel', 'done'
+    pub snooze_until: Option<String>, // ISO 8601 string if action is 'snooze'
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ModifyReminderResponse {
+    pub content: String,
+}

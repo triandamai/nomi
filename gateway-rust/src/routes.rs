@@ -6,6 +6,7 @@ use crate::feature::conversation::{
     handle_get_soul_history, handle_get_user_channels,
     handle_restore_conversation_soul, handle_update_conversation,
     auth::{handle_request_otp, handle_verify_otp, handle_get_profile, handle_logout},
+    reminder::handle_get_reminders,
 };
 use crate::common::identity::middleware::auth_middleware;
 use axum::extract::Request;
@@ -24,6 +25,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/chat/stream", post(handle_chat_stream))
         .route("/conversations", get(handle_get_conversations))
         .route("/user/channels", get(handle_get_user_channels))
+        .route("/reminders", get(handle_get_reminders))
         .route("/conversations", post(handle_create_conversation))
         .route("/conversations/{id}", put(handle_update_conversation))
         .route("/conversations/{id}", delete(handle_delete_conversation))
