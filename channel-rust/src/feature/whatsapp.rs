@@ -72,7 +72,9 @@ impl WhatsAppWorker {
                                 if keyword_regex.is_match(&text) {
                                     is_mentioned = true;
                                     // Task 3: Clean the Input
-                                    text = keyword_regex.replace_all(&text, "").to_string();
+                                    if !is_private {
+                                        text = keyword_regex.replace_all(&text, "").to_string();
+                                    }
                                 }
 
                                 // Task 2: Handle Native Mentions (WhatsApp)
@@ -85,9 +87,11 @@ impl WhatsAppWorker {
                                     let own_jid_str = own_jid.to_string();
                                     if mentioned_jids.contains(&own_jid_str) {
                                         is_mentioned = true;
-                                        let jid_user = own_jid_str.split('@').next().unwrap_or("");
-                                        let mention_regex = Regex::new(&format!(r"(?i)@{}\b", regex::escape(jid_user))).unwrap();
-                                        text = mention_regex.replace_all(&text, "").to_string();
+                                        if !is_private {
+                                            let jid_user = own_jid_str.split('@').next().unwrap_or("");
+                                            let mention_regex = Regex::new(&format!(r"(?i)@{}\b", regex::escape(jid_user))).unwrap();
+                                            text = mention_regex.replace_all(&text, "").to_string();
+                                        }
                                     }
                                 }
 
@@ -96,14 +100,25 @@ impl WhatsAppWorker {
                                 }
 
                                 text = text.trim().to_string();
+                                if text.is_empty() {
+                                    text = original_text.trim().to_string();
+                                }
 
                                 info!("Received WhatsApp message from {}: {}", sender_id, text);
+
+                                let display_name = info.push_name.clone();
+                                let phone_number = info.source.sender.to_string().split('@').next().unwrap_or("").to_string();
+                                let metadata = serde_json::json!({
+                                    "display_name": display_name,
+                                    "phone_number": phone_number
+                                });
 
                                 let inbound = InboundMessage {
                                     sender_id,
                                     chat_id,
                                     text,
                                     channel: "whatsapp".to_string(),
+                                    metadata: Some(metadata),
                                 };
 
                                 if let Err(e) = redis.publish_event("nomi:inbound", &inbound).await {

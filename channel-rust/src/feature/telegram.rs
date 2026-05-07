@@ -31,20 +31,24 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient) {
                 if keyword_regex.is_match(&text) {
                     is_mentioned = true;
                     // Task 3: Clean the Input
-                    text = keyword_regex.replace_all(&text, "").to_string();
+                    if !is_private {
+                        text = keyword_regex.replace_all(&text, "").to_string();
+                    }
                 }
 
                 // Task 2: Handle Native Mentions
                 let bot_mention_str = format!("@{}", bot_username_clone.to_lowercase());
                 if original_text.to_lowercase().contains(&bot_mention_str) {
+                    let mut native_mentioned = false;
                     if let Some(entities) = msg.entities() {
                         for entity in entities {
                             if matches!(entity.kind, MessageEntityKind::Mention | MessageEntityKind::TextMention { .. }) {
                                 is_mentioned = true;
+                                native_mentioned = true;
                             }
                         }
                     }
-                    if is_mentioned {
+                    if native_mentioned && !is_private {
                         let bot_mention_regex = Regex::new(&format!(r"(?i){}\b", regex::escape(&bot_mention_str))).unwrap();
                         text = bot_mention_regex.replace_all(&text, "").to_string();
                     }
@@ -55,14 +59,25 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient) {
                 }
 
                 text = text.trim().to_string();
+                if text.is_empty() {
+                    text = original_text.trim().to_string();
+                }
 
                 info!("Received Telegram message from {} in chat {}: {}", sender_id, chat_id, text);
+
+                let display_name = user.map(|u| u.full_name()).unwrap_or_default();
+                let username = user.and_then(|u| u.username.clone()).unwrap_or_default();
+                let metadata = serde_json::json!({
+                    "display_name": display_name,
+                    "username": username
+                });
 
                 let inbound = InboundMessage {
                     sender_id,
                     chat_id,
                     text,
                     channel: "telegram".to_string(),
+                    metadata: Some(metadata),
                 };
 
                 if let Err(e) = redis.publish_event("nomi:inbound", &inbound).await {

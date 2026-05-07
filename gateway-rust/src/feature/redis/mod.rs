@@ -94,7 +94,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                             chat_id: msg.chat_id.clone(),
                             text: "Pairing successful! This conversation is now linked."
                                 .to_string(),
-                            channel: msg.channel.clone(),
+                            channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                         },
                     )
                     .await?;
@@ -124,7 +124,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                                 sender_id: msg.sender_id.clone(),
                                 chat_id: msg.chat_id.clone(),
                                 text: "Account already exists. Use /login.".to_string(),
-                                channel: msg.channel.clone(),
+                                channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                             },
                         )
                         .await?;
@@ -142,7 +142,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                                 sender_id: msg.sender_id.clone(),
                                 chat_id: msg.chat_id.clone(),
                                 text: "Account not found. Please type /register first.".to_string(),
-                                channel: msg.channel.clone(),
+                                channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                             },
                         )
                         .await?;
@@ -163,7 +163,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                                     sender_id: msg.sender_id.clone(),
                                     chat_id: msg.chat_id.clone(),
                                     text: "Internal server error".to_string(),
-                                    channel: msg.channel.clone(),
+                                    channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                                 },
                             )
                             .await?;
@@ -185,7 +185,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                             sender_id: msg.sender_id.clone(),
                             chat_id: msg.chat_id.clone(),
                             text: "Failed to resolve user".to_string(),
-                            channel: msg.channel.clone(),
+                            channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                         }).await?;
                         return Ok(())
                     }
@@ -213,7 +213,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                                 sender_id: msg.sender_id.clone(),
                                 chat_id: msg.chat_id.clone(),
                                 text: "Failed to create conversation".to_string(),
-                                channel: msg.channel.clone(),
+                                channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                             },
                         )
                         .await?;
@@ -230,7 +230,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         sender_id: msg.sender_id.clone(),
                         chat_id: msg.chat_id.clone(),
                         text: "Failed to link channel".to_string(),
-                        channel: msg.channel.clone(),
+                        channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                     }).await?;
                     return Ok(())
                 }
@@ -245,7 +245,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         sender_id: msg.sender_id.clone(),
                         chat_id: msg.chat_id.clone(),
                         text: "Failed to join conversation".to_string(),
-                        channel: msg.channel.clone(),
+                        channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                     }).await?;
                     return Ok(())
                 }
@@ -260,7 +260,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                                 sender_id: msg.sender_id.clone(),
                                 chat_id: msg.chat_id.clone(),
                                 text: "Failed to register".to_string(),
-                                channel: msg.channel.clone(),
+                                channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                             },
                         )
                         .await?;
@@ -278,7 +278,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                             sender_id: msg.sender_id.clone(),
                             chat_id: msg.chat_id.clone(),
                             text: "Database error".to_string(),
-                            channel: msg.channel.clone(),
+                            channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                         },
                     )
                     .await?;
@@ -301,7 +301,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         sender_id: msg.sender_id.clone(),
                         chat_id: msg.chat_id.clone(),
                         text: "Failed to generate OTP".to_string(),
-                        channel: msg.channel.clone(),
+                        channel: msg.channel.clone(), metadata: msg.metadata.clone(),
                     },
                 )
                 .await?;
@@ -321,7 +321,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             sender_id: "nomi_auth".to_string(),
             chat_id: msg.chat_id.clone(),
             text: outbound_text,
-            channel: msg.channel.clone(),
+            channel: msg.channel.clone(), metadata: msg.metadata.clone(),
         };
 
         if let Err(e) = state.redis.publish_event("nomi:outbound", &outbound).await {
@@ -585,7 +585,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         sender_id: sender_id,
                         chat_id: chat_id,
                         text: chunk.content,
-                        channel: channel,
+                        channel: channel.clone(), metadata: None,
                     },
                 )
                 .await;

@@ -52,7 +52,7 @@ pub async fn handle_request_otp(
             sender_id: "nomi_auth".to_string(),
             chat_id: payload.external_id.clone(),
             text: format!("Your Open Agent verification code is: {}", otp_str),
-            channel: payload.channel.clone(),
+            channel: payload.channel.clone(), metadata: None,
         };
 
         if let Err(e) = state.redis.publish_event("nomi:outbound", &outbound).await {

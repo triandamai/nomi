@@ -256,7 +256,7 @@ pub async fn process_incoming_message(
                 sender_id: channel.external_id.clone(),
                 chat_id: channel.external_chat_id.clone(),
                 text: record.content.clone(),
-                channel: channel.channel_type.clone(),
+                channel: channel.channel_type.clone(), metadata: None,
             };
             
             if let Ok(redis_url) = std::env::var("REDIS_URL") {

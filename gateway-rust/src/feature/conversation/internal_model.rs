@@ -6,6 +6,8 @@ pub struct InboundMessage {
     pub chat_id: String,
     pub text: String,
     pub channel: String,
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -14,4 +16,6 @@ pub struct InternalOutboundRequest {
     pub chat_id: String,
     pub text: String,
     pub channel: String,
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
 }
