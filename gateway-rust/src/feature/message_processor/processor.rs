@@ -4,20 +4,16 @@ use crate::common::agent::execute_tools;
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::common::tools::ToolDispatcher;
 use crate::feature::conversation::chat_model::MessageItem;
-use crate::feature::message_processor::model::{UnifiedMessage};
+use crate::feature::message_processor::model::UnifiedMessage;
 use crate::feature::{OutboundMessage, PresenceMessage};
 use crate::rag;
 use chrono::Utc;
-use uuid::Uuid;
 use serde_json::json;
+use uuid::Uuid;
 
 use tracing::{error, info};
 
-
-pub async fn process_incoming_message(
-    state: AppState,
-    msg: UnifiedMessage,
-) -> anyhow::Result<()> {
+pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
     let conversation_id = msg.conversation_id;
     let user_id = msg.user_id;
     let text_content = msg.text_content;
@@ -38,34 +34,65 @@ pub async fn process_incoming_message(
     ).fetch_one(&state.pool).await?;
 
     // Broadcast user message to SSE
-    let _ = state.sse.send(SseBuilder::new(
-        match user_id {
-            Some(ref id) => SseTarget::sent_to_user(id.to_string(), "message".to_string()),
-            None => SseTarget::broadcast("message".to_string()),
-        },
-        json!({
-            "id": m.id,
-            "conversation_id": conversation_id,
-            "role": m.role,
-            "content": m.content,
-            "thought": m.thought,
-            "user_id": m.user_id,
-            "created_at": m.created_at.unwrap_or_else(Utc::now),
-        })
-    )).await;
+    let payload = json!({
+        "id": m.id,
+        "conversation_id": conversation_id,
+        "role": m.role,
+        "content": m.content,
+        "thought": m.thought,
+        "user_id": m.user_id,
+        "created_at": m.created_at.unwrap_or_else(Utc::now),
+    });
+    let _ = match user_id {
+        None => state.broadcast_sse("message", payload).await,
+        Some(ref id) => {
+            state
+                .send_sse_to_user(id.to_string().as_str(), "message", payload)
+                .await
+        }
+    };
+
+    // let _ = state.sse.send(SseBuilder::new(
+    //     match user_id {
+    //         Some(ref id) => SseTarget::sent_to_user(id.to_string(), "message".to_string()),
+    //         None => SseTarget::broadcast("message".to_string()),
+    //     },
+    //     json!({
+    //         "id": m.id,
+    //         "conversation_id": conversation_id,
+    //         "role": m.role,
+    //         "content": m.content,
+    //         "thought": m.thought,
+    //         "user_id": m.user_id,
+    //         "created_at": m.created_at.unwrap_or_else(Utc::now),
+    //     })
+    // )).await;
 
     // 2. Start Typing / Presence
-    let _ = state.sse.send(SseBuilder::new(
-        match user_id {
-            Some(ref id) => SseTarget::sent_to_user(id.to_string(), "presence".to_string()),
-            None => SseTarget::broadcast("presence".to_string()),
-        },
-        json!({
-            "conversation_id": conversation_id,
-            "is_typing": true,
-            "user_id": "nomi"
-        }),
-    )).await;
+    let presence_payload = json!({
+        "conversation_id": conversation_id,
+        "is_typing": true,
+        "user_id": "nomi"
+    });
+    let _ = match user_id {
+        None => state.broadcast_presence_sse(presence_payload).await,
+        Some(ref id) => {
+            state
+                .send_presence_sse_to_user(id.to_string().as_str(), presence_payload)
+                .await
+        }
+    };
+    // let _ = state.sse.send(SseBuilder::new(
+    //     match user_id {
+    //         Some(ref id) => SseTarget::sent_to_user(id.to_string(), "presence".to_string()),
+    //         None => SseTarget::broadcast("presence".to_string()),
+    //     },
+    //     json!({
+    //         "conversation_id": conversation_id,
+    //         "is_typing": true,
+    //         "user_id": "nomi"
+    //     }),
+    // )).await;
 
     // Broadcast presence to Redis for channels
     if let Ok(channel_info) = sqlx::query!(
@@ -147,10 +174,15 @@ pub async fn process_incoming_message(
         .await
         .unwrap_or_default();
     let memories_text = if !embedding.is_empty() {
-        crate::utils::rag::hybrid_retrieve(&state.pool, &text_content, embedding, Some(conversation_id))
-            .await
-            .unwrap_or_default()
-            .join("\n---\n")
+        crate::utils::rag::hybrid_retrieve(
+            &state.pool,
+            &text_content,
+            embedding,
+            Some(conversation_id),
+        )
+        .await
+        .unwrap_or_default()
+        .join("\n---\n")
     } else {
         String::new()
     };
@@ -176,13 +208,28 @@ pub async fn process_incoming_message(
         match result {
             Ok((response, chunk)) => {
                 if !chunk.thought.is_empty() {
-                    let _ = state.sse.send(SseBuilder::new(
-                        match user_id {
-                            Some(ref id) => SseTarget::sent_to_user(id.to_string(), "thought".to_string()),
-                            None => SseTarget::broadcast("thought".to_string()),
-                        },
-                        json!({ "thought": chunk.thought, "conversation_id": conversation_id }),
-                    )).await;
+                    let payload =
+                        json!({ "thought": chunk.thought, "conversation_id": conversation_id });
+                    let _ = match user_id {
+                        None => state.broadcast_sse("thought", payload).await,
+                        Some(ref id) => {
+                            state
+                                .send_sse_to_user(id.to_string().as_str(), "thought", payload)
+                                .await
+                        }
+                    };
+                    // let _ = state
+                    //     .sse
+                    //     .send(SseBuilder::new(
+                    //         match user_id {
+                    //             Some(ref id) => {
+                    //                 SseTarget::sent_to_user(id.to_string(), "thought".to_string())
+                    //             }
+                    //             None => SseTarget::broadcast("thought".to_string()),
+                    //         },
+                    //         json!({ "thought": chunk.thought, "conversation_id": conversation_id }),
+                    //     ))
+                    //     .await;
                 }
 
                 let tool_calls = response.function_calls();
@@ -199,7 +246,8 @@ pub async fn process_incoming_message(
                     current_calls.clone(),
                     &text_content,
                     Some(state.sse.clone()),
-                ).await;
+                )
+                .await;
 
                 current_actor = PromptActor::MultiTool {
                     history: history_text.clone(),
@@ -229,21 +277,43 @@ pub async fn process_incoming_message(
         .await?;
 
         // Broadcast assistant message to SSE
-        let _ = state.sse.send(SseBuilder::new(
-            match user_id {
-                Some(ref id) => SseTarget::sent_to_user(id.to_string(), "message".to_string()),
-                None => SseTarget::broadcast("message".to_string()),
-            },
-            MessageItem {
-                id: record.id,
-                conversation_id,
-                role: record.role,
-                content: record.content.clone(),
-                thought: record.thought,
-                user_id: record.user_id,
-                created_at: record.created_at.unwrap_or_else(Utc::now),
-            },
-        )).await;
+        let payload = json!({
+                    "id": record.id,
+                    "conversation_id":conversation_id,
+                    "role": record.role,
+                    "content": record.content.clone(),
+                    "thought": record.thought,
+                    "user_id": record.user_id,
+                    "created_at": record.created_at.unwrap_or_else(Utc::now)
+        });
+
+        let _ = match user_id {
+            None => state.broadcast_sse("message", payload).await,
+            Some(ref id) => {
+                state
+                    .send_sse_to_user(id.to_string().as_str(), "message", payload)
+                    .await
+            }
+        };
+
+        // let _ = state
+        //     .sse
+        //     .send(SseBuilder::new(
+        //         match user_id {
+        //             Some(ref id) => SseTarget::sent_to_user(id.to_string(), "message".to_string()),
+        //             None => SseTarget::broadcast("message".to_string()),
+        //         },
+        //         MessageItem {
+        //             id: record.id,
+        //             conversation_id,
+        //             role: record.role,
+        //             content: record.content.clone(),
+        //             thought: record.thought,
+        //             user_id: record.user_id,
+        //             created_at: record.created_at.unwrap_or_else(Utc::now),
+        //         },
+        //     ))
+        //     .await;
 
         // Outbound Routing for Channels
         let channel_info = sqlx::query!(
@@ -253,19 +323,22 @@ pub async fn process_incoming_message(
 
         for channel in channel_info {
             let outbound = OutboundMessage {
-                is_group:false,
+                is_group: false,
                 sender_id: channel.external_id.clone(),
                 chat_id: channel.external_chat_id.clone(),
                 text: record.content.clone(),
-                channel: channel.channel_type.clone(), metadata: None,
+                channel: channel.channel_type.clone(),
+                metadata: None,
             };
-            
+
             if let Ok(redis_url) = std::env::var("REDIS_URL") {
                 if let Ok(client) = redis::Client::open(redis_url) {
                     if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
                         use redis::AsyncCommands;
                         let payload = serde_json::to_string(&outbound).unwrap();
-                        let _ = conn.publish::<&str, String, ()>("nomi:outbound", payload).await;
+                        let _ = conn
+                            .publish::<&str, String, ()>("nomi:outbound", payload)
+                            .await;
                     }
                 }
             }
@@ -276,22 +349,40 @@ pub async fn process_incoming_message(
         let gemini = state.gemini.clone();
         let gemini_api_key = state.gemini_api_key.clone();
         tokio::spawn(async move {
-            let _ = trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id).await;
+            let _ =
+                trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id).await;
         });
     }
 
     // Stop Typing
-    let _ = state.sse.send(SseBuilder::new(
-        match user_id {
-            Some(ref id) => SseTarget::sent_to_user(id.to_string(), "presence".to_string()),
-            None => SseTarget::broadcast("presence".to_string()),
-        },
-        json!({
-            "conversation_id": conversation_id,
-            "is_typing": false,
-            "user_id": "nomi"
-        }),
-    )).await;
+    let payload = json!({
+                "conversation_id": conversation_id,
+                "is_typing": false,
+                "user_id": "nomi"
+            });
+    let _ = match user_id {
+        None => state.broadcast_presence_sse( payload).await,
+        Some(ref id) => {
+            state
+                .send_presence_sse_to_user(id.to_string().as_str(),  payload)
+                .await
+        }
+    };
+
+    // let _ = state
+    //     .sse
+    //     .send(SseBuilder::new(
+    //         match user_id {
+    //             Some(ref id) => SseTarget::sent_to_user(id.to_string(), "presence".to_string()),
+    //             None => SseTarget::broadcast("presence".to_string()),
+    //         },
+    //         json!({
+    //             "conversation_id": conversation_id,
+    //             "is_typing": false,
+    //             "user_id": "nomi"
+    //         }),
+    //     ))
+    //     .await;
 
     // Presence Outbound (Stop Typing)
     if let Ok(channel_info) = sqlx::query!(
@@ -397,7 +488,8 @@ Conversation:
         let raw_json = summary_res.text();
         let parsed_data: serde_json::Value = if let Some(start) = raw_json.find('{') {
             if let Some(end) = raw_json.rfind('}') {
-                serde_json::from_str(&raw_json[start..=end]).unwrap_or(json!({ "summary": raw_json, "nodes": [], "edges": [] }))
+                serde_json::from_str(&raw_json[start..=end])
+                    .unwrap_or(json!({ "summary": raw_json, "nodes": [], "edges": [] }))
             } else {
                 json!({ "summary": raw_json, "nodes": [], "edges": [] })
             }
@@ -405,7 +497,10 @@ Conversation:
             json!({ "summary": raw_json, "nodes": [], "edges": [] })
         };
 
-        let summary_text = parsed_data["summary"].as_str().unwrap_or(&raw_json).to_string();
+        let summary_text = parsed_data["summary"]
+            .as_str()
+            .unwrap_or(&raw_json)
+            .to_string();
 
         if let Ok(embedding) = rag::get_embedding(&gemini_api_key, &summary_text).await {
             let metadata = json!({
@@ -418,11 +513,17 @@ Conversation:
                 }
             });
 
-            rag::save_to_knowledge_base(&pool, &summary_text, embedding, Some(metadata), Some(conversation_id.clone())).await?;
+            rag::save_to_knowledge_base(
+                &pool,
+                &summary_text,
+                embedding,
+                Some(metadata),
+                Some(conversation_id.clone()),
+            )
+            .await?;
             info!(conversation_id = %conversation_id, "Memory consolidation complete");
         }
     }
 
     Ok(())
 }
-

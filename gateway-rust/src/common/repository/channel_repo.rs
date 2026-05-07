@@ -39,6 +39,7 @@ pub async fn link_channel(
     conversation_id: Uuid,
     user_id: Uuid,
 ) -> anyhow::Result<()> {
+
     sqlx::query!(
         "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id, user_id) 
          VALUES ($1, $2, $3, $4, $5) 
