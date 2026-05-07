@@ -6,6 +6,7 @@
     import {popupStore} from '$lib/stores/popup.svelte';
     import * as THREE from 'three';
     import {eventBus} from "$lib/utils";
+    import {browser} from "$app/environment";
 
     let graphContainer: HTMLElement;
     let selectedNode = $state<Node | null>(null);
@@ -35,190 +36,191 @@
         let isMounted = true;
         let cleanup = () => {
         };
+        eventBus.emit("load",{})
+        if(browser && graphContainer) {
+            Promise.all([
+                import('3d-force-graph'),
+                import('three-spritetext')
+            ]).then(([module, spriteTextModule]) => {
+                if (!isMounted) return;
 
-        Promise.all([
-            import('3d-force-graph'),
-            import('three-spritetext')
-        ]).then(([module, spriteTextModule]) => {
-            if (!isMounted) return;
+                const ForceGraph3D = module.default || module;
+                const SpriteText = spriteTextModule.default || spriteTextModule;
+                ragStore.fetchGraph(conversationStore.activeConversationId);
 
-            const ForceGraph3D = module.default || module;
-            const SpriteText = spriteTextModule.default || spriteTextModule;
-            ragStore.fetchGraph(conversationStore.activeConversationId);
+                if (graphContainer) {
+                    setTimeout(() => {
+                        try {
+                            graphInstance = (ForceGraph3D as any)()(graphContainer)
+                                .backgroundColor('#020617') // slate-950 deep black
+                                .nodeId('id')
+                                .nodeLabel((node: any) => `${node.label || 'Unknown'} (${node.node_type || 'Entity'})${node.conversation_id && node.conversation_id !== 'global' ? ' [Current Soul]' : ' [Global]'}`)
+                                .nodeAutoColorBy('node_type')
+                                .nodeThreeObject((node: any) => {
+                                    const nodeType = String(node.node_type || '').toLowerCase();
+                                    const isSummary = nodeType === 'summary' || node.id === 'summary';
+                                    const isLocal = node.conversation_id && node.conversation_id !== 'global';
 
-            if (graphContainer) {
-                setTimeout(() => {
-                    try {
-                        graphInstance = (ForceGraph3D as any)()(graphContainer)
-                            .backgroundColor('#020617') // slate-950 deep black
-                            .nodeId('id')
-                            .nodeLabel((node: any) => `${node.label || 'Unknown'} (${node.node_type || 'Entity'})${node.conversation_id && node.conversation_id !== 'global' ? ' [Current Soul]' : ' [Global]'}`)
-                            .nodeAutoColorBy('node_type')
-                            .nodeThreeObject((node: any) => {
-                                const nodeType = String(node.node_type || '').toLowerCase();
-                                const isSummary = nodeType === 'summary' || node.id === 'summary';
-                                const isLocal = node.conversation_id && node.conversation_id !== 'global';
+                                    // Defensive size check
+                                    let size = isSummary ? 12 : 5;
+                                    if (isNaN(size) || size <= 0) size = 5;
 
-                                // Defensive size check
-                                let size = isSummary ? 12 : 5;
-                                if (isNaN(size) || size <= 0) size = 5;
+                                    let color = node.id === highlightedNodeId ? '#ffffff' : (node.color || '#94a3b8');
 
-                                let color = node.id === highlightedNodeId ? '#ffffff' : (node.color || '#94a3b8');
-                                
-                                // Brighter color for local nodes
-                                if (isLocal && node.id !== highlightedNodeId) {
-                                    // Make the color brighter/more saturated
-                                    const c = new THREE.Color(color);
-                                    c.offsetHSL(0, 0.2, 0.1);
-                                    color = `#${c.getHexString()}`;
+                                    // Brighter color for local nodes
+                                    if (isLocal && node.id !== highlightedNodeId) {
+                                        // Make the color brighter/more saturated
+                                        const c = new THREE.Color(color);
+                                        c.offsetHSL(0, 0.2, 0.1);
+                                        color = `#${c.getHexString()}`;
+                                    }
+
+                                    const material = new THREE.MeshPhongMaterial({
+                                        color: color,
+                                        transparent: true,
+                                        opacity: 0.9,
+                                        shininess: isLocal ? 100 : 30,
+                                        emissive: isLocal ? color : 0x000000,
+                                        emissiveIntensity: isLocal ? 0.5 : 0
+                                    });
+
+                                    const geometry = new THREE.SphereGeometry(size, 32, 32);
+                                    const mesh = new THREE.Mesh(geometry, material);
+
+                                    node.__sphereMesh = mesh;
+                                    node.__baseSize = size;
+
+                                    // Create a group to hold both the sphere and the permanent label
+                                    const group = new THREE.Group();
+                                    group.add(mesh);
+
+                                    // Add permanent label using SpriteText
+                                    const sprite = new (SpriteText as any)(node.label || 'Unknown');
+                                    sprite.color = node.id === highlightedNodeId ? '#ffffff' : (isLocal ? '#f8fafc' : '#94a3b8'); // slate-50 or slate-400
+                                    sprite.textHeight = isSummary ? 8 : 4;
+                                    sprite.position.y = size + (isSummary ? 10 : 6);
+                                    group.add(sprite);
+
+                                    node.__threeObj = group;
+                                    node.__labelSprite = sprite;
+
+                                    return group;
+                                })
+                                .linkDirectionalParticles(2)
+                                .linkDirectionalParticleWidth(1.5)
+                                .linkDirectionalParticleColor((link: any) => {
+                                    const sourceNode = typeof link.source === 'object' ? link.source : ragStore.graphData.nodes.find((n: any) => n.id === link.source);
+                                    return sourceNode?.color || '#94a3b8';
+                                })
+                                .linkDirectionalParticleSpeed(0.005)
+                                .linkCurvature(0.2)
+                                .linkColor((link: any) => {
+                                    const sourceNode = typeof link.source === 'object' ? link.source : ragStore.graphData.nodes.find((n: any) => n.id === link.source);
+                                    return sourceNode?.color ? `${sourceNode.color}40` : '#33415540';
+                                })
+                                .linkOpacity(0.3)
+                                .onNodeClick((node: any) => {
+                                    openNodeInfo(node);
+                                    handleInteraction();
+
+                                    const distance = 120;
+                                    const x = node.x || 0;
+                                    const y = node.y || 0;
+                                    const z = node.z || 0;
+                                    const currentDist = Math.hypot(x, y, z);
+                                    const distRatio = currentDist === 0 ? 2 : 1 + distance / currentDist;
+
+                                    graphInstance.cameraPosition(
+                                        {x: x * distRatio, y: y * distRatio, z: z * distRatio},
+                                        node,
+                                        2000
+                                    );
+                                })
+                                .width(graphContainer.clientWidth)
+                                .height(graphContainer.clientHeight);
+
+                            if (ragStore.graphData && ragStore.graphData.nodes.length > 0) {
+                                graphInstance.graphData(ragStore.graphData);
+                            }
+
+                            const scene = graphInstance.scene();
+                            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+                            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                            dirLight.position.set(1, 2, 3);
+                            scene.add(dirLight);
+
+                            window.addEventListener('resize', handleResize);
+                            graphContainer.addEventListener('mousedown', handleInteraction);
+                            graphContainer.addEventListener('wheel', handleInteraction);
+
+                            let time = 0;
+                            const animate = () => {
+                                time += 0.05;
+                                if (!isInteracting && graphInstance) {
+                                    orbitAngle += Math.PI / 3000;
+                                    graphInstance.cameraPosition({
+                                        x: ORBIT_DISTANCE * Math.sin(orbitAngle),
+                                        z: ORBIT_DISTANCE * Math.cos(orbitAngle)
+                                    });
                                 }
 
-                                const material = new THREE.MeshPhongMaterial({
-                                    color: color,
-                                    transparent: true,
-                                    opacity: 0.9,
-                                    shininess: isLocal ? 100 : 30,
-                                    emissive: isLocal ? color : 0x000000,
-                                    emissiveIntensity: isLocal ? 0.5 : 0
-                                });
+                                if (ragStore.graphData?.nodes) {
+                                    ragStore.graphData.nodes.forEach((node: any) => {
+                                        if (node.__threeObj && node.__baseSize) {
+                                            const isLocal = node.conversation_id && node.conversation_id !== 'global';
+                                            const offset = node.id ? node.id.charCodeAt(0) : 0;
 
-                                const geometry = new THREE.SphereGeometry(size, 32, 32);
-                                const mesh = new THREE.Mesh(geometry, material);
+                                            // Stronger pulse for local nodes
+                                            const pulseIntensity = isLocal ? 0.1 : 0.05;
+                                            const scale = 1 + Math.sin(time + offset) * pulseIntensity;
+                                            node.__threeObj.scale.setScalar(scale);
 
-                                node.__sphereMesh = mesh;
-                                node.__baseSize = size;
+                                            if (node.__sphereMesh && node.__sphereMesh.material) {
+                                                let colorStr = node.id === highlightedNodeId ? '#ffffff' : (node.color || '#94a3b8');
+                                                if (!colorStr.startsWith('#')) colorStr = '#94a3b8';
 
-                                // Create a group to hold both the sphere and the permanent label
-                                const group = new THREE.Group();
-                                group.add(mesh);
+                                                const color = new THREE.Color(colorStr);
+                                                if (isLocal && node.id !== highlightedNodeId) {
+                                                    color.offsetHSL(0, 0.2, 0.1);
+                                                }
 
-                                // Add permanent label using SpriteText
-                                const sprite = new (SpriteText as any)(node.label || 'Unknown');
-                                sprite.color = node.id === highlightedNodeId ? '#ffffff' : (isLocal ? '#f8fafc' : '#94a3b8'); // slate-50 or slate-400
-                                sprite.textHeight = isSummary ? 8 : 4;
-                                sprite.position.y = size + (isSummary ? 10 : 6);
-                                group.add(sprite);
+                                                node.__sphereMesh.material.color.copy(color);
 
-                                node.__threeObj = group;
-                                node.__labelSprite = sprite;
+                                                if (isLocal) {
+                                                    // Local nodes glow
+                                                    const emissiveIntensity = 0.4 + Math.sin(time * 2 + offset) * 0.2;
+                                                    node.__sphereMesh.material.emissive.copy(color);
+                                                    node.__sphereMesh.material.emissiveIntensity = emissiveIntensity;
+                                                } else {
+                                                    node.__sphereMesh.material.emissive.setHex(node.id === highlightedNodeId ? 0x333333 : 0x000000);
+                                                    node.__sphereMesh.material.emissiveIntensity = node.id === highlightedNodeId ? 0.5 : 0;
+                                                }
+                                            }
 
-                                return group;
-                            })
-                            .linkDirectionalParticles(2)
-                            .linkDirectionalParticleWidth(1.5)
-                            .linkDirectionalParticleColor((link: any) => {
-                                const sourceNode = typeof link.source === 'object' ? link.source : ragStore.graphData.nodes.find((n: any) => n.id === link.source);
-                                return sourceNode?.color || '#94a3b8';
-                            })
-                            .linkDirectionalParticleSpeed(0.005)
-                            .linkCurvature(0.2)
-                            .linkColor((link: any) => {
-                                const sourceNode = typeof link.source === 'object' ? link.source : ragStore.graphData.nodes.find((n: any) => n.id === link.source);
-                                return sourceNode?.color ? `${sourceNode.color}40` : '#33415540';
-                            })
-                            .linkOpacity(0.3)
-                            .onNodeClick((node: any) => {
-                                openNodeInfo(node);
-                                handleInteraction();
+                                            if (node.__labelSprite) {
+                                                node.__labelSprite.color = node.id === highlightedNodeId ? '#ffffff' : (isLocal ? '#f8fafc' : '#cbd5e1');
+                                            }
+                                        }
+                                    });
+                                }
+                                animationFrameId = requestAnimationFrame(animate);
+                            };
+                            animate();
 
-                                const distance = 120;
-                                const x = node.x || 0;
-                                const y = node.y || 0;
-                                const z = node.z || 0;
-                                const currentDist = Math.hypot(x, y, z);
-                                const distRatio = currentDist === 0 ? 2 : 1 + distance / currentDist;
-
-                                graphInstance.cameraPosition(
-                                    {x: x * distRatio, y: y * distRatio, z: z * distRatio},
-                                    node,
-                                    2000
-                                );
-                            })
-                            .width(graphContainer.clientWidth)
-                            .height(graphContainer.clientHeight);
-
-                        if (ragStore.graphData && ragStore.graphData.nodes.length > 0) {
-                            graphInstance.graphData(ragStore.graphData);
+                            cleanup = () => {
+                                window.removeEventListener('resize', handleResize);
+                                graphContainer.removeEventListener('mousedown', handleInteraction);
+                                graphContainer.removeEventListener('wheel', handleInteraction);
+                                cancelAnimationFrame(animationFrameId);
+                                if (graphInstance) graphInstance._destructor();
+                            };
+                        } catch (err) {
+                            console.error('Failed to initialize ForceGraph3D:', err);
                         }
-
-                        const scene = graphInstance.scene();
-                        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-                        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                        dirLight.position.set(1, 2, 3);
-                        scene.add(dirLight);
-
-                        window.addEventListener('resize', handleResize);
-                        graphContainer.addEventListener('mousedown', handleInteraction);
-                        graphContainer.addEventListener('wheel', handleInteraction);
-
-                        let time = 0;
-                        const animate = () => {
-                            time += 0.05;
-                            if (!isInteracting && graphInstance) {
-                                orbitAngle += Math.PI / 3000;
-                                graphInstance.cameraPosition({
-                                    x: ORBIT_DISTANCE * Math.sin(orbitAngle),
-                                    z: ORBIT_DISTANCE * Math.cos(orbitAngle)
-                                });
-                            }
-
-                            if (ragStore.graphData?.nodes) {
-                                ragStore.graphData.nodes.forEach((node: any) => {
-                                    if (node.__threeObj && node.__baseSize) {
-                                        const isLocal = node.conversation_id && node.conversation_id !== 'global';
-                                        const offset = node.id ? node.id.charCodeAt(0) : 0;
-                                        
-                                        // Stronger pulse for local nodes
-                                        const pulseIntensity = isLocal ? 0.1 : 0.05;
-                                        const scale = 1 + Math.sin(time + offset) * pulseIntensity;
-                                        node.__threeObj.scale.setScalar(scale);
-
-                                        if (node.__sphereMesh && node.__sphereMesh.material) {
-                                            let colorStr = node.id === highlightedNodeId ? '#ffffff' : (node.color || '#94a3b8');
-                                            if (!colorStr.startsWith('#')) colorStr = '#94a3b8';
-                                            
-                                            const color = new THREE.Color(colorStr);
-                                            if (isLocal && node.id !== highlightedNodeId) {
-                                                color.offsetHSL(0, 0.2, 0.1);
-                                            }
-                                            
-                                            node.__sphereMesh.material.color.copy(color);
-                                            
-                                            if (isLocal) {
-                                                // Local nodes glow
-                                                const emissiveIntensity = 0.4 + Math.sin(time * 2 + offset) * 0.2;
-                                                node.__sphereMesh.material.emissive.copy(color);
-                                                node.__sphereMesh.material.emissiveIntensity = emissiveIntensity;
-                                            } else {
-                                                node.__sphereMesh.material.emissive.setHex(node.id === highlightedNodeId ? 0x333333 : 0x000000);
-                                                node.__sphereMesh.material.emissiveIntensity = node.id === highlightedNodeId ? 0.5 : 0;
-                                            }
-                                        }
-
-                                        if (node.__labelSprite) {
-                                            node.__labelSprite.color = node.id === highlightedNodeId ? '#ffffff' : (isLocal ? '#f8fafc' : '#cbd5e1');
-                                        }
-                                    }
-                                });
-                            }
-                            animationFrameId = requestAnimationFrame(animate);
-                        };
-                        animate();
-
-                        cleanup = () => {
-                            window.removeEventListener('resize', handleResize);
-                            graphContainer.removeEventListener('mousedown', handleInteraction);
-                            graphContainer.removeEventListener('wheel', handleInteraction);
-                            cancelAnimationFrame(animationFrameId);
-                            if (graphInstance) graphInstance._destructor();
-                        };
-                    } catch (err) {
-                        console.error('Failed to initialize ForceGraph3D:', err);
-                    }
-                }, 100);
-            }
-        });
-
+                    }, 100);
+                }
+            });
+        }
         return () => {
             isMounted = false;
             cleanup();
@@ -313,9 +315,6 @@
         });
     }
 
-    onMount(()=>{
-        eventBus.emit("load",{})
-    })
 </script>
 
 {#snippet nodeInfoSnippet()}

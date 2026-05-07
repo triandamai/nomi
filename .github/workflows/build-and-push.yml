@@ -2,7 +2,8 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - "v*"
 
 jobs:
   build-and-push:
@@ -33,7 +34,10 @@ jobs:
         with:
           context: ./gateway-rust
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/nomi-gateway:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/nomi-gateway:${{ github.ref_name }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/nomi-gateway:latest
+
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
@@ -42,7 +46,9 @@ jobs:
         with:
           context: ./channel-rust
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/nomi-channel:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/nomi-channel:${{ github.ref_name }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/nomi-channel:latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
@@ -51,7 +57,9 @@ jobs:
         with:
           context: ./ui-sveltekit
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/nomi-ui:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/nomi-ui:${{ github.ref_name }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/nomi-ui:latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 

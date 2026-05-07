@@ -116,13 +116,6 @@ function createChatStore() {
                 return;
             }
 
-            const userMsg: Message = {
-                id: crypto.randomUUID(),
-                role: 'user',
-                content
-            };
-
-            messages = [...messages, userMsg];
             loading = true;
             error = null;
 

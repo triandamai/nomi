@@ -11,6 +11,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import {eventBus} from "$lib/utils";
+	import {ragStore} from "$lib/stores/rag.svelte";
 
 	let { children } = $props();
 
@@ -26,8 +27,10 @@
 
 		function open(){
 			if (token) {
-				conversationStore.loadConversations();
-				closing  = chatApi.streamEvent();
+				conversationStore.loadConversations().finally(()=>{
+					ragStore.fetchGraph(conversationStore.activeConversationId)
+					closing  = chatApi.streamEvent();
+				});
 			}
 		}
 		open()
