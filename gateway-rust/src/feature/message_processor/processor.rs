@@ -1,12 +1,10 @@
-use crate::AppState;
 use crate::common::agent::agent_model::PromptActor;
 use crate::common::agent::execute_tools;
-use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::common::tools::ToolDispatcher;
-use crate::feature::conversation::chat_model::MessageItem;
 use crate::feature::message_processor::model::UnifiedMessage;
 use crate::feature::{OutboundMessage, PresenceMessage};
 use crate::rag;
+use crate::AppState;
 use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
@@ -52,22 +50,6 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
         }
     };
 
-    // let _ = state.sse.send(SseBuilder::new(
-    //     match user_id {
-    //         Some(ref id) => SseTarget::sent_to_user(id.to_string(), "message".to_string()),
-    //         None => SseTarget::broadcast("message".to_string()),
-    //     },
-    //     json!({
-    //         "id": m.id,
-    //         "conversation_id": conversation_id,
-    //         "role": m.role,
-    //         "content": m.content,
-    //         "thought": m.thought,
-    //         "user_id": m.user_id,
-    //         "created_at": m.created_at.unwrap_or_else(Utc::now),
-    //     })
-    // )).await;
-
     // 2. Start Typing / Presence
     let presence_payload = json!({
         "conversation_id": conversation_id,
@@ -82,17 +64,6 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                 .await
         }
     };
-    // let _ = state.sse.send(SseBuilder::new(
-    //     match user_id {
-    //         Some(ref id) => SseTarget::sent_to_user(id.to_string(), "presence".to_string()),
-    //         None => SseTarget::broadcast("presence".to_string()),
-    //     },
-    //     json!({
-    //         "conversation_id": conversation_id,
-    //         "is_typing": true,
-    //         "user_id": "nomi"
-    //     }),
-    // )).await;
 
     // Broadcast presence to Redis for channels
     if let Ok(channel_info) = sqlx::query!(
@@ -148,7 +119,7 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
 
     // History Retrieval
     let history = sqlx::query!(
-        "SELECT created_at, role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 15",
+        "SELECT users.display_name as display_name, messages.created_at, messages.role, messages.content FROM messages LEFT JOIN users ON users.id = messages.user_id WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 15",
         conversation_id
     )
     .fetch_all(&state.pool)
@@ -157,13 +128,19 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
     let mut history_text = String::new();
     for msg in history.into_iter().rev() {
         let role_label = match msg.role.as_str() {
-            "user" => "User",
+            "user" => match msg.display_name {
+                None => "User",
+                Some(ref user) => &user,
+            },
             "assistant" => "Nomi",
             _ => "System",
         };
         history_text.push_str(&format!(
             "-[{}] {}: {}.\n",
-            msg.created_at.unwrap_or(Utc::now()).to_rfc3339(),
+            msg.created_at
+                .unwrap_or(Utc::now())
+                .format("%Y-%m-%d %H:%M")
+                .to_string(),
             role_label,
             msg.content
         ));
@@ -218,18 +195,6 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                                 .await
                         }
                     };
-                    // let _ = state
-                    //     .sse
-                    //     .send(SseBuilder::new(
-                    //         match user_id {
-                    //             Some(ref id) => {
-                    //                 SseTarget::sent_to_user(id.to_string(), "thought".to_string())
-                    //             }
-                    //             None => SseTarget::broadcast("thought".to_string()),
-                    //         },
-                    //         json!({ "thought": chunk.thought, "conversation_id": conversation_id }),
-                    //     ))
-                    //     .await;
                 }
 
                 let tool_calls = response.function_calls();
@@ -296,25 +261,6 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
             }
         };
 
-        // let _ = state
-        //     .sse
-        //     .send(SseBuilder::new(
-        //         match user_id {
-        //             Some(ref id) => SseTarget::sent_to_user(id.to_string(), "message".to_string()),
-        //             None => SseTarget::broadcast("message".to_string()),
-        //         },
-        //         MessageItem {
-        //             id: record.id,
-        //             conversation_id,
-        //             role: record.role,
-        //             content: record.content.clone(),
-        //             thought: record.thought,
-        //             user_id: record.user_id,
-        //             created_at: record.created_at.unwrap_or_else(Utc::now),
-        //         },
-        //     ))
-        //     .await;
-
         // Outbound Routing for Channels
         let channel_info = sqlx::query!(
             "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
@@ -356,33 +302,18 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
 
     // Stop Typing
     let payload = json!({
-                "conversation_id": conversation_id,
-                "is_typing": false,
-                "user_id": "nomi"
-            });
+        "conversation_id": conversation_id,
+        "is_typing": false,
+        "user_id": "nomi"
+    });
     let _ = match user_id {
-        None => state.broadcast_presence_sse( payload).await,
+        None => state.broadcast_presence_sse(payload).await,
         Some(ref id) => {
             state
-                .send_presence_sse_to_user(id.to_string().as_str(),  payload)
+                .send_presence_sse_to_user(id.to_string().as_str(), payload)
                 .await
         }
     };
-
-    // let _ = state
-    //     .sse
-    //     .send(SseBuilder::new(
-    //         match user_id {
-    //             Some(ref id) => SseTarget::sent_to_user(id.to_string(), "presence".to_string()),
-    //             None => SseTarget::broadcast("presence".to_string()),
-    //         },
-    //         json!({
-    //             "conversation_id": conversation_id,
-    //             "is_typing": false,
-    //             "user_id": "nomi"
-    //         }),
-    //     ))
-    //     .await;
 
     // Presence Outbound (Stop Typing)
     if let Ok(channel_info) = sqlx::query!(

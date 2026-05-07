@@ -1,9 +1,9 @@
 use crate::common::identity;
 use crate::common::repository::{channel_repo, message_repo, pairing_repo};
-use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::feature::InboundMessage;
 use crate::AppState;
 use rand::RngExt;
+use serde_json::json;
 use tokio_stream::StreamExt;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -47,14 +47,15 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     let channel_info =
         channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.chat_id).await?;
 
-    let (user_id, mut conversation_id) = if let Some(ci) = channel_info {
+    let (user_id, conversation_id) = if let Some(ci) = channel_info {
         (ci.user_id, ci.conversation_id)
     } else {
         let identity =
             identity::resolve_identity(&state.pool, &msg.sender_id, &msg.channel).await?;
-        (identity.id, uuid::Uuid::nil())
+        (identity.id, Uuid::nil())
     };
 
+    // ================================== BEGIN COMMAND ============================//
     // 2. Check for Pairing Code
     let text = msg.text.trim();
     if text.to_uppercase().starts_with("PAIR ") || text.to_uppercase().starts_with("/PAIR ") {
@@ -71,7 +72,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                     conv_id,
                     user_id,
                 )
-                    .await?;
+                .await?;
 
                 let _ = state
                     .send_to_user(
@@ -93,40 +94,15 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         },
                     )
                     .await;
-                //
-                // let _ = state
-                //     .sse
-                //     .send(SseBuilder::new(
-                //         SseTarget::sent_to_user(user_id.to_string(), "pairing_success".to_string()),
-                //         serde_json::json!({
-                //             "conversation_id": conv_id,
-                //             "platform": msg.channel,
-                //             "message": format!("Successfully paired with {}!", msg.channel)
-                //         }),
-                //     ))
-                //     .await;
-                //
-                // state
-                //     .redis
-                //     .publish_event(
-                //         "nomi:outbound",
-                //         &crate::feature::OutboundMessage {
-                //             is_group:msg.is_group,
-                //             sender_id: msg.sender_id.clone(),
-                //             chat_id: msg.chat_id.clone(),
-                //             text: "Pairing successful! This conversation is now linked."
-                //                 .to_string(),
-                //             channel: msg.channel.clone(), metadata: msg.metadata.clone(),
-                //         },
-                //     )
-                //     .await?;
 
                 return Ok(());
             }
         }
-    } else if text.starts_with("/login") || text.starts_with("/register") {
-        info!("hit {}", text.to_uppercase());
-        // Check if user/channel exists
+    } else if text.starts_with("/register") {
+        info!(
+            "start registering from channel {} sender_id {}",
+            msg.channel, msg.sender_id
+        );
         let channel_exists = sqlx::query!(
                 "SELECT u.id as user_id FROM channels c JOIN users u ON u.id = c.user_id WHERE c.channel_type = $1 AND c.external_chat_id = $2",
                 msg.channel,
@@ -134,283 +110,225 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             )
             .fetch_optional(&state.pool)
             .await;
+        if let Err(err) = channel_exists {
+            info!("failed register because error getting information: {}", err);
+            let _ = state
+                .publish_outbond(&crate::feature::OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: msg.sender_id.clone(),
+                    chat_id: msg.chat_id.clone(),
+                    text: "We having trouble, meanwhile we on fixing, you can try again later."
+                        .to_string(),
+                    channel: msg.channel.clone(),
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
+            return Ok(());
+        }
+        let channel_result = channel_exists?;
+        if let Some(value) = channel_result {
+            info!("failed register because user exist: {}", value.user_id);
+            let _ = state
+                .publish_outbond(&crate::feature::OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: msg.sender_id.clone(),
+                    chat_id: msg.chat_id.clone(),
+                    text: "Account already exists. Use /login.".to_string(),
+                    channel: msg.channel.clone(),
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
 
-        let user_id = match channel_exists {
-            Ok(Some(row)) => {
-                if text == "/register" {
-                    let _ = state
-                        .publish_outbond(&crate::feature::OutboundMessage {
-                            is_group: msg.is_group,
-                            sender_id: msg.sender_id.clone(),
-                            chat_id: msg.chat_id.clone(),
-                            text: "Account already exists. Use /login.".to_string(),
-                            channel: msg.channel.clone(),
-                            metadata: msg.metadata.clone(),
-                        })
-                        .await;
+            return Ok(());
+        }
 
-                    // state
-                    //     .redis
-                    //     .publish_event(
-                    //         "nomi:outbound",
-                    //         &crate::feature::OutboundMessage {
-                    //             is_group: msg.is_group,
-                    //             sender_id: msg.sender_id.clone(),
-                    //             chat_id: msg.chat_id.clone(),
-                    //             text: "Account already exists. Use /login.".to_string(),
-                    //             channel: msg.channel.clone(),
-                    //             metadata: msg.metadata.clone(),
-                    //         },
-                    //     )
-                    //     .await?;
-                    return Ok(());
-                }
-                row.user_id
-            }
-            Ok(None) => {
-                if text == "/login" {
-                    let _ = state
-                        .publish_outbond(&crate::feature::OutboundMessage {
-                            is_group: msg.is_group,
-                            sender_id: msg.sender_id.clone(),
-                            chat_id: msg.chat_id.clone(),
-                            text: "Account not found. Please type /register first.".to_string(),
-                            channel: msg.channel.clone(),
-                            metadata: msg.metadata.clone(),
-                        })
-                        .await;
-
-                    // state
-                    //     .redis
-                    //     .publish_event(
-                    //         "nomi:outbound",
-                    //         &crate::feature::OutboundMessage {
-                    //             is_group: msg.is_group,
-                    //             sender_id: msg.sender_id.clone(),
-                    //             chat_id: msg.chat_id.clone(),
-                    //             text: "Account not found. Please type /register first.".to_string(),
-                    //             channel: msg.channel.clone(),
-                    //             metadata: msg.metadata.clone(),
-                    //         },
-                    //     )
-                    //     .await?;
-                    return Ok(());
-                }
-
-                // Start Transaction for Registration
-                let mut tx = match state.pool.begin().await {
-                    Ok(tx) => tx,
-                    Err(e) => {
-                        error!("Failed to start transaction: {}", e);
-
-                        let _ = state
-                            .publish_outbond(&crate::feature::OutboundMessage {
-                                is_group: msg.is_group,
-                                sender_id: msg.sender_id.clone(),
-                                chat_id: msg.chat_id.clone(),
-                                text: "Internal server error".to_string(),
-                                channel: msg.channel.clone(),
-                                metadata: msg.metadata.clone(),
-                            })
-                            .await;
-                        // state
-                        //     .redis
-                        //     .publish_event(
-                        //         "nomi:outbound",
-                        //         &crate::feature::OutboundMessage {
-                        //             is_group: msg.is_group,
-                        //             sender_id: msg.sender_id.clone(),
-                        //             chat_id: msg.chat_id.clone(),
-                        //             text: "Internal server error".to_string(),
-                        //             channel: msg.channel.clone(),
-                        //             metadata: msg.metadata.clone(),
-                        //         },
-                        //     )
-                        //     .await?;
-                        return Ok(());
-                    }
-                };
-
-                // Resolve/Create User
-                let u_id = match sqlx::query!(
-                        "INSERT INTO users (external_id, display_name) VALUES ($1, $2) ON CONFLICT (external_id) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id",
-                        msg.sender_id,
-                        msg.sender_id
-                    ).fetch_one(&mut *tx).await {
-                    Ok(r) => r.id,
-                    Err(e) => {
-                        error!("Failed to resolve user: {}", e);
-                        let _ = tx.rollback().await;
-                        let _ = state.publish_outbond(&crate::feature::OutboundMessage {
-                            is_group: msg.is_group,
-                            sender_id: msg.sender_id.clone(),
-                            chat_id: msg.chat_id.clone(),
-                            text: "Failed to resolve user".to_string(),
-                            channel: msg.channel.clone(),
-                            metadata: msg.metadata.clone(),
-                        }).await;
-                        // state.redis.publish_event("nomi:outbound", &crate::feature::OutboundMessage {
-                        //     is_group:msg.is_group,
-                        //     sender_id: msg.sender_id.clone(),
-                        //     chat_id: msg.chat_id.clone(),
-                        //     text: "Failed to resolve user".to_string(),
-                        //     channel: msg.channel.clone(), metadata: msg.metadata.clone(),
-                        // }).await?;
-                        return Ok(());
-                    }
-                };
-
-                // Create new conversation
-                let conv_id = Uuid::new_v4();
-                let title = format!("{} via {}", msg.chat_id, msg.channel);
-
-                if let Err(e) = sqlx::query!(
-                    "INSERT INTO conversations (id, title) VALUES ($1, $2)",
-                    conv_id,
-                    title
-                )
-                    .execute(&mut *tx)
-                    .await
-                {
-                    error!("Failed to create conversation: {}", e);
-                    let _ = tx.rollback().await;
-                    let _ = state
-                        .publish_outbond(&crate::feature::OutboundMessage {
-                            is_group: msg.is_group,
-                            sender_id: msg.sender_id.clone(),
-                            chat_id: msg.chat_id.clone(),
-                            text: "Failed to create conversation".to_string(),
-                            channel: msg.channel.clone(),
-                            metadata: msg.metadata.clone(),
-                        })
-                        .await;
-                    // state
-                    //     .redis
-                    //     .publish_event(
-                    //         "nomi:outbound",
-                    //         &crate::feature::OutboundMessage {
-                    //             is_group: msg.is_group,
-                    //             sender_id: msg.sender_id.clone(),
-                    //             chat_id: msg.chat_id.clone(),
-                    //             text: "Failed to create conversation".to_string(),
-                    //             channel: msg.channel.clone(),
-                    //             metadata: msg.metadata.clone(),
-                    //         },
-                    //     )
-                    //     .await?;
-                    return Ok(());
-                }
-
-                if let Err(e) = sqlx::query!(
-                        "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id, user_id) VALUES ($1, $2, $3, $4, $5)",
-                        msg.channel, msg.sender_id, msg.chat_id, conv_id, u_id
-                    ).execute(&mut *tx).await {
-                    error!("Failed to link channel: {}", e);
-                    let _ = tx.rollback().await;
-
-                    let _ = state.publish_outbond(&crate::feature::OutboundMessage {
-                        is_group: msg.is_group,
-                        sender_id: msg.sender_id.clone(),
-                        chat_id: msg.chat_id.clone(),
-                        text: "Failed to link channel".to_string(),
-                        channel: msg.channel.clone(),
-                        metadata: msg.metadata.clone(),
-                    }).await;
-
-                    // state.redis.publish_event("nomi:outbound", &crate::feature::OutboundMessage {
-                    //     is_group:msg.is_group,
-                    //     sender_id: msg.sender_id.clone(),
-                    //     chat_id: msg.chat_id.clone(),
-                    //     text: "Failed to link channel".to_string(),
-                    //     channel: msg.channel.clone(), metadata: msg.metadata.clone(),
-                    // }).await?;
-                    return Ok(());
-                }
-
-                if let Err(e) = sqlx::query!(
-                        "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                        conv_id, u_id
-                    ).execute(&mut *tx).await {
-                    error!("Failed to add member: {}", e);
-                    let _ = tx.rollback().await;
-                    let _ = state.publish_outbond(&crate::feature::OutboundMessage {
-                        is_group: msg.is_group,
-                        sender_id: msg.sender_id.clone(),
-                        chat_id: msg.chat_id.clone(),
-                        text: "Failed to join conversation".to_string(),
-                        channel: msg.channel.clone(),
-                        metadata: msg.metadata.clone(),
-                    }).await;
-
-                    // state.redis.publish_event("nomi:outbound", &crate::feature::OutboundMessage {
-                    //     is_group:msg.is_group,
-                    //     sender_id: msg.sender_id.clone(),
-                    //     chat_id: msg.chat_id.clone(),
-                    //     text: "Failed to join conversation".to_string(),
-                    //     channel: msg.channel.clone(), metadata: msg.metadata.clone(),
-                    // }).await?;
-                    return Ok(());
-                }
-
-                if let Err(e) = tx.commit().await {
-                    error!("Failed to commit registration: {}", e);
-                    let _ = state
-                        .publish_outbond(&crate::feature::OutboundMessage {
-                            is_group: msg.is_group,
-                            sender_id: msg.sender_id.clone(),
-                            chat_id: msg.chat_id.clone(),
-                            text: "Failed to register".to_string(),
-                            channel: msg.channel.clone(),
-                            metadata: msg.metadata.clone(),
-                        })
-                        .await;
-                    // state
-                    //     .redis
-                    //     .publish_event(
-                    //         "nomi:outbound",
-                    //         &crate::feature::OutboundMessage {
-                    //             is_group: msg.is_group,
-                    //             sender_id: msg.sender_id.clone(),
-                    //             chat_id: msg.chat_id.clone(),
-                    //             text: "Failed to register".to_string(),
-                    //             channel: msg.channel.clone(),
-                    //             metadata: msg.metadata.clone(),
-                    //         },
-                    //     )
-                    //     .await?;
-                    return Ok(());
-                }
-                u_id
-            }
+        let mut tx = match state.pool.begin().await {
+            Ok(tx) => tx,
             Err(e) => {
-                error!("Database error: {}", e);
+                error!("Failed to start transaction: {}", e);
                 let _ = state
                     .publish_outbond(&crate::feature::OutboundMessage {
                         is_group: msg.is_group,
                         sender_id: msg.sender_id.clone(),
                         chat_id: msg.chat_id.clone(),
-                        text: "Database error".to_string(),
+                        text: "Internal server error".to_string(),
                         channel: msg.channel.clone(),
                         metadata: msg.metadata.clone(),
                     })
                     .await;
-                // state
-                //     .redis
-                //     .publish_event(
-                //         "nomi:outbound",
-                //         &crate::feature::OutboundMessage {
-                //             is_group: msg.is_group,
-                //             sender_id: msg.sender_id.clone(),
-                //             chat_id: msg.chat_id.clone(),
-                //             text: "Database error".to_string(),
-                //             channel: msg.channel.clone(),
-                //             metadata: msg.metadata.clone(),
-                //         },
-                //     )
-                //     .await?;
                 return Ok(());
             }
         };
+
+        info!("begin create user \n");
+        // Resolve/Create User
+        let u_id = match sqlx::query!(
+            "INSERT INTO users (external_id, display_name) VALUES ($1, $2) ON CONFLICT (external_id) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id",
+            msg.sender_id,
+            msg.sender_id
+        ).fetch_one(&mut *tx).await {
+            Ok(r) => r.id,
+            Err(e) => {
+                error!("Failed to resolve user: {}", e);
+                let _ = tx.rollback().await;
+                let _ = state.publish_outbond(&crate::feature::OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: msg.sender_id.clone(),
+                    chat_id: msg.chat_id.clone(),
+                    text: "Failed to resolve user".to_string(),
+                    channel: msg.channel.clone(),
+                    metadata: msg.metadata.clone(),
+                }).await;
+
+                return Ok(());
+            }
+        };
+
+        info!("begin create conversation \n");
+        // Create new conversation
+        let conv_id = Uuid::new_v4();
+        let title = format!("{} via {}", msg.chat_id, msg.channel);
+
+        if let Err(e) = sqlx::query!(
+            "INSERT INTO conversations (id, title) VALUES ($1, $2)",
+            conv_id,
+            title
+        )
+        .execute(&mut *tx)
+        .await
+        {
+            error!("Failed to create conversation: {}", e);
+            let _ = tx.rollback().await;
+            let _ = state
+                .publish_outbond(&crate::feature::OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: msg.sender_id.clone(),
+                    chat_id: msg.chat_id.clone(),
+                    text: "Failed to create conversation".to_string(),
+                    channel: msg.channel.clone(),
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
+
+            return Ok(());
+        }
+
+        info!("begin create channels");
+        if let Err(e) = sqlx::query!(
+            "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id, user_id) VALUES ($1, $2, $3, $4, $5)",
+            msg.channel,
+            msg.sender_id,
+            msg.chat_id,
+            conv_id,
+            u_id
+        ).execute(&mut *tx).await {
+            error!("Failed to link channel: {}", e);
+            let _ = tx.rollback().await;
+
+            let _ = state.publish_outbond(&crate::feature::OutboundMessage {
+                is_group: msg.is_group,
+                sender_id: msg.sender_id.clone(),
+                chat_id: msg.chat_id.clone(),
+                text: "Failed to link channel".to_string(),
+                channel: msg.channel.clone(),
+                metadata: msg.metadata.clone(),
+            }).await;
+
+            return Ok(());
+        }
+
+        if let Err(e) = sqlx::query!(
+            "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            conv_id,
+            u_id
+        ).execute(&mut *tx).await {
+            error!("Failed to add member: {}", e);
+            let _ = tx.rollback().await;
+            let _ = state.publish_outbond(&crate::feature::OutboundMessage {
+                is_group: msg.is_group,
+                sender_id: msg.sender_id.clone(),
+                chat_id: msg.chat_id.clone(),
+                text: "Failed to join conversation".to_string(),
+                channel: msg.channel.clone(),
+                metadata: msg.metadata.clone(),
+            }).await;
+
+            return Ok(());
+        }
+
+        if let Err(e) = tx.commit().await {
+            error!("Failed to commit registration: {}", e);
+            let _ = state
+                .publish_outbond(&crate::feature::OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: msg.sender_id.clone(),
+                    chat_id: msg.chat_id.clone(),
+                    text: "Failed to register".to_string(),
+                    channel: msg.channel.clone(),
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
+
+            return Ok(());
+        }
+
+        let _ = state
+            .publish_outbond(&crate::feature::OutboundMessage {
+                is_group: msg.is_group,
+                sender_id: msg.sender_id.clone(),
+                chat_id: msg.chat_id.clone(),
+                text: "Success register account, you can now /login for access dashboard"
+                    .to_string(),
+                channel: msg.channel.clone(),
+                metadata: msg.metadata.clone(),
+            })
+            .await;
+        return Ok(());
+    } else if text.starts_with("/login") {
+        info!(
+            "start login from channel {} sender_id {}",
+            msg.channel, msg.sender_id
+        );
+        // Check if user/channel exists
+        let channel_exists = sqlx::query!(
+            "SELECT u.id as user_id FROM channels c JOIN users u ON u.id = c.user_id WHERE c.channel_type = $1 AND c.external_chat_id = $2",
+            msg.channel,
+            msg.chat_id
+        ).fetch_optional(&state.pool).await;
+
+        if let Err(err) = channel_exists {
+            info!("failed get channel data: {}", err);
+            let _ = state
+                .publish_outbond(&crate::feature::OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: msg.sender_id.clone(),
+                    chat_id: msg.chat_id.clone(),
+                    text: "We having trouble for getting information, meanwhile we fixing you can try again later.".to_string(),
+                    channel: msg.channel.clone(),
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
+
+            return Ok(());
+        }
+        if let Ok(None) = channel_exists {
+            info!("channel doesnt exist:");
+            let _ = state
+                .publish_outbond(&crate::feature::OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: msg.sender_id.clone(),
+                    chat_id: msg.chat_id.clone(),
+                    text: "Channel not registered, Use /register for new user use, if you already had account, get pairing code from dashboard and use /pair <PAIRING CODE>".to_string(),
+                    channel: msg.channel.clone(),
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
+
+            return Ok(());
+        }
+
+        let channel_data = channel_exists.unwrap().unwrap();
+        let user_id = channel_data.user_id;
 
         // Generate OTP
         let otp_code: u32 = rand::rng().random_range(100000..999999);
@@ -429,20 +347,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                     metadata: msg.metadata.clone(),
                 })
                 .await;
-            // state
-            //     .redis
-            //     .publish_event(
-            //         "nomi:outbound",
-            //         &crate::feature::OutboundMessage {
-            //             is_group: msg.is_group,
-            //             sender_id: msg.sender_id.clone(),
-            //             chat_id: msg.chat_id.clone(),
-            //             text: "Failed to generate OTP".to_string(),
-            //             channel: msg.channel.clone(),
-            //             metadata: msg.metadata.clone(),
-            //         },
-            //     )
-            //     .await?;
+
             return Ok(());
         }
 
@@ -468,38 +373,19 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             error!("Failed to publish OTP to nomi:outbound: {}", e);
             return Ok(());
         }
-
-        return Ok(());
     }
 
+    // ================================== NOT REGISTERED STOP HERE ============================//
     // 3. Resolve/Create Conversation
     if conversation_id.is_nil() {
-        // let conv_id = uuid::Uuid::new_v4();
-        let title = format!("{} via {}", msg.chat_id, msg.channel);
-        //
-        // sqlx::query!(
-        //     "INSERT INTO conversations (id, title) VALUES ($1, $2)",
-        //     conv_id,
-        //     title
-        // )
-        // .execute(&state.pool)
-        // .await?;
-        //
-        // channel_repo::link_channel(
-        //     &state.pool,
-        //     &msg.channel,
-        //     &msg.sender_id,
-        //     &msg.chat_id,
-        //     conv_id,
-        //     user_id,
-        // )
-        // .await?;
-        // conversation_id = conv_id;
+        info!("{} via {}", msg.chat_id, msg.channel);
         info!(
             "Unfortunately user doesnt associate with any conversation, stop here will not sent to llm"
         );
         return Ok(());
     }
+
+    // ================================== REGULAR CONVO ============================//
 
     // 4. Save User Message
     let user_message = message_repo::save_message(
@@ -510,14 +396,10 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         None,
         Some(user_id),
     )
-        .await?;
+    .await?;
 
     let _ = state
-        .sse
-        .send(SseBuilder::new(
-            SseTarget::sent_to_user(user_id.to_string(), "message".to_string()),
-            user_message,
-        ))
+        .send_sse_to_user(user_id.to_string().as_str(), "message", json!(user_message))
         .await;
 
     // 5. Trigger Agentic Loop
@@ -531,10 +413,10 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         let _ = state_clone
             .send_presence_to_user(
                 user_id.to_string().as_str(),
-                serde_json::json!({
-                    "conversation_id": conversation_id,
-                    "is_typing": true,
-                    "user_id": "nomi"
+                json! ({
+                "conversation_id": conversation_id,
+                "is_typing": true,
+                "user_id": "nomi"
                 }),
                 &crate::feature::PresenceMessage {
                     sender_id: sender_id.clone(),
@@ -544,37 +426,13 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 },
             )
             .await;
-        // let _ = state_clone
-        //     .sse
-        //     .send(SseBuilder::new(
-        //         SseTarget::sent_to_user(user_id.to_string(), "presence".to_string()),
-        //         serde_json::json!({
-        //             "conversation_id": conversation_id,
-        //             "is_typing": true,
-        //             "user_id": "nomi"
-        //         }),
-        //     ))
-        //     .await;
-        //
-        // let _ = state_clone
-        //     .redis
-        //     .publish_event(
-        //         "nomi:presence",
-        //         &crate::feature::PresenceMessage {
-        //             sender_id: sender_id.clone(),
-        //             chat_id: chat_id.clone(),
-        //             channel: channel.clone(),
-        //             status: "typing".to_string(),
-        //         },
-        //     )
-        //     .await;
 
         let conversation = sqlx::query!(
             "SELECT bootstrap_content, soul_content FROM conversations WHERE id = $1",
             conversation_id
         )
-            .fetch_one(&state_clone.pool)
-            .await;
+        .fetch_one(&state_clone.pool)
+        .await;
 
         let (system_prompt, _user_id_from_db) = match conversation {
             Ok(c) => {
@@ -594,10 +452,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         let history = sqlx::query!(
             "SELECT created_at, role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 15",
             conversation_id
-        )
-            .fetch_all(&state_clone.pool)
-            .await
-            .unwrap_or_default();
+        ).fetch_all( & state_clone.pool).await.unwrap_or_default();
 
         let mut history_text = String::new();
         for msg in history.into_iter().rev() {
@@ -627,9 +482,9 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 embedding,
                 Some(conversation_id),
             )
-                .await
-                .unwrap_or_default()
-                .join("\n---\n")
+            .await
+            .unwrap_or_default()
+            .join("\n---\n")
         } else {
             String::new()
         };
@@ -665,12 +520,8 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 Ok((response, chunk)) => {
                     // Emit thought
                     if !chunk.thought.is_empty() {
-                        let _ = state_clone.send_sse_to_user(user_id.to_string().as_str(), "thought", serde_json::json!({ "thought": chunk.thought, "conversation_id": conversation_id }))
-                            .await;
-                        // let _ = state_clone.sse.send(SseBuilder::new(
-                        //     SseTarget::sent_to_user(user_id.to_string(), "thought".to_string()),
-                        //     serde_json::json!({ "thought": chunk.thought, "conversation_id": conversation_id }),
-                        // )).await;
+                        let _ = state_clone.send_sse_to_user(user_id.to_string().as_str(), "thought", serde_json::json ! ({ "thought": chunk.thought, "conversation_id": conversation_id }))
+.await;
                     }
 
                     let tool_calls = response.function_calls();
@@ -688,7 +539,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         &user_text,
                         Some(state_clone.sse.clone()),
                     )
-                        .await;
+                    .await;
 
                     current_actor = crate::common::agent::agent_model::PromptActor::MultiTool {
                         history: history_text.clone(),
@@ -715,16 +566,8 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 Some(&chunk.thought),
                 None,
             )
-                .await
-                .unwrap();
-
-            // let _ = state_clone
-            //     .sse
-            //     .send(SseBuilder::new(
-            //         SseTarget::sent_to_user(user_id.to_string(), "message".to_string()),
-            //         assistant_message,
-            //     ))
-            //     .await;
+            .await
+            .unwrap();
 
             let _ = state_clone
                 .send_sse_to_user(
@@ -735,45 +578,25 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .await;
 
             let _ = state_clone.send_presence_to_user(
-                user_id.to_string().as_str(),
-                serde_json::json!({"conversation_id": conversation_id, "is_typing": false, "user_id": "nomi"}),
-                &crate::feature::PresenceMessage {
-                    sender_id: sender_id.clone(),
-                    chat_id: chat_id.clone(),
-                    channel: channel.clone(),
-                    status: "idle".to_string(),
-                },
-            ).await;
-
-            // let _ = state_clone.sse.send(SseBuilder::new(
-            //     SseTarget::sent_to_user(user_id.to_string(), "presence".to_string()),
-            //     serde_json::json!({"conversation_id": conversation_id, "is_typing": false, "user_id": "nomi"}),
-            // )).await;
-            //
-            // let _ = state_clone
-            //     .redis
-            //     .publish_event(
-            //         "nomi:presence",
-            //         &crate::feature::PresenceMessage {
-            //             sender_id: sender_id.clone(),
-            //             chat_id: chat_id.clone(),
-            //             channel: channel.clone(),
-            //             status: "idle".to_string(),
-            //         },
-            //     )
-            //     .await;
+user_id.to_string().as_str(),
+serde_json::json! ({"conversation_id": conversation_id, "is_typing": false, "user_id": "nomi"}),
+& crate::feature::PresenceMessage {
+sender_id: sender_id.clone(),
+chat_id: chat_id.clone(),
+channel: channel.clone(),
+status: "idle".to_string(),
+},
+).await;
 
             let _ = state_clone
-                .publish_outbond(
-                    &crate::feature::OutboundMessage {
-                        is_group: msg.is_group,
-                        sender_id: sender_id,
-                        chat_id: chat_id,
-                        text: chunk.content,
-                        channel: channel.clone(),
-                        metadata: None,
-                    },
-                )
+                .publish_outbond(&crate::feature::OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: sender_id,
+                    chat_id: chat_id,
+                    text: chunk.content,
+                    channel: channel.clone(),
+                    metadata: None,
+                })
                 .await;
         }
     });

@@ -20,7 +20,7 @@ pub async fn send_prompt(
     gemini: &Gemini,
     actor: PromptActor,
 ) -> Result<(GenerationResponse, ChatStreamChunk), String> {
-    info!("sending message to llm");
+    info!("==== sending message to llm ==== \n");
 
     let gemini_builder = match actor {
         PromptActor::User {
@@ -29,10 +29,14 @@ pub async fn send_prompt(
             message,
             system_prompt,
         } => {
-            info!("history text user: {}", history);
+            info!("sending user prompt");
+            // info!("history text user:\n {} \n", history);
+            // info!("memories:\n {} \n", memories);
+            let build_prompt = build_system_prompt(history, memories, system_prompt);
+            // info!("system :\n {} \n", build_prompt);
             gemini
                 .generate_content()
-                .with_system_prompt(build_system_prompt(history, memories, system_prompt))
+                .with_system_prompt(build_prompt)
                 .with_user_message(message)
                 .with_tool(ToolDispatcher::generate_tool_for_prompt())
                 .with_function_calling_mode(FunctionCallingMode::Auto)
@@ -45,10 +49,14 @@ pub async fn send_prompt(
             tool_results,
             previous_calls,
         } => {
-            info!("history text multi tool: {}", history);
+            info!("sending multitool prompt");
+            // info!("history text multi tool:\n {} \n", history);
+            // info!("memories:\n {} \n", memories);
+            let build_prompt = build_system_prompt(history, memories, system_prompt);
+            // info!("system :\n {} \n", build_prompt);
             let mut builder = gemini
                 .generate_content()
-                .with_system_prompt(build_system_prompt(history, memories, system_prompt))
+                .with_system_prompt(build_prompt)
                 .with_user_message(message);
 
             // Add previous assistant tool calls
@@ -266,12 +274,9 @@ Goal: Solve the user's problem efficiently using the tools provided\n
 
 pub fn build_context(history: String, memories: String) -> String {
     format!(
-        "- Current Time: {}
-        - Recent History:\n
-        {}
-        \n
-        - Past Memories:\n
-        {}",
+        "[] Current Time: {} \n
+         [] Recent History:\n{}\n
+         [] Past Memories:\n {} \n",
         Utc::now().to_rfc3339(),
         history,
         memories

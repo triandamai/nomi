@@ -104,7 +104,7 @@ impl WhatsAppWorker {
                                     text = original_text.trim().to_string();
                                 }
 
-                                info!("Received WhatsApp message from {}: {}", sender_id, text);
+                                info!("Received WhatsApp message from {}: {} \n", sender_id, text);
 
                                 let display_name = info.push_name.clone();
                                 let phone_number = info.source.sender.to_string().split('@').next().unwrap_or("").to_string();
