@@ -253,6 +253,7 @@ pub async fn process_incoming_message(
 
         for channel in channel_info {
             let outbound = OutboundMessage {
+                is_group:false,
                 sender_id: channel.external_id.clone(),
                 chat_id: channel.external_chat_id.clone(),
                 text: record.content.clone(),

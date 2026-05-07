@@ -90,6 +90,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                     .publish_event(
                         "nomi:outbound",
                         &crate::feature::OutboundMessage {
+                            is_group:msg.is_group,
                             sender_id: msg.sender_id.clone(),
                             chat_id: msg.chat_id.clone(),
                             text: "Pairing successful! This conversation is now linked."
@@ -121,6 +122,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         .publish_event(
                             "nomi:outbound",
                             &crate::feature::OutboundMessage {
+                                is_group:msg.is_group,
                                 sender_id: msg.sender_id.clone(),
                                 chat_id: msg.chat_id.clone(),
                                 text: "Account already exists. Use /login.".to_string(),
@@ -139,6 +141,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         .publish_event(
                             "nomi:outbound",
                             &crate::feature::OutboundMessage {
+                                is_group:msg.is_group,
                                 sender_id: msg.sender_id.clone(),
                                 chat_id: msg.chat_id.clone(),
                                 text: "Account not found. Please type /register first.".to_string(),
@@ -160,6 +163,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                             .publish_event(
                                 "nomi:outbound",
                                 &crate::feature::OutboundMessage {
+                                    is_group:msg.is_group,
                                     sender_id: msg.sender_id.clone(),
                                     chat_id: msg.chat_id.clone(),
                                     text: "Internal server error".to_string(),
@@ -182,6 +186,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         error!("Failed to resolve user: {}", e);
                         let _ = tx.rollback().await;
                         state.redis.publish_event("nomi:outbound", &crate::feature::OutboundMessage {
+                            is_group:msg.is_group,
                             sender_id: msg.sender_id.clone(),
                             chat_id: msg.chat_id.clone(),
                             text: "Failed to resolve user".to_string(),
@@ -210,6 +215,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         .publish_event(
                             "nomi:outbound",
                             &crate::feature::OutboundMessage {
+                                is_group:msg.is_group,
                                 sender_id: msg.sender_id.clone(),
                                 chat_id: msg.chat_id.clone(),
                                 text: "Failed to create conversation".to_string(),
@@ -227,6 +233,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                     error!("Failed to link channel: {}", e);
                     let _ = tx.rollback().await;
                     state.redis.publish_event("nomi:outbound", &crate::feature::OutboundMessage {
+                        is_group:msg.is_group,
                         sender_id: msg.sender_id.clone(),
                         chat_id: msg.chat_id.clone(),
                         text: "Failed to link channel".to_string(),
@@ -242,6 +249,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                     error!("Failed to add member: {}", e);
                     let _ = tx.rollback().await;
                     state.redis.publish_event("nomi:outbound", &crate::feature::OutboundMessage {
+                        is_group:msg.is_group,
                         sender_id: msg.sender_id.clone(),
                         chat_id: msg.chat_id.clone(),
                         text: "Failed to join conversation".to_string(),
@@ -257,6 +265,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                         .publish_event(
                             "nomi:outbound",
                             &crate::feature::OutboundMessage {
+                                is_group:msg.is_group,
                                 sender_id: msg.sender_id.clone(),
                                 chat_id: msg.chat_id.clone(),
                                 text: "Failed to register".to_string(),
@@ -275,6 +284,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                     .publish_event(
                         "nomi:outbound",
                         &crate::feature::OutboundMessage {
+                            is_group:msg.is_group,
                             sender_id: msg.sender_id.clone(),
                             chat_id: msg.chat_id.clone(),
                             text: "Database error".to_string(),
@@ -298,6 +308,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .publish_event(
                     "nomi:outbound",
                     &crate::feature::OutboundMessage {
+                        is_group:msg.is_group,
                         sender_id: msg.sender_id.clone(),
                         chat_id: msg.chat_id.clone(),
                         text: "Failed to generate OTP".to_string(),
@@ -318,6 +329,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         );
 
         let outbound = crate::feature::OutboundMessage {
+            is_group:msg.is_group,
             sender_id: "nomi_auth".to_string(),
             chat_id: msg.chat_id.clone(),
             text: outbound_text,
@@ -582,6 +594,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .publish_event(
                     "nomi:outbound",
                     &crate::feature::OutboundMessage {
+                        is_group:msg.is_group,
                         sender_id: sender_id,
                         chat_id: chat_id,
                         text: chunk.content,

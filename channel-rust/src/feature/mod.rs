@@ -7,6 +7,7 @@ pub mod bridge;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InboundMessage {
+    pub is_group: bool,
     pub sender_id: String,
     pub chat_id: String,
     pub text: String,
@@ -17,6 +18,7 @@ pub struct InboundMessage {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OutboundMessage {
+    pub is_group: bool,
     pub sender_id: Option<String>,
     pub chat_id: String,
     pub text: String,

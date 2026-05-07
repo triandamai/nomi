@@ -24,13 +24,26 @@ function createChatStore() {
     // Subscribe to SSE events via EventBus
     eventBus.subscribe('sse-message', (data) => {
         if (data.content) {
-            messages = [...messages, {
-                id: data.id || crypto.randomUUID(),
-                role: data.role || "assistant", 
-                content: data.content,
-                thought: data.thought,
-                user_id: data.user_id
-            } as Message];
+            const find = messages.findIndex(v=>v.id == data.id)
+            if(find > 0){
+                messages[find] = ({
+                    id: data.id || crypto.randomUUID(),
+                    role: data.role || "assistant",
+                    content: data.content,
+                    thought: data.thought,
+                    user_id: data.user_id
+                } as Message)
+            }else {
+                messages.push({
+                    id: data.id || crypto.randomUUID(),
+                    role: data.role || "assistant",
+                    content: data.content,
+                    thought: data.thought,
+                    user_id: data.user_id
+                } as Message)
+
+            }
+
             currentThought = ""; // Clear thought when message arrives
             isTyping = false;
         }

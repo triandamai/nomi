@@ -8,6 +8,7 @@ pub mod message_processor;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InboundMessage {
+    pub is_group: bool,
     pub sender_id: String,
     pub chat_id: String,
     pub text: String,
@@ -18,6 +19,7 @@ pub struct InboundMessage {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OutboundMessage {
+    pub is_group: bool,
     pub sender_id: String,
     pub chat_id: String,
     pub text: String,

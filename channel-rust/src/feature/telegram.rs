@@ -73,6 +73,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient) {
                 });
 
                 let inbound = InboundMessage {
+                    is_group:!is_private,
                     sender_id,
                     chat_id,
                     text,

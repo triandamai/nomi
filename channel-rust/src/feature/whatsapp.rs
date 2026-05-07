@@ -114,6 +114,7 @@ impl WhatsAppWorker {
                                 });
 
                                 let inbound = InboundMessage {
+                                    is_group:!is_private,
                                     sender_id,
                                     chat_id,
                                     text,
