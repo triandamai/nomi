@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id, user_id) \n         VALUES ($1, $2, $3, $4, $5) \n         ON CONFLICT (channel_type, external_chat_id) \n         DO UPDATE SET conversation_id = EXCLUDED.conversation_id, user_id = EXCLUDED.user_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e069523464698e41bdf44aca13f37d553b1c5e8ba14470be93fde5fdcbd2f8b6"
+}

@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT bootstrap_content, soul_content FROM conversations WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "bootstrap_content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "soul_content",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "6942cc8cf150f5797262c91c46af9cd20aa954641bdd60d53d071c4868ca3973"
+}

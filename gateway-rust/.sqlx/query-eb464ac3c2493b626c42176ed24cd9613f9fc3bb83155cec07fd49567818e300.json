@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id::text as \"id!\", external_id as \"external_id!\", COALESCE(display_name, external_id) as \"display_name!\", NULL as \"avatar_url\"\n        FROM users\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "external_id!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "display_name!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "avatar_url",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      true,
+      null,
+      null
+    ]
+  },
+  "hash": "eb464ac3c2493b626c42176ed24cd9613f9fc3bb83155cec07fd49567818e300"
+}
