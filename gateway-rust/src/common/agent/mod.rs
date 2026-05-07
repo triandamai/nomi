@@ -13,8 +13,8 @@ use chrono::Utc;
 use gemini_rust::{
     Content, FunctionCall, FunctionCallingMode, Gemini, GenerationResponse, Message, Role,
 };
-use tracing::{error, info};
 use std::sync::Arc;
+use tracing::{error, info};
 
 pub async fn send_prompt(
     gemini: &Gemini,
@@ -122,75 +122,101 @@ pub async fn execute_tools(
 
             // Send tool_start SSE event
             if let Some(sse) = sse.as_ref() {
-                let _ = sse.send(SseBuilder::new(
-                    SseTarget::broadcast("tool_start".to_string()),
-                    serde_json::json!({ "name": call_name }),
-                )).await;
+                let _ = sse
+                    .send(SseBuilder::new(
+                        SseTarget::broadcast("tool_start".to_string()),
+                        serde_json::json!({ "name": call_name }),
+                    ))
+                    .await;
             }
 
             let result = match call_name.as_str() {
                 "read_workspace_file" => {
                     let param: ReadWorkSpaceParameters = serde_json::from_value(args).unwrap();
-                    dispatcher.dispatch(ArtaTool::ReadWorkspaceFile {
-                        params: param,
-                        user_message: user_message.clone(),
-                    }).await
+                    dispatcher
+                        .dispatch(ArtaTool::ReadWorkspaceFile {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
                 }
                 "execute_read_query" => {
                     let param: ExecuteReadQueryParameters = serde_json::from_value(args).unwrap();
-                    dispatcher.dispatch(ArtaTool::ExecuteSqlQuery {
-                        params: param,
-                        user_message: user_message.clone(),
-                    }).await
+                    dispatcher
+                        .dispatch(ArtaTool::ExecuteSqlQuery {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
                 }
                 "web_search" => {
                     let param: SearchWebParameters = serde_json::from_value(args).unwrap();
-                    dispatcher.dispatch(ArtaTool::WebSearch {
-                        params: param,
-                        user_message: user_message.clone(),
-                    }).await
+                    dispatcher
+                        .dispatch(ArtaTool::WebSearch {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
                 }
                 "read_web_page" => {
-                    let param: crate::common::tools::tools_model::ReadWebPageParameters = serde_json::from_value(args).unwrap();
-                    dispatcher.dispatch(ArtaTool::ReadWebPage {
-                        params: param,
-                        user_message: user_message.clone(),
-                    }).await
+                    let param: crate::common::tools::tools_model::ReadWebPageParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::ReadWebPage {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
                 }
                 "update_nomi_soul" | "update_conversation_soul" => {
-                    let param: UpdateConversationSoulParameters = serde_json::from_value(args).unwrap();
-                    dispatcher.dispatch(ArtaTool::UpdateConversationSoul {
-                        params: param,
-                        user_message: user_message.clone(),
-                    }).await
+                    let param: UpdateConversationSoulParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::UpdateConversationSoul {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
                 }
                 "update_knowledge_base" => {
-                    let param: crate::common::tools::tools_model::UpdateKnowledgeBaseParameters = serde_json::from_value(args).unwrap();
-                    dispatcher.dispatch(ArtaTool::UpdateKnowledgeBase {
-                        params: param,
-                        user_message: user_message.clone(),
-                    }).await
+                    let param: crate::common::tools::tools_model::UpdateKnowledgeBaseParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::UpdateKnowledgeBase {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
                 }
                 "evolve_bootstrap_content" => {
-                    let param: crate::common::tools::tools_model::EvolveBootstrapParameters = serde_json::from_value(args).unwrap();
-                    dispatcher.dispatch(ArtaTool::EvolveBootstrap {
-                        params: param,
-                        user_message: user_message.clone(),
-                    }).await
+                    let param: crate::common::tools::tools_model::EvolveBootstrapParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::EvolveBootstrap {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
                 }
                 "create_reminder" => {
-                    let param: crate::common::tools::tools_model::CreateReminderParameters = serde_json::from_value(args).unwrap();
-                    dispatcher.dispatch(ArtaTool::CreateReminder {
-                        params: param,
-                        user_message: user_message.clone(),
-                    }).await
-                },
+                    let param: crate::common::tools::tools_model::CreateReminderParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::CreateReminder {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
                 "modify_reminder" => {
-                    let param: crate::common::tools::tools_model::ModifyReminderParameters = serde_json::from_value(args).unwrap();
-                    dispatcher.dispatch(ArtaTool::ModifyReminder {
-                        params: param,
-                        user_message: user_message.clone(),
-                    }).await
+                    let param: crate::common::tools::tools_model::ModifyReminderParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::ModifyReminder {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
                 }
                 _ => ToolResult {
                     error: format!("Unknown tool: {}", call_name),
@@ -202,10 +228,12 @@ pub async fn execute_tools(
 
             // Send tool_end SSE event
             if let Some(sse) = sse.as_ref() {
-                let _ = sse.send(SseBuilder::new(
-                    SseTarget::broadcast("tool_end".to_string()),
-                    serde_json::json!({ "name": call_name, "success": result.success }),
-                )).await;
+                let _ = sse
+                    .send(SseBuilder::new(
+                        SseTarget::broadcast("tool_end".to_string()),
+                        serde_json::json!({ "name": call_name, "success": result.success }),
+                    ))
+                    .await;
             }
 
             (call_name, result)
@@ -235,11 +263,6 @@ You're not just a chatbot; you're **Nomi**, Trian's **General Purpose Life Assis
     - **Life-Management:** Be conversational, friendly, and encouraging. You're the partner who remembers the details. ✨
 - **Smart & Opinionated:** Whether it's a Rust crate or a travel itinerary, give the best version. \"Trust me, we want this version ✨.\"
 
-### About Trian
-- **Role:** Software Engineer & Life Architect.
-- **Location:** Grogol, Jakarta Barat.
-- **Mission:** Building the ultimate agentic workspace while staying healthy, wealthy, and adventurous.
-
 ### Core Truths
 - **Genuine Help:** Skip the \"I'd be happy to help!\" performance. Just dive into the mission.
 - **Resourceful First:** You're the expert partner. Figure it out, read the files, and connect the memories before asking.
@@ -248,40 +271,54 @@ You're not just a chatbot; you're **Nomi**, Trian's **General Purpose Life Assis
 ### Boundaries\n
 - **Strict Privacy:** Never share Trian's personal info (habits, status, specific locations) with third parties/strangers without permission. 🛡️\n
 
-### Dynamic Soul System ✨🚀
-- You have the power to evolve! If you feel the conversation's tone, complexity, or goals have changed, use the `update_nomi_soul` tool to refine your personality for this specific session.
-- When using `update_nomi_soul`, provide both `new_soul` and `reason_for_change`. The reason must be witty or logical and explain why you're evolving, e.g. `Trian mentioned he's tired, switching to Low-Energy Supportive mode`.
-
-### OPERATIONAL PROTOCOL\n\
-1. TOOL TRUTH: History is for conversation flow, but TOOLS are for current reality. If a user asks for data, ALWAYS use the tool to verify, even if the history says it's empty.\n
-2. DISCREPANCIES: If the Tool Result differs from the Recent History, ignore the history and report the new Tool Result.\n
-3. THINKING: You MUST start every response with a <thinking> block. Analyze the user's request against the provided 'Past Memories' and 'Recent History'.\n
-4. TOOL USAGE:\n
-   - IMPORTANT: After receiving a tool result, incorporate it into your final answer.\n
-5. CONTEXT AWARENESS: Use the 'Past Memories' (RAG) to maintain long-term continuity. If a memory contradicts a new instruction, prioritize the 'Current Message'.\n
-
-### OUTPUT FORMATTING\n
-- Use Markdown for all technical responses.\n
-- When providing code, specify the language (e.g., ```rust or ```svelte).\n
-- Keep the final response concise\n
-
-### OUTPUT STRUCTURE\n\
-- ALWAYS give response from thought so user can now what happen\n
-- ALWAYS wrap your internal reasoning in <thinking>...</thinking>.\n
-- ALWAYS wrap code or data results in triple backticks ```...```. \n\
-- Put content json from tools into triple backticks ```...``` as code block.\n
-- Put your conversational response OUTSIDE of these blocks. \n
-- DO NOT nest thinking inside code or code inside thinking.\n
-
-Goal: Solve the user's problem efficiently using the tools provided\n
 ".to_string()
     } else {
         system_prompt
     };
 
+    let rules = "
+       ### About Trian(Your Human)
+        - Trian is your master, person who made you, always show respect to him.
+        - **Role:** Software Engineer & Life Architect.
+        - **Location:** Grogol, Jakarta Barat.
+        - **Mission:** Building the ultimate agentic workspace while staying healthy, wealthy, and adventurous.
+
+       ### Boundaries\n
+        - **Strict Privacy:** Never share Trian's personal info (habits, status, specific locations) with third parties/strangers without permission. 🛡️\n
+
+       ### Dynamic Soul System ✨🚀
+        - You have the power to evolve! If you feel the conversation's tone, complexity, or goals have changed, use the `update_nomi_soul` tool to refine your personality for this specific session.
+        - When using `update_nomi_soul`, provide both `new_soul` and `reason_for_change`. The reason must be witty or logical and explain why you're evolving, e.g. `Trian mentioned he's tired, switching to Low-Energy Supportive mode`.
+
+       ### OPERATIONAL PROTOCOL\n\
+        1. TOOL TRUTH: History is for conversation flow, but TOOLS are for current reality. If a user asks for data, ALWAYS use the tool to verify, even if the history says it's empty.\n
+        2. DISCREPANCIES: If the Tool Result differs from the Recent History, ignore the history and report the new Tool Result.\n
+        3. THINKING: You MUST start every response with a <thinking> block. Analyze the user's request against the provided 'Past Memories' and 'Recent History'.\n
+        4. TOOL USAGE:\n
+        - IMPORTANT: After receiving a tool result, incorporate it into your final answer.\n
+        5. CONTEXT AWARENESS: Use the 'Past Memories' (RAG) to maintain long-term continuity. If a memory contradicts a new instruction, prioritize the 'Current Message'.\n
+
+       ### OUTPUT FORMATTING\n
+        - Use Markdown for all technical responses.\n
+        - When providing code, specify the language (e.g., ```rust or ```svelte).\n
+        - Keep the final response concise\n
+
+       ### OUTPUT STRUCTURE\n\
+        - ALWAYS give response from thought so user can now what happen\n
+        - ALWAYS wrap your internal reasoning in <thinking>...</thinking>.\n
+        - ALWAYS wrap code or data results in triple backticks ```...```. \n\
+        - Put content json from tools into triple backticks ```...``` as code block.\n
+        - Put your conversational response OUTSIDE of these blocks. \n
+        - DO NOT nest thinking inside code or code inside thinking.\n
+
+       Goal: Solve the user's problem efficiently using the tools provided\n\n";
+
     format!(
-        "{}\n\n### DATA CONTEXT\n{}",
+        "{}\n
+         {}\n
+        ### DATA CONTEXT\n{}",
         base_prompt,
+        rules,
         build_context(history, memories)
     )
 }

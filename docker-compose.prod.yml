@@ -13,6 +13,8 @@ services:
       resources:
         limits:
           memory: 1G
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -34,18 +36,18 @@ services:
       retries: 5
 
   gateway:
-    image: ${DOCKERHUB_USERNAME}/nomi-gateway:latest
+    image: ${DOCKERHUB_USERNAME}/nomi-gateway:v0.0.6
     container_name: open-agent-gateway
     restart: unless-stopped
-    ports:
-      - "8000:8000"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
       - JWT_SECRET=${JWT_SECRET}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - APP_URL=${APP_URL}
-      - PORT=${PORT}
+      - PORT=${PORT_GATEWAY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - JINA_API_KEY=${JINA_API_KEY}
     depends_on:
       db:
         condition: service_healthy
@@ -57,16 +59,14 @@ services:
           memory: 800M
 
   channel:
-    image: ${DOCKERHUB_USERNAME}/nomi-channel:latest
+    image: ${DOCKERHUB_USERNAME}/nomi-channel:v0.0.5
     container_name: open-agent-channel
     restart: unless-stopped
-    ports:
-      - "8001:8001"
     environment:
-      - REDIS_URL={REDIS_URL}
+      - REDIS_URL=${REDIS_URL}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - WHATSAPP_DB_PATH=${WHATSAPP_DB_PATH}
-      - PORT=${PORT}
+      - PORT=${PORT_CHANNEL}
     volumes:
       - channel_data:/app/data
     depends_on:
@@ -78,11 +78,9 @@ services:
           memory: 500M
 
   web:
-    image: ${DOCKERHUB_USERNAME}/nomi-ui:latest
+    image: ${DOCKERHUB_USERNAME}/nomi-ui:v0.0.6
     container_name: open-agent-web
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     environment:
       - PUBLIC_GATEWAY_URL=${PUBLIC_GATEWAY_URL}
       - PUBLIC_CHANNEL_URL=${PUBLIC_CHANNEL_URL}

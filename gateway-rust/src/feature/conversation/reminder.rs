@@ -1,7 +1,9 @@
-use crate::AppState;
+use crate::common::repository::message_repo::save_message;
 use crate::feature::OutboundMessage;
-use chrono::{DateTime, Utc, Months, Duration};
-use tracing::{info, error};
+use crate::AppState;
+use chrono::{DateTime, Duration, Months, Utc};
+use serde_json::json;
+use tracing::{error, info};
 
 pub async fn start_reminder_worker(state: AppState) {
     info!("Starting reminder background worker...");
@@ -32,26 +34,44 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
     .fetch_all(&state.pool)
     .await?;
 
-
     for reminder in due_reminders {
         info!("Processing due reminder: {}", reminder.id);
 
         // 2. Determine target channel
-        let (channel, chat_id, sender_id) = if let (Some(ch), Some(cid), Some(sid)) = (reminder.channel_type, reminder.external_chat_id, reminder.external_id) {
+        let (channel, chat_id, sender_id) = if let (
+            Some(ch),
+            Some(cid),
+            Some(sid),
+        ) = (
+            reminder.channel_type,
+            reminder.external_chat_id,
+            reminder.external_id
+        ) {
             (ch, cid, sid)
         } else {
             // Fallback: try to find the most recent channel for this user
             let fallback = sqlx::query!(
-                "SELECT channel_type, external_chat_id, external_id FROM channels WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+                "SELECT channel_type, external_chat_id, external_id,conversation_id FROM channels WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
                 reminder.user_id
             ).fetch_optional(&state.pool).await?;
 
             if let Some(fb) = fallback {
-                (fb.channel_type, fb.external_chat_id, fb.external_id)
+                (
+                    fb.channel_type,
+                    fb.external_chat_id,
+                    fb.external_id
+                )
             } else {
-                error!("No channel found for user {} to send reminder {}", reminder.user_id, reminder.id);
-                sqlx::query!("UPDATE reminders SET status = 'error', updated_at = NOW() WHERE id = $1", reminder.id)
-                    .execute(&state.pool).await?;
+                error!(
+                    "No channel found for user {} to send reminder {}",
+                    reminder.user_id, reminder.id
+                );
+                sqlx::query!(
+                    "UPDATE reminders SET status = 'error', updated_at = NOW() WHERE id = $1",
+                    reminder.id
+                )
+                .execute(&state.pool)
+                .await?;
                 continue;
             }
         };
@@ -59,15 +79,14 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
         // 3. Construct and publish outbound message
         let outbound_text = format!(
             "⏰ *REMINDER:*\n{}\n\n_Reply 'done' to complete or 'snooze' to delay._\n(Ref: {})",
-            reminder.content,
-            reminder.id
+            reminder.content, reminder.id
         );
 
         let outbound = OutboundMessage {
             is_group: chat_id.contains("-") || chat_id.contains("@g.us"),
-            sender_id,
+            sender_id: sender_id.clone(),
             chat_id,
-            text: outbound_text,
+            text: outbound_text.clone(),
             channel,
             metadata: Some(serde_json::json!({
                 "reminder_id": reminder.id,
@@ -75,12 +94,50 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
             })),
         };
 
-        state.publish_outbond(&outbound).await;
+        info!("Sending reminder: {:?}", outbound);
+        match reminder.conversation_id {
+            Some(conversation_id) => {
+                info!("saving reminder message");
+                if let Ok(m) = save_message(
+                    &state.pool,
+                    conversation_id,
+                    "assistant",
+                    outbound_text.as_str(),
+                    None,
+                    Some(reminder.user_id),
+                )
+                .await
+                {
+                    let _ = state
+                        .send_to_user(
+                            sender_id.to_string().as_str(),
+                            "message",
+                            json!({
+                                "id": m.id,
+                                "conversation_id": conversation_id,
+                                "role": m.role,
+                                "content": m.content,
+                                "thought": m.thought,
+                                "user_id": m.user_id,
+                                "created_at": m.created_at,
+                            }),
+                            &outbound,
+                        )
+                        .await;
+                }
+            }
+            None => {
+                info!(
+                    "No conversation found for user {} to send reminder",
+                    sender_id
+                );
+            }
+        }
 
         // 4. Update recurrence or mark as completed
         let next_run = reminder.current_runs.unwrap_or(0) + 1;
         let freq = reminder.frequency.as_deref().unwrap_or("once");
-        
+
         let is_done = if let Some(max) = reminder.max_repeats {
             next_run >= max
         } else {
@@ -122,11 +179,17 @@ fn calculate_next_due(current: DateTime<Utc>, frequency: &str) -> DateTime<Utc> 
 
 pub async fn handle_get_reminders(
     axum::extract::State(state): axum::extract::State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
-) -> crate::common::api_response::ApiResponse<Vec<crate::feature::conversation::chat_model::ReminderResponse>> {
+    axum::extract::Extension(claims): axum::extract::Extension<
+        crate::feature::conversation::auth::Claims,
+    >,
+) -> crate::common::api_response::ApiResponse<
+    Vec<crate::feature::conversation::chat_model::ReminderResponse>,
+> {
     let user_id = match uuid::Uuid::parse_str(&claims.sub) {
         Ok(id) => id,
-        Err(_) => return crate::common::api_response::ApiResponse::failed("Invalid user ID in token"),
+        Err(_) => {
+            return crate::common::api_response::ApiResponse::failed("Invalid user ID in token");
+        }
     };
 
     let result = sqlx::query!(
@@ -145,14 +208,16 @@ pub async fn handle_get_reminders(
         Ok(rows) => {
             let reminders = rows
                 .into_iter()
-                .map(|r| crate::feature::conversation::chat_model::ReminderResponse {
-                    id: r.id,
-                    content: r.content,
-                    due_at: r.due_at,
-                    frequency: r.frequency,
-                    status: r.status.unwrap_or_default(),
-                    created_at: r.created_at.unwrap_or_else(Utc::now),
-                })
+                .map(
+                    |r| crate::feature::conversation::chat_model::ReminderResponse {
+                        id: r.id,
+                        content: r.content,
+                        due_at: r.due_at,
+                        frequency: r.frequency,
+                        status: r.status.unwrap_or_default(),
+                        created_at: r.created_at.unwrap_or_else(Utc::now),
+                    },
+                )
                 .collect();
             crate::common::api_response::ApiResponse::ok(reminders, "Reminders retrieved")
         }
