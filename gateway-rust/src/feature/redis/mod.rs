@@ -47,7 +47,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     let channel_info =
         channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.conversation_id).await?;
 
-    let (user_id, conversation_id) = if let Some(ci) = channel_info {
+    let (user_id, external_conversation_id) = if let Some(ci) = channel_info {
         (ci.user_id, ci.conversation_id)
     } else {
         let identity =
@@ -464,7 +464,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
 
     // ================================== NOT REGISTERED STOP HERE ============================//
     // 3. Resolve/Create Conversation
-    if conversation_id.is_nil() {
+    if external_conversation_id.is_nil() {
         info!("{} via {}", msg.conversation_id, msg.channel);
         info!(
             "Unfortunately user doesnt associate with any conversation, stop here will not sent to llm"
@@ -498,7 +498,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     // 4. Save User Message
     let user_message = message_repo::save_message(
         &state.pool,
-        conversation_id,
+        external_conversation_id,
         "user",
         &msg.text,
         None,
@@ -524,7 +524,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             .send_presence_to_user(
                 user_id.to_string().as_str(),
                 json! ({
-                "conversation_id": conversation_id,
+                "conversation_id": external_conversation_id,
                 "is_typing": true,
                 "user_id": "nomi"
                 }),
@@ -539,7 +539,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
 
         let conversation = sqlx::query!(
             "SELECT bootstrap_content, soul_content FROM conversations WHERE id = $1",
-            conversation_id
+            external_conversation_id
         )
         .fetch_one(&state_clone.pool)
         .await;
@@ -561,7 +561,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         // A. Fetch last 15 messages for short-term history
         let history = sqlx::query!(
             "SELECT created_at, role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 15",
-            conversation_id
+            external_conversation_id
         ).fetch_all( & state_clone.pool).await.unwrap_or_default();
 
         let mut history_text = String::new();
@@ -590,7 +590,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 &state_clone.pool,
                 &user_text,
                 embedding,
-                Some(conversation_id),
+                Some(external_conversation_id),
             )
             .await
             .unwrap_or_default()
@@ -604,7 +604,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             state_clone.pool.clone(),
             std::env::current_dir().unwrap_or_default(),
             Some(user_id),
-            Some(conversation_id),
+            Some(external_conversation_id),
             state_clone.gemini.clone(),
             state_clone.gemini_api_key.clone(),
             state_clone.sse.clone(),
@@ -631,7 +631,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 Ok((response, chunk)) => {
                     // Emit thought
                     if !chunk.thought.is_empty() {
-                        let _ = state_clone.send_sse_to_user(user_id.to_string().as_str(), "thought", serde_json::json ! ({ "thought": chunk.thought, "conversation_id": conversation_id })).await;
+                        let _ = state_clone.send_sse_to_user(user_id.to_string().as_str(), "thought", serde_json::json ! ({ "thought": chunk.thought, "conversation_id": external_conversation_id })).await;
                     }
 
                     let tool_calls = response.function_calls();
@@ -670,7 +670,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         if let Some((_, chunk)) = final_response {
             let assistant_message = message_repo::save_message(
                 &state_clone.pool,
-                conversation_id,
+                external_conversation_id,
                 "assistant",
                 &chunk.content,
                 Some(&chunk.thought),
@@ -691,8 +691,8 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .await;
 
             let _ = state_clone.send_presence_to_user(
-                user_id.to_string().as_str(),json! ({"conversation_id": conversation_id, "is_typing": false, "user_id": "nomi"}),
-& crate::feature::PresenceMessage { sender_id: sender_id.clone(), chat_id: chat_id.clone(),channel: channel.clone(),status: "idle".to_string() }).await;
+                user_id.to_string().as_str(), json! ({"conversation_id": external_conversation_id, "is_typing": false, "user_id": "nomi"}),
+                & crate::feature::PresenceMessage { sender_id: sender_id.clone(), chat_id: chat_id.clone(),channel: channel.clone(),status: "idle".to_string() }).await;
 
             let _ = state_clone
                 .publish_outbond(&OutboundMessage {

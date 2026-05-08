@@ -7,6 +7,7 @@ RUN SQLX_OFFLINE=true cargo build --release
 
 FROM alpine:latest
 RUN apk add --no-cache libgcc openssl ca-certificates
+
 WORKDIR /app
 COPY --from=builder /app/target/release/gateway-rust .
 COPY --from=builder /app/migrations ./migrations
