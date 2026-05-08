@@ -1,14 +1,15 @@
+use crate::AppState;
 use crate::common::agent::agent_model::PromptActor;
 use crate::common::agent::execute_tools;
 use crate::common::tools::ToolDispatcher;
 use crate::feature::message_processor::model::UnifiedMessage;
 use crate::feature::{OutboundMessage, PresenceMessage};
 use crate::rag;
-use crate::AppState;
 use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::common::repository::message_repo::save_message;
 use tracing::{error, info};
 
 pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
@@ -233,64 +234,69 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
 
     // 5. Post-Process & Final Save
     if let Some((_, function_result)) = final_response {
-        let record = sqlx::query!(
-            "INSERT INTO messages (conversation_id, role, content, thought, created_at) VALUES ($1, 'assistant', $2, $3, now()) RETURNING id, role, content, thought, created_at, user_id",
+        if let Ok(record) = save_message(
+            &state.pool,
             conversation_id,
-            function_result.content,
-            function_result.thought
+            "assistant",
+            &function_result.content,
+            Some(function_result.thought.as_str()),
+            None,
+            function_result.prompt_tokens,
+            function_result.answer_tokens,
+            function_result.total_tokens,
         )
-        .fetch_one(&state.pool)
-        .await?;
+        .await
+        {
+            // Broadcast assistant message to SSE
+            let payload = json!({
+                        "id": record.id,
+                        "conversation_id":conversation_id,
+                        "role": record.role,
+                        "content": record.content.clone(),
+                        "thought": record.thought,
+                        "user_id": record.user_id,
+                        "total_token": function_result.total_tokens,
+                        "created_at": record.created_at
+            });
 
-        // Broadcast assistant message to SSE
-        let payload = json!({
-                    "id": record.id,
-                    "conversation_id":conversation_id,
-                    "role": record.role,
-                    "content": record.content.clone(),
-                    "thought": record.thought,
-                    "user_id": record.user_id,
-                    "created_at": record.created_at.unwrap_or_else(Utc::now)
-        });
+            let _ = match user_id {
+                None => state.broadcast_sse("message", payload).await,
+                Some(ref id) => {
+                    state
+                        .send_sse_to_user(id.to_string().as_str(), "message", payload)
+                        .await
+                }
+            };
 
-        let _ = match user_id {
-            None => state.broadcast_sse("message", payload).await,
-            Some(ref id) => {
-                state
-                    .send_sse_to_user(id.to_string().as_str(), "message", payload)
-                    .await
-            }
-        };
-
-        // Outbound Routing for Channels
-        let channel_info = sqlx::query!(
+            // Outbound Routing for Channels
+            let channel_info = sqlx::query!(
             "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
             conversation_id
         ).fetch_all(&state.pool).await.unwrap_or_default();
 
-        for channel in channel_info {
-            let outbound = OutboundMessage {
-                is_group: false,
-                sender_id: channel.external_id.clone(),
-                chat_id: channel.external_chat_id.clone(),
-                text: record.content.clone(),
-                channel: channel.channel_type.clone(),
-                metadata: None,
-            };
+            for channel in channel_info {
+                let outbound = OutboundMessage {
+                    is_group: false,
+                    sender_id: channel.external_id.clone(),
+                    chat_id: channel.external_chat_id.clone(),
+                    text: record.content.clone(),
+                    channel: channel.channel_type.clone(),
+                    metadata: None,
+                };
 
-            if let Ok(redis_url) = std::env::var("REDIS_URL") {
-                if let Ok(client) = redis::Client::open(redis_url) {
-                    if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
-                        use redis::AsyncCommands;
-                        let payload = serde_json::to_string(&outbound).unwrap();
-                        let _ = conn
-                            .publish::<&str, String, ()>("nomi:outbound", payload)
-                            .await;
+                if let Ok(redis_url) = std::env::var("REDIS_URL") {
+                    if let Ok(client) = redis::Client::open(redis_url) {
+                        if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
+                            use redis::AsyncCommands;
+                            let payload = serde_json::to_string(&outbound).unwrap();
+                            let _ = conn
+                                .publish::<&str, String, ()>("nomi:outbound", payload)
+                                .await;
+                        }
                     }
                 }
             }
         }
-
         // Memory Consolidation Trigger (Background)
         let pool = state.pool.clone();
         let gemini = state.gemini.clone();

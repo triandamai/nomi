@@ -62,6 +62,9 @@ pub async fn save_message(
                 role: role.to_string(),
                 content: content.to_string(),
                 thought: thought.map(|s| s.to_string()),
+                total_tokens:Some(total_tokens),
+                prompt_tokens:Some(prompt_tokens),
+                answer_tokens:Some(answer_tokens),
                 user_id,
                 created_at: row.created_at.unwrap_or_else(chrono::Utc::now),
             })

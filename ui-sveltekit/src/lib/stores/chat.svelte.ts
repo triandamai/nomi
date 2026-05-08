@@ -8,6 +8,7 @@ export type Message = {
     thought?: string;
     id: string;
     user_id?: string;
+    total_tokens:number;
     toolCalls?: Array<{ tool: any, result?: string }>;
 };
 

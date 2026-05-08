@@ -142,7 +142,7 @@
                     <div class="flex-1 flex flex-col min-w-0 space-y-4">
                         <div class="flex items-center gap-2">
                         <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                            {msg.role === 'user' ? 'Human' : 'Arta AI'}
+                            {msg.role === 'user' ? 'Human' : 'Nomi'} - {Number(msg.total_tokens) > 0 ? `${msg.total_tokens} Token`:`0`}
                         </span>
                         </div>
 

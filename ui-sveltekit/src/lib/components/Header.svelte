@@ -307,7 +307,7 @@
         <div class="flex items-center gap-2 text-zinc-500">
             <span class="text-xs font-medium hover:text-zinc-300 cursor-pointer transition-colors hidden sm:inline">Workspace</span>
             <ChevronRight class="w-3.5 h-3.5 text-zinc-700 hidden sm:block" />
-            <span class="text-xs font-semibold text-zinc-200 truncate max-w-[120px] sm:max-w-none">{conversationStore.activeConversation?.name || 'No Session'}</span>
+            <span class="text-xs font-semibold text-zinc-200 truncate max-w-[120px] sm:max-w-none">{conversationStore.activeConversation?.name || 'No Session'} - {Number(conversationStore.activeConversation?.cumulative_tokens) > 0 ? `${conversationStore.activeConversation?.cumulative_tokens}`:'0'} Token</span>
         </div>
 
         <!-- Vertical Divider -->

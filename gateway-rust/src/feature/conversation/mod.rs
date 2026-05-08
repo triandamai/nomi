@@ -165,7 +165,16 @@ pub async fn handle_get_messages(
     let messages_result = sqlx::query_as!(
         MessageItem,
         r#"
-        SELECT id, conversation_id as "conversation_id!", role, content, thought, user_id, created_at as "created_at!"
+        SELECT id,
+               conversation_id as "conversation_id!",
+               role,
+               content,
+               thought,
+               user_id,
+               created_at as "created_at!",
+               total_tokens,
+               answer_tokens,
+               prompt_tokens
         FROM messages
         WHERE conversation_id = $1 AND created_at < $2
         ORDER BY created_at DESC
@@ -209,7 +218,7 @@ pub async fn handle_get_conversations(
 
     let result = sqlx::query!(
         r#"
-        SELECT c.id, c.title, c.created_at, c.updated_at 
+        SELECT c.id, c.title, c.created_at, c.updated_at,c.cumulative_tokens
         FROM conversations c
         INNER JOIN conversation_members cm ON c.id = cm.conversation_id
         WHERE cm.user_id = $1
@@ -226,6 +235,7 @@ pub async fn handle_get_conversations(
                 .into_iter()
                 .map(|row| ConversationResponse {
                     id: row.id,
+                    cumulative_tokens:row.cumulative_tokens,
                     name: row.title.unwrap_or_default(),
                     created_at: row.created_at.unwrap_or_else(Utc::now),
                     updated_at: row.updated_at.unwrap_or_else(Utc::now),
@@ -262,7 +272,7 @@ pub async fn handle_create_conversation(
         let mut tx = state.pool.begin().await?;
 
         let row = sqlx::query!(
-            "INSERT INTO conversations (id, title, soul_content, bootstrap_content) VALUES ($1, $2, $3, $4) RETURNING id, title, created_at, updated_at",
+            "INSERT INTO conversations (id, title, soul_content, bootstrap_content,cumulative_tokens) VALUES ($1, $2, $3, $4,0) RETURNING id, title, created_at, updated_at,cumulative_tokens",
             id,
             title,
             payload.soul_content,
@@ -283,6 +293,7 @@ pub async fn handle_create_conversation(
 
         Ok(ConversationResponse {
             id: row.id,
+            cumulative_tokens: row.cumulative_tokens,
             name: row.title.unwrap_or_default(),
             created_at: row.created_at.unwrap_or_else(Utc::now),
             updated_at: row.updated_at.unwrap_or_else(Utc::now),
@@ -334,7 +345,7 @@ pub async fn handle_update_conversation(
     info!(conversation_id = %id, user_id = %user_id, "Updating conversation");
 
     let result = sqlx::query!(
-        "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at",
+        "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at,cumulative_tokens",
         payload.name,
         id
     )
@@ -345,6 +356,7 @@ pub async fn handle_update_conversation(
         Ok(row) => ApiResponse::ok(
             ConversationResponse {
                 id: row.id,
+                cumulative_tokens: row.cumulative_tokens,
                 name: row.title.unwrap_or_default(),
                 created_at: row.created_at.unwrap_or_else(Utc::now),
                 updated_at: row.updated_at.unwrap_or_else(Utc::now),

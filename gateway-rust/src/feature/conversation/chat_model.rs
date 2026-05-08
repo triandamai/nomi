@@ -21,6 +21,7 @@ pub struct CreateConversationRequest {
 pub struct ConversationResponse {
     pub id: Uuid,
     pub name: String,
+    pub cumulative_tokens:Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -57,6 +58,9 @@ pub struct MessageItem {
     pub conversation_id: Uuid,
     pub role: String,
     pub content: String,
+    pub total_tokens: Option<i32>,
+    pub answer_tokens: Option<i32>,
+    pub prompt_tokens: Option<i32>,
     pub thought: Option<String>,
     pub user_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,

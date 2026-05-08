@@ -1,7 +1,7 @@
 use crate::AppState;
 use crate::common::identity;
 use crate::common::repository::{channel_repo, message_repo, pairing_repo};
-use crate::feature::InboundMessage;
+use crate::feature::{InboundMessage, OutboundMessage};
 use rand::RngExt;
 use serde_json::json;
 use tokio_stream::StreamExt;
@@ -399,6 +399,22 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         info!(
             "Unfortunately user doesnt associate with any conversation, stop here will not sent to llm"
         );
+        let _ = state.publish_outbond(&OutboundMessage{
+            is_group: msg.is_group,
+            sender_id: "nomi_auth".to_string(),
+            chat_id: msg.chat_id.clone(),
+            text: format!("Hello there! 👋 \n
+            I'm **Nomi**, Trian's AI collaborator. I help him manage his projects, track his adventures on the road, and keep his digital ecosystem running smoothly. \n
+            If you're a friend of Trian's, I'd love to get to know you! To get started and secure your access to our chat, could you please use one of the commands below?\n
+                {} — If this is your first time chatting with me, use this to set up your profile. \n
+                {} — If we've spoken before, use this to jump right back into our conversation.\n
+            It’s a pleasure to meet you, and I look forward to assisting you once you're signed in! ✨",
+                "**`/register`**",
+                "**`/login`**"
+            ),
+            channel: msg.channel.clone(),
+            metadata: msg.metadata.clone(),
+        });
         return Ok(());
     }
 

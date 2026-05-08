@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT c.id, c.title, c.created_at, c.updated_at \n        FROM conversations c\n        INNER JOIN conversation_members cm ON c.id = cm.conversation_id\n        WHERE cm.user_id = $1\n        ORDER BY c.updated_at DESC\n        ",
+  "query": "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at,cumulative_tokens",
   "describe": {
     "columns": [
       {
@@ -22,10 +22,16 @@
         "ordinal": 3,
         "name": "updated_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "cumulative_tokens",
+        "type_info": "Int4"
       }
     ],
     "parameters": {
       "Left": [
+        "Text",
         "Uuid"
       ]
     },
@@ -33,8 +39,9 @@
       false,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "8ee030c4e9351a17082c886715e75920ccda280082838a1fb4ba9c097dbb9801"
+  "hash": "52262a096de7b96c2cf37f2c0246815e6be891ee3db7d2c36d2d07f54dcf97df"
 }

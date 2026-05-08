@@ -5,6 +5,7 @@ export type Conversation = {
     id: string;
     name: string;
     avatar?: string;
+    cumulative_tokens:number,
     active?: boolean;
     online?: boolean;
 };
@@ -33,6 +34,7 @@ function createConversationStore() {
                     id: c.id,
                     name: c.name || c.title || 'Untitled',
                     active: c.id === activeConversationId,
+                    cumulative_tokens: c.cumulative_tokens,
                     online: true
                 }));
                 conversations = loaded;
@@ -63,6 +65,7 @@ function createConversationStore() {
                     const newConv: Conversation = {
                         id: response.data.id || crypto.randomUUID(),
                         name: response.data.name || name,
+                        cumulative_tokens: response.data.cumulative_tokens,
                         active: false,
                         online: true
                     };
@@ -71,15 +74,6 @@ function createConversationStore() {
                 }
             } catch (error) {
                 console.error('Failed to create conversation', error);
-                // Fallback for demo/dummy purposes if API fails
-                const newConv: Conversation = {
-                    id: crypto.randomUUID(),
-                    name,
-                    active: false,
-                    online: true
-                };
-                conversations = [...conversations, newConv];
-                return newConv;
             }
         },
         async updateConversation(id: string, name: string) {
