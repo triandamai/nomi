@@ -431,8 +431,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         0,
         0,
         0,
-    )
-    .await?;
+    ).await?;
 
     let _ = state
         .send_sse_to_user(user_id.to_string().as_str(), "message", json!(user_message))

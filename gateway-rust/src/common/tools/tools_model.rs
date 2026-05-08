@@ -117,3 +117,27 @@ pub struct ModifyReminderParameters {
 pub struct ModifyReminderResponse {
     pub content: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetReminderStatsParameters {
+    pub start_after: Option<String>,
+    pub end_before: Option<String>,
+    pub status_filter: Option<String>,
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetReminderStatsResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetInboxSummaryParameters {
+    pub limit: Option<i32>,
+    pub only_strangers: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetInboxSummaryResponse {
+    pub content: String,
+}

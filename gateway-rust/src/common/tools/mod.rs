@@ -1,7 +1,15 @@
 pub mod tools_model;
 
 use crate::Arc;
-use crate::common::tools::tools_model::{CreateReminderParameters, CreateReminderResponse, EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters, ExecuteReadQueryResponse, ModifyReminderParameters, ModifyReminderResponse, ParseToJsonParameters, ReadWebPageParameters, ReadWebPageResponse, ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse, ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse, UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse};
+use crate::common::tools::tools_model::{
+    CreateReminderParameters, CreateReminderResponse, EvolveBootstrapParameters,
+    EvolveBootstrapResponse, ExecuteReadQueryParameters, ExecuteReadQueryResponse,
+    GetInboxSummaryParameters, GetInboxSummaryResponse, ModifyReminderParameters,
+    ModifyReminderResponse, ParseToJsonParameters, ReadWebPageParameters, ReadWebPageResponse,
+    ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse,
+    ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse,
+    UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse, GetReminderStatsParameters, GetReminderStatsResponse,
+};
 use gemini_rust::{FunctionDeclaration, Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -64,6 +72,16 @@ pub enum ArtaTool {
         params: ModifyReminderParameters,
         user_message: String,
     },
+    #[serde(rename = "get_inbox_summary")]
+    GetInboxSummary {
+        params: GetInboxSummaryParameters,
+        user_message: String,
+    },
+    #[serde(rename = "get_reminder_stats")]
+    GetReminderStats {
+        params: GetReminderStatsParameters,
+        user_message: String,
+    },
 }
 
 #[derive(Clone)]
@@ -116,9 +134,7 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.read_web_page(params.url, user_message).await,
-            ArtaTool::ParseStringToJson{
-                ..
-            }  => ToolResult {
+            ArtaTool::ParseStringToJson { .. } => ToolResult {
                 error: "".to_string(),
                 success: false,
                 content: "".to_string(),
@@ -144,6 +160,14 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.modify_reminder(params, user_message).await,
+            ArtaTool::GetInboxSummary {
+                params,
+                user_message,
+            } => self.get_inbox_summary(params, user_message).await,
+            ArtaTool::GetReminderStats {
+                params,
+                user_message,
+            } => self.get_reminder_stats(params, user_message).await,
         }
     }
 
@@ -205,8 +229,8 @@ impl ToolDispatcher {
             "Schedule a new reminder for the user. Supports natural language descriptions and recurrence (daily, weekly, monthly).  Always convert relative times (e.g., 'in 2 minutes') into an absolute ISO 8601 UTC timestamp based on the current time provided in the system prompt.",
             None,
         )
-        .with_parameters::<CreateReminderParameters>()
-        .with_response::<CreateReminderResponse>();
+            .with_parameters::<CreateReminderParameters>()
+            .with_response::<CreateReminderResponse>();
 
         let modify_reminder = FunctionDeclaration::new(
             "modify_reminder",
@@ -215,6 +239,22 @@ impl ToolDispatcher {
         )
         .with_parameters::<ModifyReminderParameters>()
         .with_response::<ModifyReminderResponse>();
+
+        let get_inbox_summary = FunctionDeclaration::new(
+            "get_inbox_summary",
+            "Retrieves a summary of recent messages from users. Use this when User asks: 'Any new DMs?', 'Who messaged me?', or 'Are there any strangers?'",
+            None,
+        )
+            .with_parameters::<GetInboxSummaryParameters>()
+            .with_response::<GetInboxSummaryResponse>();
+
+        let get_reminder_stats = FunctionDeclaration::new(
+            "get_reminder_stats",
+            "Get stats about existing reminders, optionally filtered by DateTime ranges. Examples: 'What's left for the rest of the day?', 'Any reminders for this weekend?'",
+            None,
+        )
+            .with_parameters::<GetReminderStatsParameters>()
+            .with_response::<GetReminderStatsResponse>();
 
         Tool::with_functions(vec![
             read_workspace_file,
@@ -226,34 +266,44 @@ impl ToolDispatcher {
             evolve_bootstrap_content,
             create_reminder,
             modify_reminder,
+            get_inbox_summary,
+            get_reminder_stats,
         ])
     }
 
-    async fn create_reminder(&self, params: CreateReminderParameters, _user_message: String) -> ToolResult {
+    async fn create_reminder(
+        &self,
+        params: CreateReminderParameters,
+        _user_message: String,
+    ) -> ToolResult {
         info!("Creating reminder: {}", params.description);
-        
+
         let user_id = match self.user_id {
             Some(id) => id,
-            None => return ToolResult {
-                error: "User ID not found in context".to_string(),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
+            None => {
+                return ToolResult {
+                    error: "User ID not found in context".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
         };
 
         let due_at = match chrono::DateTime::parse_from_rfc3339(&params.due_at) {
             Ok(dt) => dt.with_timezone(&chrono::Utc),
-            Err(e) => return ToolResult {
-                error: format!("Invalid date format: {}. Please use ISO 8601.", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
+            Err(e) => {
+                return ToolResult {
+                    error: format!("Invalid date format: {}. Please use ISO 8601.", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
         };
 
         let frequency = params.frequency.unwrap_or_else(|| "once".to_string());
-        
+
         let result = sqlx::query!(
             "INSERT INTO reminders (user_id, conversation_id, content, due_at, frequency, max_repeats) 
              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
@@ -264,8 +314,8 @@ impl ToolDispatcher {
             frequency,
             params.max_repeats
         )
-        .fetch_one(&self.pool)
-        .await;
+            .fetch_one(&self.pool)
+            .await;
 
         info!("Created reminder: {:?}", result);
         match result {
@@ -284,17 +334,26 @@ impl ToolDispatcher {
         }
     }
 
-    async fn modify_reminder(&self, params: ModifyReminderParameters, _user_message: String) -> ToolResult {
-        info!("Modifying reminder: {} with action: {}", params.reminder_id, params.action);
-        
+    async fn modify_reminder(
+        &self,
+        params: ModifyReminderParameters,
+        _user_message: String,
+    ) -> ToolResult {
+        info!(
+            "Modifying reminder: {} with action: {}",
+            params.reminder_id, params.action
+        );
+
         let reminder_id = match Uuid::parse_str(&params.reminder_id) {
             Ok(id) => id,
-            Err(e) => return ToolResult {
-                error: format!("Invalid reminder ID: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
+            Err(e) => {
+                return ToolResult {
+                    error: format!("Invalid reminder ID: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
         };
 
         let result = match params.action.as_str() {
@@ -305,7 +364,7 @@ impl ToolDispatcher {
                 )
                 .execute(&self.pool)
                 .await
-            },
+            }
             "cancel" | "archived" => {
                 sqlx::query!(
                     "UPDATE reminders SET status = 'archived', updated_at = NOW() WHERE id = $1",
@@ -313,24 +372,31 @@ impl ToolDispatcher {
                 )
                 .execute(&self.pool)
                 .await
-            },
+            }
             "snooze" => {
                 let snooze_until = match params.snooze_until {
                     Some(ref s) => match chrono::DateTime::parse_from_rfc3339(s) {
                         Ok(dt) => dt.with_timezone(&chrono::Utc),
-                        Err(e) => return ToolResult {
-                            error: format!("Invalid snooze date format: {}. Please use ISO 8601.", e),
+                        Err(e) => {
+                            return ToolResult {
+                                error: format!(
+                                    "Invalid snooze date format: {}. Please use ISO 8601.",
+                                    e
+                                ),
+                                success: false,
+                                content: "".to_string(),
+                                follow_up_prompt: "".to_string(),
+                            };
+                        }
+                    },
+                    None => {
+                        return ToolResult {
+                            error: "Snooze action requires 'snooze_until' parameter.".to_string(),
                             success: false,
                             content: "".to_string(),
                             follow_up_prompt: "".to_string(),
-                        },
-                    },
-                    None => return ToolResult {
-                        error: "Snooze action requires 'snooze_until' parameter.".to_string(),
-                        success: false,
-                        content: "".to_string(),
-                        follow_up_prompt: "".to_string(),
-                    },
+                        };
+                    }
                 };
 
                 sqlx::query!(
@@ -338,15 +404,17 @@ impl ToolDispatcher {
                     snooze_until,
                     reminder_id
                 )
-                .execute(&self.pool)
-                .await
-            },
-            _ => return ToolResult {
-                error: format!("Invalid action: {}", params.action),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
+                    .execute(&self.pool)
+                    .await
+            }
+            _ => {
+                return ToolResult {
+                    error: format!("Invalid action: {}", params.action),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
         };
 
         match result {
@@ -558,7 +626,7 @@ impl ToolDispatcher {
                     content: "".to_string(),
                     follow_up_prompt: "".to_string(),
                 }
-            },
+            }
         }
     }
 
@@ -617,7 +685,7 @@ impl ToolDispatcher {
                     content: "".to_string(),
                     follow_up_prompt: "".to_string(),
                 }
-            },
+            }
         }
     }
 
@@ -653,15 +721,15 @@ impl ToolDispatcher {
                 "SELECT soul_content, bootstrap_content FROM conversations WHERE id = $1 FOR UPDATE",
                 conversation_id
             )
-            .fetch_one(&mut *tx)
-            .await?;
+                .fetch_one(&mut *tx)
+                .await?;
 
             let next_version: i32 = sqlx::query_scalar(
                 "SELECT (COALESCE(MAX(version_number), 0) + 1)::INT4 FROM soul_history WHERE conversation_id = $1",
             )
-            .bind(conversation_id)
-            .fetch_one(&mut *tx)
-            .await?;
+                .bind(conversation_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
             sqlx::query("UPDATE conversations SET soul_content = $1, updated_at = NOW() WHERE id = $2")
                 .bind(&params.new_soul)
@@ -672,18 +740,18 @@ impl ToolDispatcher {
             sqlx::query(
                 "INSERT INTO soul_history (conversation_id, soul_content, bootstrap, change_reason, version_number) VALUES ($1, $2, $3, $4, $5)",
             )
-            .bind(conversation_id)
-            .bind(&params.new_soul)
-            .bind(convo.bootstrap_content)
-            .bind(&params.reason_for_change)
-            .bind(next_version)
-            .execute(&mut *tx)
-            .await?;
+                .bind(conversation_id)
+                .bind(&params.new_soul)
+                .bind(convo.bootstrap_content)
+                .bind(&params.reason_for_change)
+                .bind(next_version)
+                .execute(&mut *tx)
+                .await?;
 
             tx.commit().await?;
             Ok(Some(next_version))
         }
-        .await;
+            .await;
 
         match result {
             Ok(Some(version)) => {
@@ -754,39 +822,39 @@ impl ToolDispatcher {
                 "SELECT soul_content, bootstrap_content FROM conversations WHERE id = $1 FOR UPDATE",
                 conversation_id
             )
-            .fetch_one(&mut *tx)
-            .await?;
+                .fetch_one(&mut *tx)
+                .await?;
 
             let next_version: i32 = sqlx::query_scalar(
                 "SELECT (COALESCE(MAX(version_number), 0) + 1)::INT4 FROM soul_history WHERE conversation_id = $1",
             )
-            .bind(conversation_id)
-            .fetch_one(&mut *tx)
-            .await?;
+                .bind(conversation_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
             sqlx::query(
                 "UPDATE conversations SET bootstrap_content = $1, updated_at = NOW() WHERE id = $2",
             )
-            .bind(&params.updated_instructions)
-            .bind(conversation_id)
-            .execute(&mut *tx)
-            .await?;
+                .bind(&params.updated_instructions)
+                .bind(conversation_id)
+                .execute(&mut *tx)
+                .await?;
 
             sqlx::query(
                 "INSERT INTO soul_history (conversation_id, soul_content, bootstrap, change_reason, version_number) VALUES ($1, $2, $3, $4, $5)",
             )
-            .bind(conversation_id)
-            .bind(convo.soul_content)
-            .bind(&params.updated_instructions)
-            .bind(&params.reason)
-            .bind(next_version)
-            .execute(&mut *tx)
-            .await?;
+                .bind(conversation_id)
+                .bind(convo.soul_content)
+                .bind(&params.updated_instructions)
+                .bind(&params.reason)
+                .bind(next_version)
+                .execute(&mut *tx)
+                .await?;
 
             tx.commit().await?;
             Ok(Some(next_version))
         }
-        .await;
+            .await;
 
         match result {
             Ok(Some(version)) => {
@@ -984,6 +1052,254 @@ Content:
                     "update_knowledge_base".to_string(),
                 ),
             }
+        }
+    }
+    async fn get_inbox_summary(
+        &self,
+        params: GetInboxSummaryParameters,
+        user_message: String,
+    ) -> ToolResult {
+        info!("Executing get_inbox_summary");
+
+        let limit = params.limit.unwrap_or(5) as i64;
+        let only_strangers = params.only_strangers.unwrap_or(false);
+
+        // Security: Ensure only Trian can call this.
+        // Assuming Trian is the only admin, we can check role,
+        // or just rely on the fact that Trian's user_id is the one we want to exclude from the inbox itself.
+        // The prompt says "Ensure this tool is only accessible when the requester is Trian (check sender_id)."
+        // Let's get the user_id of the requester to exclude them from the result,
+        // assuming the requester IS Trian.
+        if let None = self.user_id {
+            info!("user id not found");
+            return ToolResult {
+                error: "User ID not found in context. Cannot verify identity.".to_string(),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            };
+        }
+        let admin_id = self.user_id.clone();
+
+        // If we want to strictly check "is Trian", we'd check their role in DB.
+        let is_admin: Result<bool, sqlx::Error> =
+            sqlx::query_scalar("SELECT role = 'admin' FROM users WHERE id = $1")
+                .bind(admin_id)
+                .fetch_one(&self.pool)
+                .await;
+
+        if let Err(err) = is_admin {
+            info!("user id not found {}", err);
+            return ToolResult {
+                error: format!("Failed to verify identity: {}", err),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            };
+        }
+
+        if let Ok(is_admin) = is_admin {
+            info!("is user admin {}", is_admin);
+            if !is_admin {
+                return ToolResult {
+                    error: "Unauthorized: Only Trian can use this tool.".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt:
+                        "Tell Trian that someone unauthorized tried to check his DMs.".to_string(),
+                };
+            }
+        }
+
+        // We use a struct to hold the record to keep it lean.
+        #[derive(serde::Serialize)]
+        struct InboxRow {
+            conversation_id: Option<Uuid>,
+            display_name: Option<String>,
+            phone_number: String,
+            last_message: String,
+            created_at: Option<chrono::DateTime<chrono::Utc>>,
+            is_verified: Option<bool>,
+        }
+
+        let get_data = sqlx::query_as!(
+            InboxRow,
+            r#"
+                SELECT
+                    c.id as "conversation_id?",
+                    u.display_name as "display_name?",
+                    u.external_id as "phone_number!",
+                    m.content as "last_message!",
+                    m.created_at as "created_at?",
+                    COALESCE(u.is_verified, false) as "is_verified?"
+                FROM messages m
+                JOIN conversations c ON m.conversation_id = c.id
+                JOIN users u ON m.user_id = u.id
+                WHERE u.id != $1
+                AND m.role = 'user'
+                AND ($3 = false OR COALESCE(u.is_verified, false) = false)
+                AND m.id IN (
+                    SELECT (
+                        SELECT m2.id FROM messages m2
+                        WHERE m2.conversation_id = m.conversation_id
+                        ORDER BY m2.created_at DESC LIMIT 1
+                    )
+                )
+                ORDER BY m.created_at DESC
+                LIMIT $2;
+                "#,
+            admin_id,
+            limit,
+            only_strangers
+        )
+        .fetch_all(&self.pool)
+        .await;
+
+        if let Err(err) = get_data {
+            info!("Error getting inbox rows: {}", err);
+            return ToolResult {
+                error: format!("Database error fetching inbox: {}", err),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "Failed to read messages due to an internal error.".to_string(),
+            };
+        }
+
+        let rows = get_data.unwrap();
+
+        let content = if rows.is_empty() {
+            "No recent messages found.".to_string()
+        } else {
+            serde_json::to_string_pretty(&rows).unwrap_or_default()
+        };
+
+        ToolResult {
+            error: "".to_string(),
+            success: true,
+            content: content.clone(),
+            follow_up_prompt: build_follow_up_prompt(
+                user_message,
+                content,
+                "get_inbox_summary".to_string(),
+            ),
+        }
+    }
+
+    async fn get_reminder_stats(
+        &self,
+        params: GetReminderStatsParameters,
+        user_message: String,
+    ) -> ToolResult {
+        info!("Executing get_reminder_stats");
+
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                return ToolResult {
+                    error: "User ID not found in context".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        let start_after = match params.start_after {
+            Some(ref s) => match chrono::DateTime::parse_from_rfc3339(s) {
+                Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
+                Err(e) => {
+                    return ToolResult {
+                        error: format!("Invalid start_after format: {}. Please use ISO 8601.", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                    };
+                }
+            },
+            None => None,
+        };
+
+        let end_before = match params.end_before {
+            Some(ref s) => match chrono::DateTime::parse_from_rfc3339(s) {
+                Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
+                Err(e) => {
+                    return ToolResult {
+                        error: format!("Invalid end_before format: {}. Please use ISO 8601.", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                    };
+                }
+            },
+            None => None,
+        };
+
+        let limit = params.limit.unwrap_or(20) as i64;
+
+        let query_result = sqlx::query!(
+            r#"
+            SELECT 
+                id,
+                content,
+                due_at,
+                status,
+                frequency,
+                current_runs
+            FROM reminders
+            WHERE user_id = $1
+              AND ($2::TIMESTAMPTZ IS NULL OR due_at >= $2)
+              AND ($3::TIMESTAMPTZ IS NULL OR due_at <= $3)
+              AND ($4::TEXT IS NULL OR status = $4)
+            ORDER BY due_at ASC
+            LIMIT $5;
+            "#,
+            user_id,
+            start_after,
+            end_before,
+            params.status_filter,
+            limit
+        )
+        .fetch_all(&self.pool)
+        .await;
+
+        match query_result {
+            Ok(rows) => {
+                let mut results = Vec::new();
+                for row in rows {
+                    let item = json!({
+                        "id": row.id.to_string(),
+                        "content": row.content,
+                        "due_at": row.due_at.to_rfc3339(),
+                        "status": row.status,
+                        "frequency": row.frequency,
+                        "current_runs": row.current_runs
+                    });
+                    results.push(item);
+                }
+
+                let content = if results.is_empty() {
+                    "No reminders found for the given criteria.".to_string()
+                } else {
+                    serde_json::to_string_pretty(&results).unwrap_or_default()
+                };
+
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: content.clone(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        content,
+                        "get_reminder_stats".to_string(),
+                    ),
+                }
+            }
+            Err(e) => ToolResult {
+                error: format!("Database error fetching reminders: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
         }
     }
 }

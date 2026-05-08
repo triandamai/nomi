@@ -32,7 +32,8 @@ function createChatStore() {
                     role: data.role || "assistant",
                     content: data.content,
                     thought: data.thought,
-                    user_id: data.user_id
+                    user_id: data.user_id,
+                    total_tokens:data.total_tokens
                 } as Message)
             }else {
                 messages.push({
@@ -40,7 +41,8 @@ function createChatStore() {
                     role: data.role || "assistant",
                     content: data.content,
                     thought: data.thought,
-                    user_id: data.user_id
+                    user_id: data.user_id,
+                    total_tokens:data.total_tokens
                 } as Message)
 
             }

@@ -234,6 +234,26 @@ pub async fn execute_tools(
                         })
                         .await
                 }
+                "get_inbox_summary" =>{
+                    let param: crate::common::tools::tools_model::GetInboxSummaryParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::GetInboxSummary {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
+                "get_reminder_stats" => {
+                    let param: crate::common::tools::tools_model::GetReminderStatsParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::GetReminderStats {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
                 _ => ToolResult {
                     error: format!("Unknown tool: {}", call_name),
                     success: false,
@@ -312,6 +332,7 @@ You're not just a chatbot; you're **Nomi**, Trian's **General Purpose Life Assis
         3. THINKING: You MUST start every response with a <thinking> block. Analyze the user's request against the provided 'Past Memories' and 'Recent History'.\n
         4. TOOL USAGE:\n
         - IMPORTANT: After receiving a tool result, incorporate it into your final answer.\n
+        - **Reminders (get_reminder_stats):** Use relative analysis to translate vague human terms into precise Datetimes. For example, if Trian asks 'What's left for the rest of the day?', use `start_after = NOW()` and `end_before = [Today at 23:59:59]`. If asked 'Any reminders for this weekend?', calculate Saturday 00:00 to Sunday 23:59. ALWAYS check for conflict detection: If you see two reminders scheduled very close to each other (e.g., within 15 minutes), proactively warn him, e.g., 'Trian, you have two things scheduled nearly at the same time—heads up!'\n
         5. CONTEXT AWARENESS: Use the 'Past Memories' (RAG) to maintain long-term continuity. If a memory contradicts a new instruction, prioritize the 'Current Message'.\n
 
        ### OUTPUT FORMATTING\n

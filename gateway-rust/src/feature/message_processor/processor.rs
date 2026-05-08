@@ -41,6 +41,7 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
         "thought": m.thought,
         "user_id": m.user_id,
         "created_at": m.created_at.unwrap_or_else(Utc::now),
+        "total_tokens": 0,
     });
     let _ = match user_id {
         None => state.broadcast_sse("message", payload).await,
@@ -255,7 +256,7 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                         "content": record.content.clone(),
                         "thought": record.thought,
                         "user_id": record.user_id,
-                        "total_token": function_result.total_tokens,
+                        "total_tokens": function_result.total_tokens,
                         "created_at": record.created_at
             });
 
@@ -400,19 +401,19 @@ async fn trigger_memory_consolidation(
         }
 
         let summarizer_prompt = format!(
-            "Analyze the following conversation and return a JSON object with:
-1. 'summary': A concise summary of permanent facts and project context.
-2. 'nodes': An array of entities ({{'id': 'unique_id', 'label': 'Entity Name', 'node_type': 'Technology|Project|Person|Organization'}}).
-3. 'edges': An array of relationships ({{'source': 'node_id', 'target': 'node_id', 'relationship': 'Description'}}).
+            "Analyze the following conversation and return a JSON object with:\n
+                1. 'summary': A concise summary of permanent facts and project context.\n
+                2. 'nodes': An array of entities ({{'id': 'unique_id', 'label': 'Entity Name', 'node_type': 'Technology|Project|Person|Organization|Vehicle|Location|Peak|Language|Framework|MaintenanceLog|Concept|Event'}}).\n
+                3. 'edges': An array of relationships ({{'source': 'node_id', 'target': 'node_id', 'relationship': 'Description'}}).\n
 
-Rules:
-- NEVER create a node with id 'summary' or that represents the conversation summary itself.
-- Extract individual entities.
-- Reuse IDs.
-- 'id' should be snake_case.
+            Rules:
+                - NEVER create a node with id 'summary' or that represents the conversation summary itself.\n
+                - Extract individual entities.\n
+                - Reuse IDs.\n
+                - 'id' should be snake_case.\n
 
-Conversation:
-{}
+            Conversation:\n
+            {}
 ",
             summary_input
         );
