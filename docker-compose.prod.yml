@@ -36,7 +36,7 @@ services:
       retries: 5
 
   gateway:
-    image: ${DOCKERHUB_USERNAME}/nomi-gateway:v0.0.7
+    image: ${DOCKERHUB_USERNAME}/nomi-gateway:v0.0.11
     container_name: open-agent-gateway
     restart: unless-stopped
     environment:
@@ -48,6 +48,9 @@ services:
       - PORT=${PORT_GATEWAY}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - JINA_API_KEY=${JINA_API_KEY}
+      - S3_URL=${S3_URL}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
     depends_on:
       db:
         condition: service_healthy
@@ -59,7 +62,7 @@ services:
           memory: 800M
 
   channel:
-    image: ${DOCKERHUB_USERNAME}/nomi-channel:v0.0.5
+    image: ${DOCKERHUB_USERNAME}/nomi-channel:v0.0.11
     container_name: open-agent-channel
     restart: unless-stopped
     environment:
@@ -67,6 +70,9 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - WHATSAPP_DB_PATH=${WHATSAPP_DB_PATH}
       - PORT=${PORT_CHANNEL}
+      - S3_URL=${S3_URL}
+      - S3_SECRET_KEY=${S3_SECRET_KEY}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
     volumes:
       - channel_data:/app/data
     depends_on:
@@ -78,7 +84,7 @@ services:
           memory: 500M
 
   web:
-    image: ${DOCKERHUB_USERNAME}/nomi-ui:v0.0.7
+    image: ${DOCKERHUB_USERNAME}/nomi-ui:v0.0.11
     container_name: open-agent-web
     restart: unless-stopped
     environment:

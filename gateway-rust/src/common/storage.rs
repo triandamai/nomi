@@ -1,0 +1,183 @@
+use s3::creds::Credentials;
+use s3::request::ResponseData;
+use s3::{Bucket, Region};
+use tracing::log::info;
+
+#[derive(Clone)]
+pub struct StorageClient {
+    access_key: String,
+    secret_key: String,
+    url_server: String,
+}
+
+impl StorageClient {
+    pub fn new(access_key: String, secret_key: String, url_server: String) -> StorageClient {
+        info!(target:"app::minio","Init minio");
+        StorageClient {
+            access_key,
+            secret_key,
+            url_server,
+        }
+    }
+
+    pub async fn get_file(
+        &self,
+        bucket_name: String,
+        file_name: String
+    ) -> Result<ResponseData, String> {
+        let credentials = Credentials::new(
+            Some(self.access_key.clone().as_str()),
+            Some(self.secret_key.clone().as_str()),
+            None,
+            None,
+            None,
+        );
+        if credentials.is_err() {
+            return Err(credentials.unwrap_err().to_string());
+        }
+        let credentials = credentials.unwrap();
+        let bucket = Bucket::new(
+            bucket_name.as_str(),
+            Region::Custom {
+                region: "asia".to_string(),
+                endpoint: self.url_server.clone(),
+            },
+            credentials,
+        );
+        if bucket.is_err() {
+            return Err(bucket.unwrap_err().to_string());
+        }
+        let filename = format!("/{}", file_name);
+        let bucket = bucket.unwrap().with_path_style();
+
+        let file = bucket.get_object(filename.clone()).await;
+        if file.is_err() {
+            return Err(file.unwrap_err().to_string());
+        }
+
+        {
+            info!(target: "get_object","from minio {}", &filename);
+        }
+        if file.is_err() {
+            return Err("".to_string());
+        }
+        let file = file.unwrap();
+        Ok(file)
+    }
+
+    pub async fn upload_byte(
+        &self,
+        bucket_name: String,
+        path: String,
+        data:Vec<u8>
+    ) -> Result<String, String> {
+        let credentials = Credentials::new(
+            Some(self.access_key.clone().as_str()),
+            Some(self.secret_key.clone().as_str()),
+            None,
+            None,
+            None,
+        );
+        if credentials.is_err() {
+            return Err(credentials.unwrap_err().to_string());
+        }
+        let credentials = credentials.unwrap();
+        let bucket = Bucket::new(
+            bucket_name.as_str(),
+            Region::Custom {
+                region: "asia".to_string(),
+                endpoint: self.url_server.clone(),
+            },
+            credentials,
+        );
+        if bucket.is_err() {
+            return Err(bucket.unwrap_err().to_string());
+        }
+        let bucket = bucket.unwrap().with_path_style();
+
+
+        let upload = bucket.put_object(path.as_str(), &data).await;
+        match upload {
+            Ok(result) => Ok(path),
+            Err(e) => Err(format!("Error uploading file: {}", e)),
+        }
+    }
+
+    pub async fn upload_file(
+        &self,
+        file_temp_location: String,
+        bucket_name: String,
+        file_path: String,
+    ) -> Result<String, String> {
+        let credentials = Credentials::new(
+            Some(self.access_key.clone().as_str()),
+            Some(self.secret_key.clone().as_str()),
+            None,
+            None,
+            None,
+        );
+        if credentials.is_err() {
+            return Err(credentials.unwrap_err().to_string());
+        }
+        let credentials = credentials.unwrap();
+        let bucket = Bucket::new(
+            bucket_name.as_str(),
+            Region::Custom {
+                region: "asia".to_string(),
+                endpoint: self.url_server.clone(),
+            },
+            credentials,
+        );
+        if bucket.is_err() {
+            return Err(bucket.unwrap_err().to_string());
+        }
+        let bucket = bucket.unwrap().with_path_style();
+
+        let file = tokio::fs::read(file_temp_location).await;
+        if file.is_err() {
+            return Err(file.unwrap_err().to_string());
+        }
+        let file = file.unwrap();
+        let upload = bucket.put_object(file_path.as_str(), &file).await;
+        match upload {
+            Ok(_) => Ok("Successfully uploaded file".to_string()),
+            Err(e) => Err(format!("Error uploading file: {}", e)),
+        }
+    }
+
+    pub async fn delete_file(
+        &self,
+        file_path: String,
+        bucket_name: String,
+    ) -> Result<String, String> {
+        let credentials = Credentials::new(
+            Some(self.access_key.clone().as_str()),
+            Some(self.secret_key.clone().as_str()),
+            None,
+            None,
+            None,
+        );
+        if credentials.is_err() {
+            return Err(credentials.unwrap_err().to_string());
+        }
+        let credentials = credentials.unwrap();
+        let bucket = Bucket::new(
+            bucket_name.as_str(),
+            Region::Custom {
+                region: "asia".to_string(),
+                endpoint: self.url_server.clone(),
+            },
+            credentials,
+        );
+        if bucket.is_err() {
+            return Err(bucket.unwrap_err().to_string());
+        }
+        let bucket = bucket.unwrap().with_path_style();
+
+        let upload = bucket.delete_object(file_path.as_str()).await;
+        match upload {
+            Ok(_) => Ok("Successfully delete  file".to_string()),
+            Err(e) => Err(format!("Error uploading file: {}", e)),
+        }
+    }
+}

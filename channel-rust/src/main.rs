@@ -1,9 +1,10 @@
+use crate::common::storage::StorageClient;
 use axum::{
-    Json, Router,
-    extract::State,
-    routing::{get, post},
+    extract::State, routing::{get, post},
+    Json,
+    Router,
 };
-use dotenvy::dotenv;
+use dotenvy::{dotenv, var};
 use std::sync::Arc;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
@@ -11,7 +12,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 mod common;
 mod feature;
@@ -20,9 +21,10 @@ mod feature;
 struct AppState {
     qr_code: Arc<Mutex<Option<String>>>,
     bot: Bot,
-    redis: crate::common::redis::RedisClient,
-    wa_tx: tokio::sync::mpsc::UnboundedSender<crate::feature::OutboundMessage>,
-    wa_cmd_tx: tokio::sync::mpsc::UnboundedSender<crate::feature::WhatsAppCommand>,
+    redis: common::redis::RedisClient,
+    storage: StorageClient,
+    wa_tx: tokio::sync::mpsc::UnboundedSender<feature::OutboundMessage>,
+    wa_cmd_tx: tokio::sync::mpsc::UnboundedSender<feature::WhatsAppCommand>,
 }
 
 #[tokio::main]
@@ -44,18 +46,24 @@ async fn main() -> anyhow::Result<()> {
 
     let redis_url =
         std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-    let redis = crate::common::redis::RedisClient::new(&redis_url)?;
+    let redis = common::redis::RedisClient::new(&redis_url)?;
+    let storage_s3 = StorageClient::new(
+        var("S3_ACCESS_KEY").unwrap_or("this-is-access-key".to_string()),
+        var("S3_SECRET_KEY").unwrap_or("this-is-secret-and-important".to_string()),
+        var("S3_URL").unwrap_or("http://localhost:4000".to_string()),
+    );
 
     let qr_code = Arc::new(Mutex::new(None));
     let (wa_tx, mut wa_rx) =
-        tokio::sync::mpsc::unbounded_channel::<crate::feature::OutboundMessage>();
+        tokio::sync::mpsc::unbounded_channel::<feature::OutboundMessage>();
     let (wa_cmd_tx, mut wa_cmd_rx) =
-        tokio::sync::mpsc::unbounded_channel::<crate::feature::WhatsAppCommand>();
+        tokio::sync::mpsc::unbounded_channel::<feature::WhatsAppCommand>();
 
     let state = AppState {
         qr_code: qr_code.clone(),
         bot: bot.clone(),
         redis: redis.clone(),
+        storage:storage_s3.clone(),
         wa_tx,
         wa_cmd_tx,
     };
@@ -64,14 +72,16 @@ async fn main() -> anyhow::Result<()> {
     // WhatsApp Worker
     let wa_redis = redis.clone();
     let wa_qr = qr_code.clone();
+    let storage = storage_s3.clone();
+    let state_clone = state.clone();
     tokio::spawn(async move {
+        let s3 = storage.clone();
         let db_path =
             std::env::var("WHATSAPP_DB_PATH").unwrap_or_else(|_| "whatsapp.db".to_string());
-        match crate::feature::whatsapp::WhatsAppWorker::new(&db_path, wa_redis, wa_qr).await {
+        match feature::whatsapp::WhatsAppWorker::new(&db_path, wa_redis,storage, wa_qr).await {
             Ok((worker, mut bot)) => {
                 info!("Starting WhatsApp bot...");
                 let client = bot.client();
-
                 // Run the bot event loop and task processor
                 match bot.run().await {
                     Ok(_handle) => {
@@ -89,14 +99,14 @@ async fn main() -> anyhow::Result<()> {
                 loop {
                     tokio::select! {
                         Some(msg) = wa_rx.recv() => {
-                            if let Err(e) = worker.send_message(msg.chat_id, msg.text).await {
+                            if let Err(e) = worker.send_message(msg,&s3).await {
                                 error!("Failed to send WhatsApp message: {}", e);
                             }
                         }
                         Some(cmd) = wa_cmd_rx.recv() => {
                             match cmd {
                                 crate::feature::WhatsAppCommand::Logout => {
-                                    if let Err(e) = worker.logout().await {
+                                    if let Err(e) = worker.logout(&state_clone).await {
                                         error!("Failed to logout from WhatsApp: {}", e);
                                     }
                                 }
@@ -129,10 +139,11 @@ async fn main() -> anyhow::Result<()> {
     // Start Telegram Worker
     let bot_worker = bot.clone();
     let redis_worker = redis.clone();
+    let storage = storage_s3.clone();
     info!("Spawning Telegram Worker...");
     tokio::spawn(async move {
         info!("Telegram Worker task started.");
-        crate::feature::telegram::start_telegram_worker(bot_worker, redis_worker).await;
+        feature::telegram::start_telegram_worker(bot_worker, redis_worker,storage).await;
         info!("Telegram Worker task finished (unexpectedly).");
     });
 
@@ -141,7 +152,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Spawning Redis Listener...");
     tokio::spawn(async move {
         info!("Redis Listener task started.");
-        if let Err(e) = crate::feature::redis::start_redis_listener(redis_listener_state).await {
+        if let Err(e) = feature::redis::start_redis_listener(redis_listener_state).await {
             error!("Redis listener failed: {}", e);
         }
         info!("Redis Listener task finished.");
@@ -180,13 +191,13 @@ async fn logout_whatsapp(State(state): State<AppState>) -> Json<serde_json::Valu
 
 async fn handle_typing(
     State(state): State<AppState>,
-    Json(payload): Json<crate::feature::TypingRequest>,
+    Json(payload): Json<feature::TypingRequest>,
 ) -> Json<serde_json::Value> {
     info!("Presence (typing): {:?}", payload);
 
     if payload.channel == "telegram" {
         if let Err(e) =
-            crate::feature::telegram::send_telegram_typing(state.bot.clone(), payload.chat_id).await
+            feature::telegram::send_telegram_typing(state.bot.clone(), payload.chat_id).await
         {
             error!("Failed to send Telegram typing: {}", e);
         }
@@ -197,16 +208,16 @@ async fn handle_typing(
 
 async fn handle_outbound(
     State(state): State<AppState>,
-    Json(payload): Json<crate::feature::OutboundMessage>,
+    Json(payload): Json<feature::OutboundMessage>,
 ) -> Json<serde_json::Value> {
     info!("Outbound message: {:?}", payload);
 
     match payload.channel.as_str() {
         "telegram" => {
-            if let Err(e) = crate::feature::telegram::send_telegram_message(
+            if let Err(e) = feature::telegram::send_telegram_message(
                 state.bot.clone(),
-                payload.chat_id,
-                payload.text,
+                payload,
+                &state.storage
             )
             .await
             {

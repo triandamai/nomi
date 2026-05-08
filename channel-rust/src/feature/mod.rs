@@ -8,10 +8,17 @@ pub mod bridge;
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InboundMessage {
     pub is_group: bool,
+    pub is_private: bool,
     pub sender_id: String,
-    pub chat_id: String,
+    pub conversation_id: String,
+    pub message_id: String,
     pub text: String,
     pub channel: String,
+    pub video_url:Option<String>,
+    pub image_url:Option<String>,
+    pub audio_url:Option<String>,
+    pub doc_url:Option<String>,
+    pub sticker_url:Option<String>,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
@@ -20,10 +27,15 @@ pub struct InboundMessage {
 pub struct OutboundMessage {
     pub is_group: bool,
     pub sender_id: Option<String>,
-    pub chat_id: String,
+    pub conversation_id: String,
     pub text: String,
     pub channel: String,
     pub user_id: Option<uuid::Uuid>,
+    pub video_url:Option<String>,
+    pub image_url:Option<String>,
+    pub audio_url:Option<String>,
+    pub doc_url:Option<String>,
+    pub sticker_url:Option<String>,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }

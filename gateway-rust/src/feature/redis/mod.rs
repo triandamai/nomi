@@ -40,12 +40,12 @@ pub async fn start_redis_listener(state: AppState) -> anyhow::Result<()> {
 async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow::Result<()> {
     info!(
         "Handling inbound from {} in chat {}: {}",
-        msg.sender_id, msg.chat_id, msg.text
+        msg.sender_id, msg.conversation_id, msg.text
     );
 
     // 1. Resolve Identity and Channel Info
     let channel_info =
-        channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.chat_id).await?;
+        channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.conversation_id).await?;
 
     let (user_id, conversation_id) = if let Some(ci) = channel_info {
         (ci.user_id, ci.conversation_id)
@@ -75,7 +75,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                     &state.pool,
                     &msg.channel,
                     &msg.sender_id,
-                    &msg.chat_id,
+                    &msg.conversation_id,
                     conv_id,
                     user_id,
                     display_name,
@@ -91,13 +91,18 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                             "platform": msg.channel,
                             "message": format!("Successfully paired with {}!", msg.channel)
                         }),
-                        &crate::feature::OutboundMessage {
+                        &OutboundMessage {
                             is_group: msg.is_group,
                             sender_id: msg.sender_id.clone(),
-                            chat_id: msg.chat_id.clone(),
+                            conversation_id: msg.conversation_id.clone(),
                             text: "Pairing successful! This conversation is now linked."
                                 .to_string(),
                             channel: msg.channel.clone(),
+                            video_url: None,
+                            image_url: None,
+                            audio_url: None,
+                            doc_url: None,
+                            sticker_url: None,
                             metadata: msg.metadata.clone(),
                         },
                     )
@@ -114,7 +119,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         let channel_exists = sqlx::query!(
                 "SELECT u.id as user_id FROM channels c JOIN users u ON u.id = c.user_id WHERE c.channel_type = $1 AND c.external_chat_id = $2",
                 msg.channel,
-                msg.chat_id
+                msg.conversation_id
             )
             .fetch_optional(&state.pool)
             .await;
@@ -124,10 +129,15 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .publish_outbond(&crate::feature::OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: msg.sender_id.clone(),
-                    chat_id: msg.chat_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
                     text: "We having trouble, meanwhile we on fixing, you can try again later."
                         .to_string(),
                     channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
                     metadata: msg.metadata.clone(),
                 })
                 .await;
@@ -140,9 +150,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .publish_outbond(&crate::feature::OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: msg.sender_id.clone(),
-                    chat_id: msg.chat_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
                     text: "Account already exists. Use /login.".to_string(),
                     channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
                     metadata: msg.metadata.clone(),
                 })
                 .await;
@@ -155,12 +170,17 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             Err(e) => {
                 error!("Failed to start transaction: {}", e);
                 let _ = state
-                    .publish_outbond(&crate::feature::OutboundMessage {
+                    .publish_outbond(&OutboundMessage {
                         is_group: msg.is_group,
                         sender_id: msg.sender_id.clone(),
-                        chat_id: msg.chat_id.clone(),
+                        conversation_id: msg.conversation_id.clone(),
                         text: "Internal server error".to_string(),
                         channel: msg.channel.clone(),
+                        video_url: None,
+                        image_url: None,
+                        audio_url: None,
+                        doc_url: None,
+                        sticker_url: None,
                         metadata: msg.metadata.clone(),
                     })
                     .await;
@@ -189,9 +209,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 let _ = state.publish_outbond(&crate::feature::OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: msg.sender_id.clone(),
-                    chat_id: msg.chat_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
                     text: "Failed to resolve user".to_string(),
                     channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
                     metadata: msg.metadata.clone(),
                 }).await;
 
@@ -202,7 +227,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         info!("begin create conversation \n");
         // Create new conversation
         let conv_id = Uuid::new_v4();
-        let title = format!("{} via {}", msg.chat_id, msg.channel);
+        let title = format!("{} via {}", msg.conversation_id, msg.channel);
 
         if let Err(e) = sqlx::query!(
             "INSERT INTO conversations (id, title) VALUES ($1, $2)",
@@ -218,9 +243,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .publish_outbond(&crate::feature::OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: msg.sender_id.clone(),
-                    chat_id: msg.chat_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
                     text: "Failed to create conversation".to_string(),
                     channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
                     metadata: msg.metadata.clone(),
                 })
                 .await;
@@ -233,7 +263,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id, user_id) VALUES ($1, $2, $3, $4, $5)",
             msg.channel,
             msg.sender_id,
-            msg.chat_id,
+            msg.conversation_id,
             conv_id,
             u_id
         ).execute(&mut *tx).await {
@@ -243,9 +273,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             let _ = state.publish_outbond(&crate::feature::OutboundMessage {
                 is_group: msg.is_group,
                 sender_id: msg.sender_id.clone(),
-                chat_id: msg.chat_id.clone(),
+                conversation_id: msg.conversation_id.clone(),
                 text: "Failed to link channel".to_string(),
                 channel: msg.channel.clone(),
+                video_url: None,
+                image_url: None,
+                audio_url: None,
+                doc_url: None,
+                sticker_url: None,
                 metadata: msg.metadata.clone(),
             }).await;
 
@@ -262,9 +297,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             let _ = state.publish_outbond(&crate::feature::OutboundMessage {
                 is_group: msg.is_group,
                 sender_id: msg.sender_id.clone(),
-                chat_id: msg.chat_id.clone(),
+                conversation_id: msg.conversation_id.clone(),
                 text: "Failed to join conversation".to_string(),
                 channel: msg.channel.clone(),
+                video_url: None,
+                image_url: None,
+                audio_url: None,
+                doc_url: None,
+                sticker_url: None,
                 metadata: msg.metadata.clone(),
             }).await;
 
@@ -277,9 +317,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .publish_outbond(&crate::feature::OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: msg.sender_id.clone(),
-                    chat_id: msg.chat_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
                     text: "Failed to register".to_string(),
                     channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
                     metadata: msg.metadata.clone(),
                 })
                 .await;
@@ -291,10 +336,15 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             .publish_outbond(&crate::feature::OutboundMessage {
                 is_group: msg.is_group,
                 sender_id: msg.sender_id.clone(),
-                chat_id: msg.chat_id.clone(),
+                conversation_id: msg.conversation_id.clone(),
                 text: "Success register account, you can now /login for access dashboard"
                     .to_string(),
                 channel: msg.channel.clone(),
+                video_url: None,
+                image_url: None,
+                audio_url: None,
+                doc_url: None,
+                sticker_url: None,
                 metadata: msg.metadata.clone(),
             })
             .await;
@@ -308,7 +358,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         let channel_exists = sqlx::query!(
             "SELECT u.id as user_id FROM channels c JOIN users u ON u.id = c.user_id WHERE c.channel_type = $1 AND c.external_chat_id = $2",
             msg.channel,
-            msg.chat_id
+            msg.conversation_id
         ).fetch_optional(&state.pool).await;
 
         if let Err(err) = channel_exists {
@@ -317,9 +367,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .publish_outbond(&crate::feature::OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: msg.sender_id.clone(),
-                    chat_id: msg.chat_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
                     text: "We having trouble for getting information, meanwhile we fixing you can try again later.".to_string(),
                     channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
                     metadata: msg.metadata.clone(),
                 })
                 .await;
@@ -332,9 +387,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .publish_outbond(&crate::feature::OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: msg.sender_id.clone(),
-                    chat_id: msg.chat_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
                     text: "Channel not registered, Use /register for new user use, if you already had account, get pairing code from dashboard and use /pair <PAIRING CODE>".to_string(),
                     channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
                     metadata: msg.metadata.clone(),
                 })
                 .await;
@@ -356,9 +416,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 .publish_outbond(&crate::feature::OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: msg.sender_id.clone(),
-                    chat_id: msg.chat_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
                     text: "Database error".to_string(),
                     channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
                     metadata: msg.metadata.clone(),
                 })
                 .await;
@@ -378,9 +443,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         let outbound = crate::feature::OutboundMessage {
             is_group: msg.is_group,
             sender_id: "nomi_auth".to_string(),
-            chat_id: msg.chat_id.clone(),
+            conversation_id: msg.conversation_id.clone(),
             text: outbound_text,
             channel: msg.channel.clone(),
+            video_url: None,
+            image_url: None,
+            audio_url: None,
+            doc_url: None,
+            sticker_url: None,
             metadata: msg.metadata.clone(),
         };
 
@@ -395,14 +465,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     // ================================== NOT REGISTERED STOP HERE ============================//
     // 3. Resolve/Create Conversation
     if conversation_id.is_nil() {
-        info!("{} via {}", msg.chat_id, msg.channel);
+        info!("{} via {}", msg.conversation_id, msg.channel);
         info!(
             "Unfortunately user doesnt associate with any conversation, stop here will not sent to llm"
         );
         let _ = state.publish_outbond(&OutboundMessage{
             is_group: msg.is_group,
             sender_id: "nomi_auth".to_string(),
-            chat_id: msg.chat_id.clone(),
+            conversation_id: msg.conversation_id.clone(),
             text: format!("Hello there! 👋 \n
             I'm **Nomi**, Trian's AI collaborator. I help him manage his projects, track his adventures on the road, and keep his digital ecosystem running smoothly. \n
             If you're a friend of Trian's, I'd love to get to know you! To get started and secure your access to our chat, could you please use one of the commands below?\n
@@ -413,6 +483,11 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 "**`/login`**"
             ),
             channel: msg.channel.clone(),
+            video_url: None,
+            image_url: None,
+            audio_url: None,
+            doc_url: None,
+            sticker_url: None,
             metadata: msg.metadata.clone(),
         });
         return Ok(());
@@ -441,7 +516,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     let state_clone = state.clone();
     let user_text = msg.text.clone();
     let sender_id = msg.sender_id.clone();
-    let chat_id = msg.chat_id.clone();
+    let chat_id = msg.conversation_id.clone();
     let channel = msg.channel.clone();
 
     tokio::spawn(async move {
@@ -620,12 +695,17 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
 & crate::feature::PresenceMessage { sender_id: sender_id.clone(), chat_id: chat_id.clone(),channel: channel.clone(),status: "idle".to_string() }).await;
 
             let _ = state_clone
-                .publish_outbond(&crate::feature::OutboundMessage {
+                .publish_outbond(&OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: sender_id,
-                    chat_id: chat_id,
+                    conversation_id: chat_id,
                     text: chunk.content,
                     channel: channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
                     metadata: None,
                 })
                 .await;

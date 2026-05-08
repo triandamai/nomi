@@ -279,9 +279,14 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                 let outbound = OutboundMessage {
                     is_group: false,
                     sender_id: channel.external_id.clone(),
-                    chat_id: channel.external_chat_id.clone(),
+                    conversation_id: channel.external_chat_id.clone(),
                     text: record.content.clone(),
                     channel: channel.channel_type.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
                     metadata: None,
                 };
 

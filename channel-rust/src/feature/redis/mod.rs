@@ -59,12 +59,12 @@ pub async fn start_redis_listener(state: AppState) -> anyhow::Result<()> {
 async fn handle_outbound_message(state: AppState, msg: OutboundMessage) -> anyhow::Result<()> {
     match msg.channel.as_str() {
         "whatsapp" => {
-            info!("Sending to WhatsApp: {:?}", msg.chat_id);
+            info!("Sending to WhatsApp: {:?}", msg.conversation_id);
             let _ = state.wa_tx.send(msg);
         },
         "telegram" => {
-            info!("Sending to Telegram: {}", msg.chat_id);
-            crate::feature::telegram::send_telegram_message(state.bot, msg.chat_id, msg.text).await?;
+            info!("Sending to Telegram: {}", msg.conversation_id);
+            crate::feature::telegram::send_telegram_message(state.bot, msg,&state.storage).await?;
         },
         _ => error!("Unknown platform: {}", msg.channel),
     }
