@@ -1,12 +1,10 @@
 use crate::AppState;
 use crate::common::redis::RedisClient;
 use crate::common::storage::StorageClient;
-use crate::feature::{InboundMessage, OutboundMessage, WhatsAppCommand};
-use dotenvy::var;
+use crate::feature::{InboundMessage, OutboundMessage};
 use regex::Regex;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::thread::sleep;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{error, info};
@@ -25,8 +23,6 @@ use wa_rs_ureq_http::UreqHttpClient;
 
 pub struct WhatsAppWorker {
     client: Arc<Client>,
-    redis: RedisClient,
-    storage: StorageClient,
     qr_code: Arc<Mutex<Option<String>>>,
 }
 
@@ -275,6 +271,7 @@ impl WhatsAppWorker {
                                     metadata: Some(metadata),
                                 };
 
+                                info!("nomi:inbound => {:?}",&inbound);
                                 if let Err(e) = redis.publish_event("nomi:inbound", &inbound).await
                                 {
                                     error!("Failed to publish WhatsApp inbound to Redis: {}", e);
@@ -293,8 +290,6 @@ impl WhatsAppWorker {
         Ok((
             Self {
                 client,
-                redis,
-                storage: storage_client,
                 qr_code,
             },
             bot,
@@ -358,6 +353,7 @@ impl WhatsAppWorker {
             }
         }
 
+
         if let Some(path) = msg.doc_url {
             let mut payload = Message::default();
             let mime = mime_guess::from_path(&path).first_or_octet_stream();
@@ -400,10 +396,18 @@ impl WhatsAppWorker {
         Ok(())
     }
 
+    pub async fn regenerate(&self, state: &AppState) -> anyhow::Result<()> {
+        info!("Regenarate qr wa...");
+
+        Ok(())
+    }
     pub async fn logout(&self, state: &AppState) -> anyhow::Result<()> {
         info!("Logging out from WhatsApp...");
-        let _ = state.wa_cmd_tx.send(WhatsAppCommand::Logout);
-        // self.client.logout().await.map_err(|e| anyhow::anyhow!("Logout failed: {}", e))?;
+        // let _ = state.wa_cmd_tx.send(WhatsAppCommand::Logout);
+        let _ = self.client.disconnect().await;
+        let _ = tokio::fs::remove_file("/data/whatsapp.db").await;
+        let _ = tokio::fs::remove_file("/data/whatsapp.db-shmb").await;
+        let _ = tokio::fs::remove_file("/data/whatsapp.db-wal").await;
         let mut qr_lock = self.qr_code.lock().await;
         *qr_lock = None;
         Ok(())

@@ -1,6 +1,6 @@
-use s3::creds::Credentials;
 use s3::request::ResponseData;
 use s3::{Bucket, Region};
+use s3::creds::Credentials;
 use tracing::log::info;
 
 #[derive(Clone)]
@@ -98,7 +98,7 @@ impl StorageClient {
 
         let upload = bucket.put_object(path.as_str(), &data).await;
         match upload {
-            Ok(result) => Ok(path),
+            Ok(_) => Ok(path),
             Err(e) => Err(format!("Error uploading file: {}", e)),
         }
     }

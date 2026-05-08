@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-pub mod conversation;
 pub mod redis;
 pub mod telegram;
 pub mod whatsapp;
@@ -59,4 +58,5 @@ pub struct PresenceMessage {
 #[derive(Debug, Clone)]
 pub enum WhatsAppCommand {
     Logout,
+    GenerateNewQr
 }

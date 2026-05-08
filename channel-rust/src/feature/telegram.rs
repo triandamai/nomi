@@ -7,7 +7,6 @@ use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::net::Download;
 use teloxide::prelude::*;
 use teloxide::types::{ChatAction, FileId, InputFile, MessageEntityKind, Recipient};
-use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tracing::{error, info};
 
@@ -48,15 +47,16 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 info!("image detected");
                 if let Some(highest_res) = photos.last() {
                     let file_id = &highest_res.file.id;
-
-                    if let Ok(file) = extract_and_upload_file_telegram(
+                    let extract = extract_and_upload_file_telegram(
                         &bot_clone,
                         &storage,
                         file_id.clone(),
-                        format!("{}/{}", sender_id, conversation_id),
+                        format!("{}/{}", sender_id, message_id),
                     )
-                    .await
-                    {
+                    .await;
+
+                    info!("result image upload {:?}", extract);
+                    if let Ok(file) = extract {
                         info!("image uploaded");
                         image_url = Some(file);
                     }
@@ -66,14 +66,17 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
             if let Some(video) = msg.video() {
                 info!("video detected");
                 let file_id = &video.file.id;
-                if let Ok(file) = extract_and_upload_file_telegram(
+
+                let extract = extract_and_upload_file_telegram(
                     &bot_clone,
                     &storage,
                     file_id.clone(),
-                    format!("{}/{}", sender_id, conversation_id),
+                    format!("{}/{}", sender_id, message_id),
                 )
-                .await
-                {
+                .await;
+
+                info!("result video upload {:?}", extract);
+                if let Ok(file) = extract {
                     info!("video uploaded");
                     video_url = Some(file);
                 }
@@ -82,15 +85,33 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
             if let Some(audio) = msg.audio() {
                 info!("audio detected");
                 let file_id = &audio.file.id;
-                if let Ok(file) = extract_and_upload_file_telegram(
+                let extract = extract_and_upload_file_telegram(
                     &bot_clone,
                     &storage,
                     file_id.clone(),
-                    format!("{}/{}", sender_id, conversation_id),
+                    format!("{}/{}", sender_id, message_id),
                 )
-                .await
-                {
+                .await;
+                info!("result audio upload {:?}", extract);
+                if let Ok(file) = extract {
                     info!("audio uploaded");
+                    audio_url = Some(file);
+                }
+            }
+
+            if let Some(voice) = msg.voice() {
+                info!("vn detected");
+                let file_id = &voice.file.id;
+                let extract = extract_and_upload_file_telegram(
+                    &bot_clone,
+                    &storage,
+                    file_id.clone(),
+                    format!("{}/{}", sender_id, message_id),
+                )
+                    .await;
+                info!("result vn upload {:?}", extract);
+                if let Ok(file) = extract {
+                    info!("vn uploaded");
                     audio_url = Some(file);
                 }
             }
@@ -98,14 +119,15 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
             if let Some(document) = msg.document() {
                 info!("document detected");
                 let file_id = &document.file.id;
-                if let Ok(file) = extract_and_upload_file_telegram(
+                let extract = extract_and_upload_file_telegram(
                     &bot_clone,
                     &storage,
                     file_id.clone(),
-                    format!("{}/{}", sender_id, conversation_id),
+                    format!("{}/{}", sender_id, message_id),
                 )
-                .await
-                {
+                .await;
+                info!("result document upload {:?}", extract);
+                if let Ok(file) = extract {
                     info!("document uploaded");
                     doc_url = Some(file);
                 }
@@ -114,14 +136,15 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
             if let Some(sticker) = msg.sticker() {
                 info!("sticker detected");
                 let file_id = &sticker.file.id;
-                if let Ok(file) = extract_and_upload_file_telegram(
+                let extract = extract_and_upload_file_telegram(
                     &bot_clone,
                     &storage,
                     file_id.clone(),
-                    format!("{}/{}", sender_id, conversation_id),
+                    format!("{}/{}", sender_id, message_id),
                 )
-                .await
-                {
+                .await;
+                info!("result sticker upload {:?}", extract);
+                if let Ok(file) = extract {
                     info!("sticker uploaded");
                     sticker_url = Some(file);
                 }
@@ -198,6 +221,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 metadata: Some(metadata),
             };
 
+            info!("nomi:inbound => {:?}",inbound);
             if let Err(e) = redis.publish_event("nomi:inbound", &inbound).await {
                 error!("Failed to publish Telegram inbound to Redis: {}", e);
             }
@@ -214,71 +238,118 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
         .await;
 }
 
-pub async fn send_telegram_message(bot: Bot,msg:OutboundMessage,storage: &StorageClient) -> anyhow::Result<()> {
-    if let Ok(chat_id) = msg.conversation_id.parse::<i64>(){
-
-        if let Some(image) = msg.image_url{
-            if let Ok(image_url) = storage.get_file(
-                "conversations".to_string(),
-                image.clone()
-            ).await{
+pub async fn send_telegram_message(
+    bot: Bot,
+    msg: OutboundMessage,
+    storage: &StorageClient,
+) -> anyhow::Result<()> {
+    if let Ok(chat_id) = msg.conversation_id.parse::<i64>() {
+        if let Some(image) = msg.image_url {
+            if let Ok(image_url) = storage
+                .get_file("conversations".to_string(), image.clone())
+                .await
+            {
                 let ext = mime_guess::from_path(image).first_or_octet_stream();
-                let ext = mime_guess::get_mime_extensions(&ext).unwrap().first().unwrap().to_string();;
+                let ext = mime_guess::get_mime_extensions(&ext)
+                    .unwrap()
+                    .first()
+                    .unwrap()
+                    .to_string();
                 let buff = image_url.to_vec();
-                let image = InputFile::memory(buff).file_name(format!("{}.{}", Utc::now().to_rfc3339(), ext));
+                let image = InputFile::memory(buff).file_name(format!(
+                    "{}.{}",
+                    Utc::now().to_rfc3339(),
+                    ext
+                ));
                 let _ = bot.send_photo(Recipient::Id(ChatId(chat_id)), image).await;
             }
         }
 
-        if let Some(video) = msg.video_url{
-            if let Ok(video_url) = storage.get_file(
-                "conversations".to_string(),
-                video.clone()
-            ).await{
+        if let Some(video) = msg.video_url {
+            if let Ok(video_url) = storage
+                .get_file("conversations".to_string(), video.clone())
+                .await
+            {
                 let ext = mime_guess::from_path(video).first_or_octet_stream();
-                let ext = mime_guess::get_mime_extensions(&ext).unwrap().first().unwrap().to_string();;
+                let ext = mime_guess::get_mime_extensions(&ext)
+                    .unwrap()
+                    .first()
+                    .unwrap()
+                    .to_string();
                 let buff = video_url.to_vec();
-                let image = InputFile::memory(buff).file_name(format!("{}.{}", Utc::now().to_rfc3339(), ext));
+                let image = InputFile::memory(buff).file_name(format!(
+                    "{}.{}",
+                    Utc::now().to_rfc3339(),
+                    ext
+                ));
                 let _ = bot.send_video(Recipient::Id(ChatId(chat_id)), image).await;
             }
         }
 
-        if let Some(audio) = msg.audio_url{
-            if let Ok(audio_url) = storage.get_file(
-                "conversations".to_string(),
-                audio.clone()
-            ).await{
+        if let Some(audio) = msg.audio_url {
+            if let Ok(audio_url) = storage
+                .get_file("conversations".to_string(), audio.clone())
+                .await
+            {
                 let ext = mime_guess::from_path(audio).first_or_octet_stream();
-                let ext = mime_guess::get_mime_extensions(&ext).unwrap().first().unwrap().to_string();;
+                let ext = mime_guess::get_mime_extensions(&ext)
+                    .unwrap()
+                    .first()
+                    .unwrap()
+                    .to_string();
                 let buff = audio_url.to_vec();
-                let image = InputFile::memory(buff).file_name(format!("{}.{}", Utc::now().to_rfc3339(), ext));
+                let image = InputFile::memory(buff).file_name(format!(
+                    "{}.{}",
+                    Utc::now().to_rfc3339(),
+                    ext
+                ));
                 let _ = bot.send_audio(Recipient::Id(ChatId(chat_id)), image).await;
             }
         }
 
         if let Some(document) = msg.doc_url {
-            if let Ok(document_url) = storage.get_file(
-                "conversations".to_string(),
-                document.clone()
-            ).await{
+            if let Ok(document_url) = storage
+                .get_file("conversations".to_string(), document.clone())
+                .await
+            {
                 let ext = mime_guess::from_path(document).first_or_octet_stream();
-                let ext = mime_guess::get_mime_extensions(&ext).unwrap().first().unwrap().to_string();;
+                let ext = mime_guess::get_mime_extensions(&ext)
+                    .unwrap()
+                    .first()
+                    .unwrap()
+                    .to_string();
                 let buff = document_url.to_vec();
-                let image = InputFile::memory(buff).file_name(format!("{}.{}", Utc::now().to_rfc3339(), ext));
-                let _ = bot.send_document(Recipient::Id(ChatId(chat_id)), image).await;
+                let image = InputFile::memory(buff).file_name(format!(
+                    "{}.{}",
+                    Utc::now().to_rfc3339(),
+                    ext
+                ));
+                let _ = bot
+                    .send_document(Recipient::Id(ChatId(chat_id)), image)
+                    .await;
             }
         }
 
         if let Some(sticker) = msg.sticker_url {
-            if let Ok(sticker_url) = storage.get_file(
-                "conversations".to_string(),
-                sticker.clone()
-            ).await{
+            if let Ok(sticker_url) = storage
+                .get_file("conversations".to_string(), sticker.clone())
+                .await
+            {
                 let ext = mime_guess::from_path(sticker).first_or_octet_stream();
-                let ext = mime_guess::get_mime_extensions(&ext).unwrap().first().unwrap().to_string();;
+                let ext = mime_guess::get_mime_extensions(&ext)
+                    .unwrap()
+                    .first()
+                    .unwrap()
+                    .to_string();
                 let buff = sticker_url.to_vec();
-                let image = InputFile::memory(buff).file_name(format!("{}.{}", Utc::now().to_rfc3339(), ext));
-                let _ = bot.send_sticker(Recipient::Id(ChatId(chat_id)), image).await;
+                let image = InputFile::memory(buff).file_name(format!(
+                    "{}.{}",
+                    Utc::now().to_rfc3339(),
+                    ext
+                ));
+                let _ = bot
+                    .send_sticker(Recipient::Id(ChatId(chat_id)), image)
+                    .await;
             }
         }
         bot.send_message(Recipient::Id(ChatId(chat_id)), msg.text)
@@ -305,14 +376,17 @@ pub async fn extract_and_upload_file_telegram(
     let mut buff = Vec::new();
     match bot.get_file(file_id).await {
         Ok(bot_file) => {
-            let ext = mime_guess::from_path(
-                bot_file.path.clone(),
-            ).first_or_octet_stream();
-            let ext = mime_guess::get_mime_extensions(&ext).unwrap().first().unwrap().to_string();
-            let temp_file = File::create(format!("{}.{}", bot_file.id, ext)).await;
+            let ext = mime_guess::from_path(bot_file.path.clone()).first_or_octet_stream();
+            let ext = mime_guess::get_mime_extensions(&ext)
+                .unwrap()
+                .first()
+                .unwrap()
+                .to_string();
+            let file_name = format!("{}.{}", bot_file.id, ext);
+            let temp_file = tokio::fs::OpenOptions::new().read(true).write(true).create_new(true).open(file_name.clone()).await;
             match temp_file {
-                Ok(mut dst) => match bot.download_file(&bot_file.path, &mut dst).await {
-                    Ok(_) => match dst.read_to_end(&mut buff).await {
+                Ok(mut file_destination) => match bot.download_file(&bot_file.path, &mut file_destination).await {
+                    Ok(_) => match file_destination.read_to_end(&mut buff).await {
                         Ok(_) => match storage
                             .upload_byte(
                                 bucket.to_string(),
@@ -322,7 +396,8 @@ pub async fn extract_and_upload_file_telegram(
                             .await
                         {
                             Ok(upload_file) => {
-                                info!("image uploaded");
+                                info!("success uploaded");
+                                let _ = tokio::fs::remove_file(file_name).await;
                                 Ok(upload_file.clone())
                             }
                             Err(e) => Err(format!("Failed uploading file: {}", e)),

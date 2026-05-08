@@ -1,8 +1,8 @@
 use crate::common::storage::StorageClient;
 use axum::{
-    extract::State, routing::{get, post},
-    Json,
-    Router,
+    Json, Router,
+    extract::State,
+    routing::{get, post},
 };
 use dotenvy::{dotenv, var};
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 mod common;
 mod feature;
@@ -54,8 +54,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let qr_code = Arc::new(Mutex::new(None));
-    let (wa_tx, mut wa_rx) =
-        tokio::sync::mpsc::unbounded_channel::<feature::OutboundMessage>();
+    let (wa_tx, mut wa_rx) = tokio::sync::mpsc::unbounded_channel::<feature::OutboundMessage>();
     let (wa_cmd_tx, mut wa_cmd_rx) =
         tokio::sync::mpsc::unbounded_channel::<feature::WhatsAppCommand>();
 
@@ -63,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
         qr_code: qr_code.clone(),
         bot: bot.clone(),
         redis: redis.clone(),
-        storage:storage_s3.clone(),
+        storage: storage_s3.clone(),
         wa_tx,
         wa_cmd_tx,
     };
@@ -78,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
         let s3 = storage.clone();
         let db_path =
             std::env::var("WHATSAPP_DB_PATH").unwrap_or_else(|_| "whatsapp.db".to_string());
-        match feature::whatsapp::WhatsAppWorker::new(&db_path, wa_redis,storage, wa_qr).await {
+        match feature::whatsapp::WhatsAppWorker::new(&db_path, wa_redis, storage, wa_qr).await {
             Ok((worker, mut bot)) => {
                 info!("Starting WhatsApp bot...");
                 let client = bot.client();
@@ -98,22 +97,27 @@ async fn main() -> anyhow::Result<()> {
                 // Listen for outbound messages and commands for WhatsApp
                 loop {
                     tokio::select! {
-                        Some(msg) = wa_rx.recv() => {
-                            if let Err(e) = worker.send_message(msg,&s3).await {
-                                error!("Failed to send WhatsApp message: {}", e);
+                            Some(msg) = wa_rx.recv() => {
+                                if let Err(e) = worker.send_message(msg,&s3).await {
+                                    error!("Failed to send WhatsApp message: {}", e);
+                                }
                             }
-                        }
-                        Some(cmd) = wa_cmd_rx.recv() => {
-                            match cmd {
-                                crate::feature::WhatsAppCommand::Logout => {
-                                    if let Err(e) = worker.logout(&state_clone).await {
-                                        error!("Failed to logout from WhatsApp: {}", e);
+                            Some(cmd) = wa_cmd_rx.recv() => {
+                                match cmd {
+                                    feature::WhatsAppCommand::Logout => {
+                                        if let Err(e) = worker.logout(&state_clone).await {
+                                            error!("Failed to logout from WhatsApp: {}", e);
+                                        }
+                                    }
+                                    feature::WhatsAppCommand::GenerateNewQr => {
+                                        if let Err(e) = worker.regenerate(&state_clone).await {
+                                            error!("Failed to regenerate qr from Whatsapp: {}", e);
+                                        }
                                     }
                                 }
                             }
+                            else => break,
                         }
-                        else => break,
-                    }
                 }
             }
             Err(e) => error!("Failed to initialize WhatsApp worker: {}", e),
@@ -143,7 +147,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Spawning Telegram Worker...");
     tokio::spawn(async move {
         info!("Telegram Worker task started.");
-        feature::telegram::start_telegram_worker(bot_worker, redis_worker,storage).await;
+        feature::telegram::start_telegram_worker(bot_worker, redis_worker, storage).await;
         info!("Telegram Worker task finished (unexpectedly).");
     });
 
@@ -184,8 +188,17 @@ async fn get_whatsapp_qr(State(state): State<AppState>) -> Json<serde_json::Valu
     Json(serde_json::json!({ "qr": *qr }))
 }
 
+async fn generate_whatsapp_qr(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let _ = state
+        .wa_cmd_tx
+        .send(crate::feature::WhatsAppCommand::GenerateNewQr);
+    Json(serde_json::json!({ "success": true }))
+}
+
 async fn logout_whatsapp(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let _ = state.wa_cmd_tx.send(crate::feature::WhatsAppCommand::Logout);
+    let _ = state
+        .wa_cmd_tx
+        .send(crate::feature::WhatsAppCommand::Logout);
     Json(serde_json::json!({ "status": "logout_initiated" }))
 }
 
@@ -214,12 +227,9 @@ async fn handle_outbound(
 
     match payload.channel.as_str() {
         "telegram" => {
-            if let Err(e) = feature::telegram::send_telegram_message(
-                state.bot.clone(),
-                payload,
-                &state.storage
-            )
-            .await
+            if let Err(e) =
+                feature::telegram::send_telegram_message(state.bot.clone(), payload, &state.storage)
+                    .await
             {
                 error!("Failed to send Telegram message: {}", e);
                 return Json(serde_json::json!({ "status": "error", "message": e.to_string() }));
