@@ -16,4 +16,5 @@ pub struct UnifiedMessage {
     pub text_content: String,
     pub image_url: Option<String>,
     pub source: MessageSource,
+    pub v2:bool
 }

@@ -124,6 +124,7 @@ async fn process_debounced_message(
         text_content: combined_message,
         image_url: None,
         source,
+        v2: true,
     };
 
     // 3. Process via unified engine

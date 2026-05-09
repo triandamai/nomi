@@ -61,17 +61,41 @@ pub async fn send_prompt(
             // Add turns of interactions
             for (calls, results) in tool_turns {
                 // First, the model's calls for this turn
+                let mut call_parts = Vec::new();
                 for call in calls {
+                    call_parts.push(gemini_rust::Part::FunctionCall {
+                        function_call: call,
+                        thought_signature: None,
+                    });
+                }
+                if !call_parts.is_empty() {
                     builder = builder.with_message(Message {
-                        content: Content::function_call(call),
+                        content: Content {
+                            parts: Some(call_parts),
+                            role: Some(Role::Model),
+                        },
                         role: Role::Model,
                     });
                 }
 
                 // Then, the responses for those calls
+                let mut response_parts = Vec::new();
                 for (name, result) in results {
-                    info!("sending tool response: {}",result.follow_up_prompt);
-                    builder = builder.with_function_response(name, result).unwrap();
+                    response_parts.push(gemini_rust::Part::FunctionResponse {
+                        function_response: gemini_rust::tools::FunctionResponse::new(
+                            name,
+                            serde_json::to_value(result).unwrap_or_default(),
+                        ),
+                    });
+                }
+                if !response_parts.is_empty() {
+                    builder = builder.with_message(Message {
+                        content: Content {
+                            parts: Some(response_parts),
+                            role: Some(Role::User),
+                        },
+                        role: Role::User,
+                    });
                 }
             }
 

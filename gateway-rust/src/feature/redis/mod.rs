@@ -550,6 +550,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 "whatsapp" => crate::feature::message_processor::MessageSource::WhatsApp,
                 _ => crate::feature::message_processor::MessageSource::Other(msg.channel),
             },
+            v2:true
         };
 
         if let Err(e) =

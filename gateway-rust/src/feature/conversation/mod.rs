@@ -584,6 +584,7 @@ pub async fn handle_chat_stream(
             text_content: user_message,
             image_url: None,
             source: crate::feature::message_processor::MessageSource::Web,
+            v2: true,
         };
 
         if let Err(e) =

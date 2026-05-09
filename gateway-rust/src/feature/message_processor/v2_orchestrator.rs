@@ -2,33 +2,78 @@ use crate::AppState;
 use crate::common::agent::agent_model::PromptActor;
 use crate::common::agent::execute_tools;
 use crate::common::tools::ToolDispatcher;
-use crate::feature::message_processor::media::{ExpenseData, MaintenanceData, MediaClassification};
+use crate::feature::message_processor::media::{MediaClassification};
 use crate::feature::message_processor::model::UnifiedMessage;
 use crate::feature::{OutboundMessage, PresenceMessage};
 use crate::rag;
 use chrono::Utc;
-use gemini_rust::{Content, Message};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::common::repository::message_repo::save_message;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use tracing::{error, info};
+use crate::feature::message_processor::processor::{
+    classify_media_context, extract_expense_data, extract_maintenance_data,
+    extract_technical_doc, trigger_memory_consolidation,
+};
 
-pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
-    if msg.v2 {
-        return crate::feature::message_processor::v2_orchestrator::process_v2_message(state, msg).await;
-    }
+fn strip_thinking_tags(text: &str) -> String {
+    let re = regex::Regex::new(r"(?s)<thinking>.*?(?:</thinking>|$)").unwrap();
+    re.replace_all(text, "").trim().to_string()
+}
 
+fn send_status_update(pool: &sqlx::PgPool, conversation_id: Uuid, text: String) {
+    let pool = pool.clone();
+    tokio::spawn(async move {
+        let channel_info = sqlx::query!(
+            "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
+            conversation_id
+        ).fetch_all(&pool).await.unwrap_or_default();
+
+        if let Ok(redis_url) = std::env::var("REDIS_URL") {
+            if let Ok(client) = redis::Client::open(redis_url) {
+                if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
+                    use redis::AsyncCommands;
+                    for channel in channel_info {
+                        let outbound = OutboundMessage {
+                            is_group: false,
+                            sender_id: channel.external_id.clone(),
+                            conversation_id: channel.external_chat_id.clone(),
+                            text: text.clone(),
+                            channel: channel.channel_type.clone(),
+                            video_url: None,
+                            image_url: None,
+                            audio_url: None,
+                            doc_url: None,
+                            sticker_url: None,
+                            metadata: None,
+                        };
+                        let payload = serde_json::to_string(&outbound).unwrap();
+                        let _ = conn.publish::<&str, String, ()>("nomi:outbound", payload).await;
+                    }
+                }
+            }
+        }
+    });
+}
+
+pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
     let conversation_id = msg.conversation_id;
     let user_id = msg.user_id;
-    let text_content = msg.text_content;
+    let text_content = msg.text_content.clone(); // Keep original text without v2 prefix?
+    
+    // We should strip "v2 " from the beginning if it exists, otherwise use as is.
+    let text_content = if text_content.starts_with("v2 ") {
+        text_content.replacen("v2 ", "", 1)
+    } else {
+        text_content
+    };
 
     info!(
         conversation_id = %conversation_id,
         user_id = ?user_id,
         source = ?msg.source,
-        "Processing unified message"
+        "Processing unified message v2"
     );
 
     // 1. Immediate Save
@@ -39,7 +84,6 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
         user_id
     ).fetch_one(&state.pool).await?;
 
-    // Broadcast user message to SSE
     let payload = json!({
         "id": m.id,
         "conversation_id": conversation_id,
@@ -52,14 +96,9 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
     });
     let _ = match user_id {
         None => state.broadcast_sse("message", payload).await,
-        Some(ref id) => {
-            state
-                .send_sse_to_user(id.to_string().as_str(), "message", payload)
-                .await
-        }
+        Some(ref id) => state.send_sse_to_user(id.to_string().as_str(), "message", payload).await
     };
 
-    // 2. Start Typing / Presence
     let presence_payload = json!({
         "conversation_id": conversation_id,
         "is_typing": true,
@@ -67,14 +106,9 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
     });
     let _ = match user_id {
         None => state.broadcast_presence_sse(presence_payload).await,
-        Some(ref id) => {
-            state
-                .send_presence_sse_to_user(id.to_string().as_str(), presence_payload)
-                .await
-        }
+        Some(ref id) => state.send_presence_sse_to_user(id.to_string().as_str(), presence_payload).await
     };
 
-    // Broadcast presence to Redis for channels
     if let Ok(channel_info) = sqlx::query!(
         "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
         conversation_id
@@ -98,21 +132,18 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
         }
     }
 
-    // 2.5 Media Classification and Extraction
     let mut media_context = String::new();
     if let Some(image_url) = msg.image_url {
         info!("Media detected, classifying: {}", image_url);
         let classification = classify_media_context(&state, &image_url).await.unwrap_or(MediaClassification::Other);
-        info!("Media classified as: {:?}", classification);
-
         match classification {
             MediaClassification::ExpenseReceipt => {
                 if let Ok(expense) = extract_expense_data(&state, &image_url).await {
                     media_context = format!(
-                        "\n[SYSTEM: User uploaded an expense receipt. Merchant: {}, Total: {}, Category: {}. Items: {}]",
+                        "
+[SYSTEM: User uploaded an expense receipt. Merchant: {}, Total: {}, Category: {}. Items: {}]",
                         expense.merchant, expense.total, expense.category, expense.items.join(", ")
                     );
-                    // Save to Knowledge Base as memory
                     let memory_content = format!("Expense at {}: {} ({})", expense.merchant, expense.total, expense.category);
                     if let Ok(embedding) = rag::get_embedding(&state.gemini_api_key, &memory_content).await {
                         let metadata = json!({
@@ -129,7 +160,8 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
             MediaClassification::MotorcycleMaintenance => {
                 if let Ok(maint) = extract_maintenance_data(&state, &image_url).await {
                     media_context = format!(
-                        "\n[SYSTEM: User uploaded motorcycle maintenance record. Parts: {}. Details: {}]",
+                        "
+[SYSTEM: User uploaded motorcycle maintenance record. Parts: {}. Details: {}]",
                         maint.part_names.join(", "), maint.service_details
                     );
                     let memory_content = format!("Motorcycle Maintenance: {} - Parts: {}", maint.service_details, maint.part_names.join(", "));
@@ -151,7 +183,8 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
             }
             MediaClassification::TechnicalDoc => {
                 if let Ok(content) = extract_technical_doc(&state, &image_url).await {
-                     media_context = format!("\n[SYSTEM: User uploaded a technical document. Summary: {}]", 
+                     media_context = format!("
+[SYSTEM: User uploaded a technical document. Summary: {}]", 
                         if content.len() > 100 { &content[..100] } else { &content });
                      if let Ok(embedding) = rag::get_embedding(&state.gemini_api_key, &content).await {
                         let metadata = json!({
@@ -164,18 +197,15 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                     }
                 }
             }
-            MediaClassification::Nature => {
-                media_context = "\n[SYSTEM: User uploaded a nature photo.]".to_string();
-            }
-            MediaClassification::Other => {
-                media_context = "\n[SYSTEM: User uploaded an image (uncategorized).]".to_string();
-            }
+            MediaClassification::Nature => { media_context = "
+[SYSTEM: User uploaded a nature photo.]".to_string(); }
+            MediaClassification::Other => { media_context = "
+[SYSTEM: User uploaded an image (uncategorized).]".to_string(); }
         }
     }
 
     let augmented_text = format!("{}{}", text_content, media_context);
 
-    // 3. Prepare AI Context
     let dispatcher = ToolDispatcher::new(
         state.pool.clone(),
         std::env::current_dir().unwrap_or_default(),
@@ -198,13 +228,19 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
         let soul = conversation.soul_content.unwrap_or_default();
         let mut combined = boot;
         if !soul.is_empty() {
-            combined.push_str("\n\n### Current Personality/Soul\n");
+            combined.push_str("
+
+### Current Personality/Soul
+");
             combined.push_str(&soul);
         }
+        combined.push_str("
+
+### Orchestrator Instructions
+You are operating in a multi-turn tool-use loop. You MUST wait to gather all necessary data from your tools before providing a final response to the user. Do not answer prematurely. Acknowledge and integrate all tool results into your final answer.");
         combined
     };
 
-    // History Retrieval
     let history = sqlx::query!(
         "SELECT users.display_name as display_name, messages.created_at, messages.role, messages.content FROM messages LEFT JOIN users ON users.id = messages.user_id WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 15",
         conversation_id
@@ -216,24 +252,21 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
     for msg in history.into_iter().rev() {
         let role_label = match msg.role.as_str() {
             "user" => match msg.display_name {
-                None => "User",
-                Some(ref user) => &user,
+                None => "User".to_string(),
+                Some(ref user) => user.clone(),
             },
-            "assistant" => "Nomi",
-            _ => "System",
+            "assistant" => "Nomi".to_string(),
+            _ => "System".to_string(),
         };
         history_text.push_str(&format!(
-            "-[{}] {}: {}.\n",
-            msg.created_at
-                .unwrap_or(Utc::now())
-                .format("%Y-%m-%d %H:%M")
-                .to_string(),
+            "-[{}] {}: {}.
+",
+            msg.created_at.unwrap_or(Utc::now()).format("%Y-%m-%d %H:%M").to_string(),
             role_label,
             msg.content
         ));
     }
 
-    // RAG Context
     let embedding = rag::get_embedding(&state.gemini_api_key, &augmented_text)
         .await
         .unwrap_or_default();
@@ -246,21 +279,17 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
         )
         .await
         .unwrap_or_default()
-        .join("\n---\n")
+        .join("
+---
+")
     } else {
         String::new()
     };
 
-    // 4. LLM Execution Loop
+    // --- V2 Autonomous Loop ---
     let mut loop_count = 0;
     let max_loops = 5;
-    let mut current_actor = PromptActor::User {
-        history: history_text.clone(),
-        memories: memories_text.clone(),
-        message: augmented_text.clone(),
-        system_prompt: system_prompt.clone(),
-    };
-
+    
     let mut final_response = None;
     let mut tool_turns = Vec::new();
 
@@ -272,30 +301,56 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
 
     while loop_count < max_loops {
         loop_count += 1;
-        info!("Loop count iterate(N): N({})", loop_count);
+        info!("V2 Loop iterate(N): N({})", loop_count);
+        
+        let current_actor = PromptActor::MultiTool {
+            history: history_text.clone(),
+            memories: memories_text.clone(),
+            message: augmented_text.clone(),
+            system_prompt: system_prompt.clone(),
+            tool_turns: tool_turns.clone(),
+        };
+        
+        // Status: Model is thinking
+        send_status_update(&state.pool, conversation_id, "Nomi is thinking...".to_string());
+
         let result = crate::common::agent::send_prompt(state.gemini.as_ref(), current_actor).await;
 
         match result {
             Ok((response, chunk)) => {
-                // Accumulate turn data
-                if !chunk.content.is_empty() {
-                    accumulated_content.push_str(&chunk.content);
-                    accumulated_content.push_str("\n\n");
-                }
+                let mut turn_text = String::new();
                 if !chunk.thought.is_empty() {
+                    turn_text.push_str(&chunk.thought);
+                    turn_text.push_str("
+");
+                    
                     accumulated_thought.push_str(&chunk.thought);
-                    accumulated_thought.push_str("\n");
+                    accumulated_thought.push_str("
+");
 
-                    // Broadcast intermediate thought via SSE
                     let payload = json!({ "thought": chunk.thought, "conversation_id": conversation_id });
                     let _ = match user_id {
                         None => state.broadcast_sse("thought", payload).await,
-                        Some(ref id) => {
-                            state
-                                .send_sse_to_user(id.to_string().as_str(), "thought", payload)
-                                .await
-                        }
+                        Some(ref id) => state.send_sse_to_user(id.to_string().as_str(), "thought", payload).await
                     };
+                }
+                if !chunk.content.is_empty() {
+                    turn_text.push_str(&chunk.content);
+                    
+                    accumulated_content.push_str(&chunk.content);
+                    accumulated_content.push_str("
+
+");
+                }
+                
+                // Append model's output to history_text to ensure context persists across the loop turns
+                if !turn_text.is_empty() {
+                    history_text.push_str(&format!(
+                        "-[{}] Nomi: {}.
+",
+                        Utc::now().format("%Y-%m-%d %H:%M").to_string(),
+                        turn_text
+                    ));
                 }
 
                 total_prompt_tokens += chunk.prompt_tokens;
@@ -305,10 +360,9 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                 let tool_calls = response.function_calls();
                 let finish_reason = chunk.finish_reason.clone().unwrap_or_default();
 
-                // If no tool calls and model finished normally, we're done
                 if tool_calls.is_empty() && (finish_reason.contains("Stop") || finish_reason.is_empty()) {
                     let mut final_chunk = chunk.clone();
-                    final_chunk.content = accumulated_content.trim().to_string();
+                    final_chunk.content = strip_thinking_tags(&accumulated_content).trim().to_string();
                     final_chunk.thought = accumulated_thought.trim().to_string();
                     final_chunk.prompt_tokens = total_prompt_tokens;
                     final_chunk.answer_tokens = total_answer_tokens;
@@ -318,10 +372,9 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                     break;
                 }
 
-                // If we hit the loop limit, finalize with what we have
                 if loop_count >= max_loops {
                     let mut final_chunk = chunk.clone();
-                    final_chunk.content = accumulated_content.trim().to_string();
+                    final_chunk.content = strip_thinking_tags(&accumulated_content).trim().to_string();
                     final_chunk.thought = accumulated_thought.trim().to_string();
                     final_chunk.prompt_tokens = total_prompt_tokens;
                     final_chunk.answer_tokens = total_answer_tokens;
@@ -332,33 +385,49 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                 }
 
                 let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
+                
+                // Status: Tool checking
+                for call in &current_calls {
+                    let action = match call.name.as_str() {
+                        "read_workspace_file" | "execute_read_query" | "parse_to_json" => format!("checking {}", call.name),
+                        "web_search" | "read_web_page" => "searching the web".to_string(),
+                        "update_conversation_soul" | "update_nomi_soul" => "updating soul".to_string(),
+                        "update_knowledge_base" => "updating memory".to_string(),
+                        "evolve_bootstrap" => "evolving".to_string(),
+                        "create_reminder" | "modify_reminder" | "get_reminder_stats" => "managing reminders".to_string(),
+                        "get_inbox_summary" => "checking your inbox".to_string(),
+                        _ => format!("using {}", call.name),
+                    };
+                    send_status_update(&state.pool, conversation_id, format!("Nomi is {}...", action));
+                }
 
                 let tool_results = execute_tools(
                     &dispatcher,
                     current_calls.clone(),
-                    &text_content,
+                    &text_content, // use the v2-stripped one
                     Some(state.sse.clone()),
-                )
-                .await;
+                ).await;
+
+                // Append Tool Responses to history_text to enforce memory management persistence
+                for (name, result) in &tool_results {
+                    history_text.push_str(&format!(
+                        "-[{}] System (Tool {} Result): {}.
+",
+                        Utc::now().format("%Y-%m-%d %H:%M").to_string(),
+                        name,
+                        if result.success { &result.content } else { &result.error }
+                    ));
+                }
 
                 tool_turns.push((current_calls, tool_results));
-
-                current_actor = PromptActor::MultiTool {
-                    history: history_text.clone(),
-                    memories: memories_text.clone(),
-                    message: text_content.clone(),
-                    system_prompt: system_prompt.clone(),
-                    tool_turns: tool_turns.clone(),
-                };
             }
             Err(e) => {
-                error!("Agentic loop error: {}", e);
+                error!("V2 Agentic loop error: {}", e);
                 break;
             }
         }
     }
 
-    // 5. Post-Process & Final Save
     if let Some((_, function_result)) = final_response {
         if let Ok(record) = save_message(
             &state.pool,
@@ -370,35 +439,27 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
             function_result.prompt_tokens,
             function_result.answer_tokens,
             function_result.total_tokens,
-        )
-        .await
-        {
-            // Broadcast assistant message to SSE
+        ).await {
             let payload = json!({
-                        "id": record.id,
-                        "conversation_id":conversation_id,
-                        "role": record.role,
-                        "content": record.content.clone(),
-                        "thought": record.thought,
-                        "user_id": record.user_id,
-                        "total_tokens": function_result.total_tokens,
-                        "created_at": record.created_at
+                "id": record.id,
+                "conversation_id": conversation_id,
+                "role": record.role,
+                "content": record.content.clone(),
+                "thought": record.thought,
+                "user_id": record.user_id,
+                "total_tokens": function_result.total_tokens,
+                "created_at": record.created_at
             });
 
             let _ = match user_id {
                 None => state.broadcast_sse("message", payload).await,
-                Some(ref id) => {
-                    state
-                        .send_sse_to_user(id.to_string().as_str(), "message", payload)
-                        .await
-                }
+                Some(ref id) => state.send_sse_to_user(id.to_string().as_str(), "message", payload).await
             };
 
-            // Outbound Routing for Channels
             let channel_info = sqlx::query!(
-            "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
-            conversation_id
-        ).fetch_all(&state.pool).await.unwrap_or_default();
+                "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
+                conversation_id
+            ).fetch_all(&state.pool).await.unwrap_or_default();
 
             for channel in channel_info {
                 let outbound = OutboundMessage {
@@ -420,25 +481,21 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                         if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
                             use redis::AsyncCommands;
                             let payload = serde_json::to_string(&outbound).unwrap();
-                            let _ = conn
-                                .publish::<&str, String, ()>("nomi:outbound", payload)
-                                .await;
+                            let _ = conn.publish::<&str, String, ()>("nomi:outbound", payload).await;
                         }
                     }
                 }
             }
         }
-        // Memory Consolidation Trigger (Background)
+        
         let pool = state.pool.clone();
         let gemini = state.gemini.clone();
         let gemini_api_key = state.gemini_api_key.clone();
         tokio::spawn(async move {
-            let _ =
-                trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id).await;
+            let _ = trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id).await;
         });
     }
 
-    // Stop Typing
     let payload = json!({
         "conversation_id": conversation_id,
         "is_typing": false,
@@ -446,14 +503,9 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
     });
     let _ = match user_id {
         None => state.broadcast_presence_sse(payload).await,
-        Some(ref id) => {
-            state
-                .send_presence_sse_to_user(id.to_string().as_str(), payload)
-                .await
-        }
+        Some(ref id) => state.send_presence_sse_to_user(id.to_string().as_str(), payload).await
     };
 
-    // Presence Outbound (Stop Typing)
     if let Ok(channel_info) = sqlx::query!(
         "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
         conversation_id
@@ -478,228 +530,4 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
     }
 
     Ok(())
-}
-
-pub(crate) async fn trigger_memory_consolidation(
-    pool: sqlx::PgPool,
-    gemini: std::sync::Arc<gemini_rust::Gemini>,
-    gemini_api_key: String,
-    conversation_id: Uuid,
-) -> anyhow::Result<()> {
-    // 1. Get the last summarized message ID
-    let last_summary = sqlx::query!(
-        r#"
-        SELECT metadata->>'last_message_id' as last_message_id
-        FROM knowledge_base
-        WHERE metadata->>'type' = 'summary' 
-        AND metadata->>'conversation_id' = $1
-        ORDER BY created_at DESC
-        LIMIT 1
-        "#,
-        conversation_id.to_string()
-    )
-    .fetch_optional(&pool)
-    .await?;
-
-    let last_msg_id = last_summary
-        .and_then(|r| r.last_message_id)
-        .and_then(|id| Uuid::parse_str(&id).ok());
-
-    // 2. Fetch new messages
-    let new_messages = sqlx::query!(
-        r#"
-        SELECT id, role, content 
-        FROM messages 
-        WHERE conversation_id = $1 
-        AND ($2::uuid IS NULL OR created_at > (SELECT created_at FROM messages WHERE id = $2))
-        ORDER BY created_at ASC
-        "#,
-        conversation_id,
-        last_msg_id
-    )
-    .fetch_all(&pool)
-    .await?;
-
-    // 3. Threshold check
-    if new_messages.len() >= 10 {
-        info!(conversation_id = %conversation_id, "Memory consolidation triggered ({} new messages)", new_messages.len());
-
-        let last_processed_id = new_messages.last().map(|m| m.id).unwrap();
-        let mut summary_input = String::new();
-        for msg in new_messages {
-            summary_input.push_str(&format!("{}: {}\n", msg.role, msg.content));
-        }
-
-        let summarizer_prompt = format!(
-            "Analyze the following conversation and return a JSON object with:\n
-                1. 'summary': A concise summary of permanent facts and project context.\n
-                2. 'nodes': An array of entities ({{'id': 'unique_id', 'label': 'Entity Name', 'node_type': 'Technology|Project|Person|Organization|Vehicle|Location|Peak|Language|Framework|MaintenanceLog|Concept|Event'}}).\n
-                3. 'edges': An array of relationships ({{'source': 'node_id', 'target': 'node_id', 'relationship': 'Description'}}).\n
-
-            Rules:
-                - NEVER create a node with id 'summary' or that represents the conversation summary itself.\n
-                - Extract individual entities.\n
-                - Reuse IDs.\n
-                - 'id' should be snake_case.\n
-
-            Conversation:\n
-            {}
-",
-            summary_input
-        );
-
-        let summary_res = gemini
-            .generate_content()
-            .with_user_message(summarizer_prompt)
-            .execute()
-            .await?;
-
-        let raw_json = summary_res.text();
-        let parsed_data: serde_json::Value = if let Some(start) = raw_json.find('{') {
-            if let Some(end) = raw_json.rfind('}') {
-                serde_json::from_str(&raw_json[start..=end])
-                    .unwrap_or(json!({ "summary": raw_json, "nodes": [], "edges": [] }))
-            } else {
-                json!({ "summary": raw_json, "nodes": [], "edges": [] })
-            }
-        } else {
-            json!({ "summary": raw_json, "nodes": [], "edges": [] })
-        };
-
-        let summary_text = parsed_data["summary"]
-            .as_str()
-            .unwrap_or(&raw_json)
-            .to_string();
-
-        if let Ok(embedding) = rag::get_embedding(&gemini_api_key, &summary_text).await {
-            let metadata = json!({
-                "type": "summary",
-                "conversation_id": conversation_id.to_string(),
-                "last_message_id": last_processed_id.to_string(),
-                "graph": {
-                    "nodes": parsed_data["nodes"],
-                    "links": parsed_data["edges"]
-                }
-            });
-
-            rag::save_to_knowledge_base(
-                &pool,
-                &summary_text,
-                embedding,
-                Some(metadata),
-                Some(conversation_id.clone()),
-            )
-            .await?;
-            info!(conversation_id = %conversation_id, "Memory consolidation complete");
-        }
-    }
-
-    Ok(())
-}
-
-pub(crate) async fn classify_media_context(state: &AppState, image_url: &str) -> anyhow::Result<MediaClassification> {
-    let prompt = "Classify this image into exactly one of these categories: EXPENSE_RECEIPT, MOTORCYCLE_MAINTENANCE, TECHNICAL_DOC, NATURE, or OTHER. Return ONLY the category name.";
-    
-    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
-
-    let res = state.gemini
-        .generate_content()
-        .with_user_message(prompt)
-        .with_message(Message {
-            role: gemini_rust::Role::User,
-            content: Content::inline_data(mime_type, base64_data),
-        })
-        .execute()
-        .await?;
-
-    let text = res.text().trim().to_uppercase();
-    if text.contains("EXPENSE_RECEIPT") { Ok(MediaClassification::ExpenseReceipt) }
-    else if text.contains("MOTORCYCLE_MAINTENANCE") { Ok(MediaClassification::MotorcycleMaintenance) }
-    else if text.contains("TECHNICAL_DOC") { Ok(MediaClassification::TechnicalDoc) }
-    else if text.contains("NATURE") { Ok(MediaClassification::Nature) }
-    else { Ok(MediaClassification::Other) }
-}
-
-pub(crate) async fn extract_expense_data(state: &AppState, image_url: &str) -> anyhow::Result<ExpenseData> {
-    let prompt = "Extract expense data from this receipt. Return a JSON object with: merchant, total (number), items (array of strings), and category. Return ONLY the JSON.";
-    
-    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
-
-    let res = state.gemini
-        .generate_content()
-        .with_user_message(prompt)
-        .with_message(Message {
-            role: gemini_rust::Role::User,
-            content: Content::inline_data(mime_type, base64_data),
-        })
-        .execute()
-        .await?;
-
-    let text = res.text();
-    let json_str = if let Some(start) = text.find('{') {
-        if let Some(end) = text.rfind('}') {
-            &text[start..=end]
-        } else { text.as_str() }
-    } else { text.as_str() };
-
-    let data: ExpenseData = serde_json::from_str(json_str)?;
-    Ok(data)
-}
-
-pub(crate) async fn extract_maintenance_data(state: &AppState, image_url: &str) -> anyhow::Result<MaintenanceData> {
-    let prompt = "Extract motorcycle maintenance data. Return a JSON object with: part_names (array of strings) and service_details. Return ONLY the JSON.";
-    
-    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
-
-    let res = state.gemini
-        .generate_content()
-        .with_user_message(prompt)
-        .with_message(Message {
-            role: gemini_rust::Role::User,
-            content: Content::inline_data(mime_type, base64_data),
-        })
-        .execute()
-        .await?;
-
-    let text = res.text();
-    let json_str = if let Some(start) = text.find('{') {
-        if let Some(end) = text.rfind('}') {
-            &text[start..=end]
-        } else { text.as_str() }
-    } else { text.as_str() };
-
-    let data: MaintenanceData = serde_json::from_str(json_str)?;
-    Ok(data)
-}
-
-pub(crate) async fn extract_technical_doc(state: &AppState, image_url: &str) -> anyhow::Result<String> {
-    let prompt = "Summarize the content of this technical document. Focus on key specifications, diagrams, or instructions.";
-    
-    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
-
-    let res = state.gemini
-        .generate_content()
-        .with_user_message(prompt)
-        .with_message(Message {
-            role: gemini_rust::Role::User,
-            content: Content::inline_data(mime_type, base64_data),
-        })
-        .execute()
-        .await?;
-
-    Ok(res.text())
-}
-
-async fn fetch_image_from_storage(state: &AppState, image_url: &str) -> anyhow::Result<(String, String)> {
-    let bucket = "conversations";
-    // image_url from channel is typically just the filename/path in storage
-    let data = state.storage.get_file(bucket.to_string(), image_url.to_string()).await
-        .map_err(|e| anyhow::anyhow!("Storage error: {}", e))?;
-    
-    let mime_type = mime_guess::from_path(image_url)
-        .first_or_octet_stream()
-        .to_string();
-    
-    let b64 = BASE64.encode(data.to_vec());
-    Ok((mime_type, b64))
 }

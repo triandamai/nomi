@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 
 [dependencies]
+regex = "1.10"
 tokio-stream = { version = "0.1.17", features = ["sync"] }
 redis = { version = "0.29.1", features = ["tokio-rustls-comp"] }
 anyhow = "1.0.102"
