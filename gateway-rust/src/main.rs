@@ -25,7 +25,8 @@ pub struct AppState {
     pub gemini: Arc<Gemini>,
     pub gemini_api_key: String,
     pub presence: Arc<PresenceManager>,
-    pub redis: crate::common::redis::RedisClient,
+    pub redis: common::redis::RedisClient,
+    pub storage: common::storage::StorageClient,
 }
 
 impl AppState {
@@ -221,6 +222,11 @@ async fn main() -> anyhow::Result<()> {
 
     let redis = crate::common::redis::RedisClient::new(&redis_url)?;
 
+    let storage_access_key = var("S3_ACCESS_KEY").expect("S3_ACCESS_KEY must be set");
+    let storage_secret_key = var("S3_SECRET_KEY").expect("S3_SECRET_KEY must be set");
+    let storage_url = var("S3_URL").expect("S3_URL must be set");
+    let storage = crate::common::storage::StorageClient::new(storage_access_key, storage_secret_key, storage_url);
+
     // Using Gemini25Flash which corresponds to gemini-1.5-flash
     let gemini = Gemini::with_model(&gemini_api_key, Model::Gemini25Flash)
         .expect("Failed to create Gemini client");
@@ -238,6 +244,7 @@ async fn main() -> anyhow::Result<()> {
             channel_tx: tokio::sync::mpsc::channel(1).0, // Dummy
         }),
         redis: redis.clone(),
+        storage: storage.clone(),
     };
 
     let presence = PresenceManager::new(partial_state);
@@ -249,6 +256,7 @@ async fn main() -> anyhow::Result<()> {
         gemini_api_key,
         presence,
         redis,
+        storage,
     };
 
     // Start Redis Listener
@@ -299,4 +307,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-pub mod test_gemini;

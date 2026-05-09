@@ -518,8 +518,10 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     let sender_id = msg.sender_id.clone();
     let chat_id = msg.conversation_id.clone();
     let channel = msg.channel.clone();
+    let image_url = msg.image_url.clone();
 
     tokio::spawn(async move {
+        // A. Presence
         let _ = state_clone
             .send_presence_to_user(
                 user_id.to_string().as_str(),
@@ -537,178 +539,24 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             )
             .await;
 
-        let conversation = sqlx::query!(
-            "SELECT bootstrap_content, soul_content FROM conversations WHERE id = $1",
-            external_conversation_id
-        )
-        .fetch_one(&state_clone.pool)
-        .await;
-
-        let (system_prompt, _user_id_from_db) = match conversation {
-            Ok(c) => {
-                let boot = c.bootstrap_content.unwrap_or_default();
-                let soul = c.soul_content.unwrap_or_default();
-                let mut combined = boot;
-                if !soul.is_empty() {
-                    combined.push_str("\n\n### Current Personality/Soul\n");
-                    combined.push_str(&soul);
-                }
-                (combined, Some(user_id)) // We already have user_id from resolution
-            }
-            Err(_) => (String::new(), Some(user_id)),
+        // B. Unified Processing (Contextual Image Classification if image present)
+        let unified_msg = crate::feature::message_processor::UnifiedMessage {
+            conversation_id: external_conversation_id,
+            user_id: Some(user_id),
+            text_content: user_text,
+            image_url,
+            source: match msg.channel.as_str() {
+                "telegram" => crate::feature::message_processor::MessageSource::Telegram,
+                "whatsapp" => crate::feature::message_processor::MessageSource::WhatsApp,
+                _ => crate::feature::message_processor::MessageSource::Other(msg.channel),
+            },
         };
 
-        // A. Fetch last 15 messages for short-term history
-        let history = sqlx::query!(
-            "SELECT created_at, role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 15",
-            external_conversation_id
-        ).fetch_all( & state_clone.pool).await.unwrap_or_default();
-
-        let mut history_text = String::new();
-        for msg in history.into_iter().rev() {
-            let role_label = match msg.role.as_str() {
-                "user" => "User",
-                "assistant" => "Nomi",
-                _ => "System",
-            };
-            history_text.push_str(&format!(
-                "-[{}] {}: {}.\n",
-                msg.created_at.unwrap_or_else(chrono::Utc::now).to_rfc3339(),
-                role_label,
-                msg.content
-            ));
-        }
-
-        // B. Context Retrieval (RAG)
-        let gemini_api_key = state_clone.gemini_api_key.clone();
-        let embedding = crate::rag::get_embedding(&gemini_api_key, &user_text)
-            .await
-            .unwrap_or_default();
-
-        let memories_text = if !embedding.is_empty() {
-            crate::utils::rag::hybrid_retrieve(
-                &state_clone.pool,
-                &user_text,
-                embedding,
-                Some(external_conversation_id),
-            )
-            .await
-            .unwrap_or_default()
-            .join("\n---\n")
-        } else {
-            String::new()
-        };
-
-        // C. Prepare Reasoning Loop
-        let dispatcher = crate::common::tools::ToolDispatcher::new(
-            state_clone.pool.clone(),
-            std::env::current_dir().unwrap_or_default(),
-            Some(user_id),
-            Some(external_conversation_id),
-            state_clone.gemini.clone(),
-            state_clone.gemini_api_key.clone(),
-            state_clone.sse.clone(),
-        );
-
-        let mut loop_count = 0;
-        let max_loops = 5;
-        let mut current_actor = crate::common::agent::agent_model::PromptActor::User {
-            history: history_text.clone(),
-            memories: memories_text.clone(),
-            message: user_text.clone(),
-            system_prompt: system_prompt.clone(),
-        };
-
-        let mut final_response = None;
-        let mut previous_calls = Vec::new();
-
-        while loop_count < max_loops {
-            loop_count += 1;
-            let result =
-                crate::common::agent::send_prompt(&state_clone.gemini, current_actor).await;
-
-            match result {
-                Ok((response, chunk)) => {
-                    // Emit thought
-                    if !chunk.thought.is_empty() {
-                        let _ = state_clone.send_sse_to_user(user_id.to_string().as_str(), "thought", serde_json::json ! ({ "thought": chunk.thought, "conversation_id": external_conversation_id })).await;
-                    }
-
-                    let tool_calls = response.function_calls();
-                    if tool_calls.is_empty() {
-                        final_response = Some((response, chunk));
-                        break;
-                    }
-
-                    let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
-                    previous_calls.extend(current_calls.clone());
-
-                    let tool_results = crate::common::agent::execute_tools(
-                        &dispatcher,
-                        current_calls.clone(),
-                        &user_text,
-                        Some(state_clone.sse.clone()),
-                    )
-                    .await;
-
-                    current_actor = crate::common::agent::agent_model::PromptActor::MultiTool {
-                        history: history_text.clone(),
-                        memories: memories_text.clone(),
-                        message: user_text.clone(),
-                        system_prompt: system_prompt.clone(),
-                        tool_results,
-                        previous_calls: previous_calls.clone(),
-                    };
-                }
-                Err(e) => {
-                    error!("Agentic loop error: {}", e);
-                    break;
-                }
-            }
-        }
-
-        if let Some((_, chunk)) = final_response {
-            let assistant_message = message_repo::save_message(
-                &state_clone.pool,
-                external_conversation_id,
-                "assistant",
-                &chunk.content,
-                Some(&chunk.thought),
-                None,
-                chunk.prompt_tokens,
-                chunk.answer_tokens,
-                chunk.total_tokens,
-            )
-            .await
-            .unwrap();
-
-            let _ = state_clone
-                .send_sse_to_user(
-                    user_id.to_string().as_str(),
-                    "message",
-                    serde_json::json!(assistant_message),
-                )
-                .await;
-
-            let _ = state_clone.send_presence_to_user(
-                user_id.to_string().as_str(), json! ({"conversation_id": external_conversation_id, "is_typing": false, "user_id": "nomi"}),
-                & crate::feature::PresenceMessage { sender_id: sender_id.clone(), chat_id: chat_id.clone(),channel: channel.clone(),status: "idle".to_string() }).await;
-
-            let _ = state_clone
-                .publish_outbond(&OutboundMessage {
-                    is_group: msg.is_group,
-                    sender_id: sender_id,
-                    conversation_id: chat_id,
-                    text: chunk.content,
-                    channel: channel.clone(),
-                    video_url: None,
-                    image_url: None,
-                    audio_url: None,
-                    doc_url: None,
-                    sticker_url: None,
-                    metadata: None,
-                })
-                .await;
+        if let Err(e) =
+            crate::feature::message_processor::process_incoming_message(state_clone, unified_msg)
+                .await
+        {
+            error!("Failed to process inbound message: {}", e);
         }
     });
 

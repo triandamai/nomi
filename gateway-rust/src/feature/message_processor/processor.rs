@@ -2,14 +2,17 @@ use crate::AppState;
 use crate::common::agent::agent_model::PromptActor;
 use crate::common::agent::execute_tools;
 use crate::common::tools::ToolDispatcher;
+use crate::feature::message_processor::media::{ExpenseData, MaintenanceData, MediaClassification};
 use crate::feature::message_processor::model::UnifiedMessage;
 use crate::feature::{OutboundMessage, PresenceMessage};
 use crate::rag;
 use chrono::Utc;
+use gemini_rust::{Content, Message};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::common::repository::message_repo::save_message;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use tracing::{error, info};
 
 pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
@@ -91,6 +94,83 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
         }
     }
 
+    // 2.5 Media Classification and Extraction
+    let mut media_context = String::new();
+    if let Some(image_url) = msg.image_url {
+        info!("Media detected, classifying: {}", image_url);
+        let classification = classify_media_context(&state, &image_url).await.unwrap_or(MediaClassification::Other);
+        info!("Media classified as: {:?}", classification);
+
+        match classification {
+            MediaClassification::ExpenseReceipt => {
+                if let Ok(expense) = extract_expense_data(&state, &image_url).await {
+                    media_context = format!(
+                        "\n[SYSTEM: User uploaded an expense receipt. Merchant: {}, Total: {}, Category: {}. Items: {}]",
+                        expense.merchant, expense.total, expense.category, expense.items.join(", ")
+                    );
+                    // Save to Knowledge Base as memory
+                    let memory_content = format!("Expense at {}: {} ({})", expense.merchant, expense.total, expense.category);
+                    if let Ok(embedding) = rag::get_embedding(&state.gemini_api_key, &memory_content).await {
+                        let metadata = json!({
+                            "type": "memory",
+                            "source": "image_classification",
+                            "classification": "EXPENSE_RECEIPT",
+                            "data": expense,
+                            "image_url": image_url
+                        });
+                        let _ = rag::save_to_knowledge_base(&state.pool, &memory_content, embedding, Some(metadata), Some(conversation_id)).await;
+                    }
+                }
+            }
+            MediaClassification::MotorcycleMaintenance => {
+                if let Ok(maint) = extract_maintenance_data(&state, &image_url).await {
+                    media_context = format!(
+                        "\n[SYSTEM: User uploaded motorcycle maintenance record. Parts: {}. Details: {}]",
+                        maint.part_names.join(", "), maint.service_details
+                    );
+                    let memory_content = format!("Motorcycle Maintenance: {} - Parts: {}", maint.service_details, maint.part_names.join(", "));
+                    if let Ok(embedding) = rag::get_embedding(&state.gemini_api_key, &memory_content).await {
+                        let metadata = json!({
+                            "type": "memory",
+                            "source": "image_classification",
+                            "classification": "MOTORCYCLE_MAINTENANCE",
+                            "graph": {
+                                "nodes": maint.part_names.iter().map(|p| json!({"id": p.to_lowercase().replace(' ', "_"), "label": p, "node_type": "MaintenanceLog"})).collect::<Vec<_>>(),
+                                "links": maint.part_names.iter().map(|p| json!({"source": "motorcycle", "target": p.to_lowercase().replace(' ', "_"), "relationship": "replaced_part"})).collect::<Vec<_>>()
+                            },
+                            "data": maint,
+                            "image_url": image_url
+                        });
+                        let _ = rag::save_to_knowledge_base(&state.pool, &memory_content, embedding, Some(metadata), Some(conversation_id)).await;
+                    }
+                }
+            }
+            MediaClassification::TechnicalDoc => {
+                if let Ok(content) = extract_technical_doc(&state, &image_url).await {
+                     media_context = format!("\n[SYSTEM: User uploaded a technical document. Summary: {}]", 
+                        if content.len() > 100 { &content[..100] } else { &content });
+                     if let Ok(embedding) = rag::get_embedding(&state.gemini_api_key, &content).await {
+                        let metadata = json!({
+                            "type": "memory",
+                            "source": "image_classification",
+                            "classification": "TECHNICAL_DOC",
+                            "image_url": image_url
+                        });
+                        let _ = rag::save_to_knowledge_base(&state.pool, &content, embedding, Some(metadata), Some(conversation_id)).await;
+                    }
+                }
+            }
+            MediaClassification::Nature => {
+                media_context = "\n[SYSTEM: User uploaded a nature photo.]".to_string();
+            }
+            MediaClassification::Other => {
+                media_context = "\n[SYSTEM: User uploaded an image (uncategorized).]".to_string();
+            }
+        }
+    }
+
+    let augmented_text = format!("{}{}", text_content, media_context);
+
     // 3. Prepare AI Context
     let dispatcher = ToolDispatcher::new(
         state.pool.clone(),
@@ -150,13 +230,13 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
     }
 
     // RAG Context
-    let embedding = rag::get_embedding(&state.gemini_api_key, &text_content)
+    let embedding = rag::get_embedding(&state.gemini_api_key, &augmented_text)
         .await
         .unwrap_or_default();
     let memories_text = if !embedding.is_empty() {
         crate::utils::rag::hybrid_retrieve(
             &state.pool,
-            &text_content,
+            &augmented_text,
             embedding,
             Some(conversation_id),
         )
@@ -173,12 +253,18 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
     let mut current_actor = PromptActor::User {
         history: history_text.clone(),
         memories: memories_text.clone(),
-        message: text_content.clone(),
+        message: augmented_text.clone(),
         system_prompt: system_prompt.clone(),
     };
 
     let mut final_response = None;
-    let mut previous_calls = Vec::new();
+    let mut tool_turns = Vec::new();
+
+    let mut accumulated_content = String::new();
+    let mut accumulated_thought = String::new();
+    let mut total_prompt_tokens = 0;
+    let mut total_answer_tokens = 0;
+    let mut total_tokens = 0;
 
     while loop_count < max_loops {
         loop_count += 1;
@@ -187,9 +273,17 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
 
         match result {
             Ok((response, chunk)) => {
+                // Accumulate turn data
+                if !chunk.content.is_empty() {
+                    accumulated_content.push_str(&chunk.content);
+                    accumulated_content.push_str("\n\n");
+                }
                 if !chunk.thought.is_empty() {
-                    let payload =
-                        json!({ "thought": chunk.thought, "conversation_id": conversation_id });
+                    accumulated_thought.push_str(&chunk.thought);
+                    accumulated_thought.push_str("\n");
+
+                    // Broadcast intermediate thought via SSE
+                    let payload = json!({ "thought": chunk.thought, "conversation_id": conversation_id });
                     let _ = match user_id {
                         None => state.broadcast_sse("thought", payload).await,
                         Some(ref id) => {
@@ -200,14 +294,40 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                     };
                 }
 
+                total_prompt_tokens += chunk.prompt_tokens;
+                total_answer_tokens += chunk.answer_tokens;
+                total_tokens += chunk.total_tokens;
+
                 let tool_calls = response.function_calls();
-                if tool_calls.is_empty() {
-                    final_response = Some((response, chunk));
+                let finish_reason = chunk.finish_reason.clone().unwrap_or_default();
+
+                // If no tool calls and model finished normally, we're done
+                if tool_calls.is_empty() && (finish_reason.contains("Stop") || finish_reason.is_empty()) {
+                    let mut final_chunk = chunk.clone();
+                    final_chunk.content = accumulated_content.trim().to_string();
+                    final_chunk.thought = accumulated_thought.trim().to_string();
+                    final_chunk.prompt_tokens = total_prompt_tokens;
+                    final_chunk.answer_tokens = total_answer_tokens;
+                    final_chunk.total_tokens = total_tokens;
+
+                    final_response = Some((response, final_chunk));
+                    break;
+                }
+
+                // If we hit the loop limit, finalize with what we have
+                if loop_count >= max_loops {
+                    let mut final_chunk = chunk.clone();
+                    final_chunk.content = accumulated_content.trim().to_string();
+                    final_chunk.thought = accumulated_thought.trim().to_string();
+                    final_chunk.prompt_tokens = total_prompt_tokens;
+                    final_chunk.answer_tokens = total_answer_tokens;
+                    final_chunk.total_tokens = total_tokens;
+
+                    final_response = Some((response, final_chunk));
                     break;
                 }
 
                 let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
-                previous_calls.extend(current_calls.clone());
 
                 let tool_results = execute_tools(
                     &dispatcher,
@@ -217,13 +337,14 @@ pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> a
                 )
                 .await;
 
+                tool_turns.push((current_calls, tool_results));
+
                 current_actor = PromptActor::MultiTool {
                     history: history_text.clone(),
                     memories: memories_text.clone(),
                     message: text_content.clone(),
                     system_prompt: system_prompt.clone(),
-                    tool_results,
-                    previous_calls: previous_calls.clone(),
+                    tool_turns: tool_turns.clone(),
                 };
             }
             Err(e) => {
@@ -470,4 +591,111 @@ async fn trigger_memory_consolidation(
     }
 
     Ok(())
+}
+
+async fn classify_media_context(state: &AppState, image_url: &str) -> anyhow::Result<MediaClassification> {
+    let prompt = "Classify this image into exactly one of these categories: EXPENSE_RECEIPT, MOTORCYCLE_MAINTENANCE, TECHNICAL_DOC, NATURE, or OTHER. Return ONLY the category name.";
+    
+    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
+
+    let res = state.gemini
+        .generate_content()
+        .with_user_message(prompt)
+        .with_message(Message {
+            role: gemini_rust::Role::User,
+            content: Content::inline_data(mime_type, base64_data),
+        })
+        .execute()
+        .await?;
+
+    let text = res.text().trim().to_uppercase();
+    if text.contains("EXPENSE_RECEIPT") { Ok(MediaClassification::ExpenseReceipt) }
+    else if text.contains("MOTORCYCLE_MAINTENANCE") { Ok(MediaClassification::MotorcycleMaintenance) }
+    else if text.contains("TECHNICAL_DOC") { Ok(MediaClassification::TechnicalDoc) }
+    else if text.contains("NATURE") { Ok(MediaClassification::Nature) }
+    else { Ok(MediaClassification::Other) }
+}
+
+async fn extract_expense_data(state: &AppState, image_url: &str) -> anyhow::Result<ExpenseData> {
+    let prompt = "Extract expense data from this receipt. Return a JSON object with: merchant, total (number), items (array of strings), and category. Return ONLY the JSON.";
+    
+    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
+
+    let res = state.gemini
+        .generate_content()
+        .with_user_message(prompt)
+        .with_message(Message {
+            role: gemini_rust::Role::User,
+            content: Content::inline_data(mime_type, base64_data),
+        })
+        .execute()
+        .await?;
+
+    let text = res.text();
+    let json_str = if let Some(start) = text.find('{') {
+        if let Some(end) = text.rfind('}') {
+            &text[start..=end]
+        } else { text.as_str() }
+    } else { text.as_str() };
+
+    let data: ExpenseData = serde_json::from_str(json_str)?;
+    Ok(data)
+}
+
+async fn extract_maintenance_data(state: &AppState, image_url: &str) -> anyhow::Result<MaintenanceData> {
+    let prompt = "Extract motorcycle maintenance data. Return a JSON object with: part_names (array of strings) and service_details. Return ONLY the JSON.";
+    
+    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
+
+    let res = state.gemini
+        .generate_content()
+        .with_user_message(prompt)
+        .with_message(Message {
+            role: gemini_rust::Role::User,
+            content: Content::inline_data(mime_type, base64_data),
+        })
+        .execute()
+        .await?;
+
+    let text = res.text();
+    let json_str = if let Some(start) = text.find('{') {
+        if let Some(end) = text.rfind('}') {
+            &text[start..=end]
+        } else { text.as_str() }
+    } else { text.as_str() };
+
+    let data: MaintenanceData = serde_json::from_str(json_str)?;
+    Ok(data)
+}
+
+async fn extract_technical_doc(state: &AppState, image_url: &str) -> anyhow::Result<String> {
+    let prompt = "Summarize the content of this technical document. Focus on key specifications, diagrams, or instructions.";
+    
+    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
+
+    let res = state.gemini
+        .generate_content()
+        .with_user_message(prompt)
+        .with_message(Message {
+            role: gemini_rust::Role::User,
+            content: Content::inline_data(mime_type, base64_data),
+        })
+        .execute()
+        .await?;
+
+    Ok(res.text())
+}
+
+async fn fetch_image_from_storage(state: &AppState, image_url: &str) -> anyhow::Result<(String, String)> {
+    let bucket = "conversations";
+    // image_url from channel is typically just the filename/path in storage
+    let data = state.storage.get_file(bucket.to_string(), image_url.to_string()).await
+        .map_err(|e| anyhow::anyhow!("Storage error: {}", e))?;
+    
+    let mime_type = mime_guess::from_path(image_url)
+        .first_or_octet_stream()
+        .to_string();
+    
+    let b64 = BASE64.encode(data.to_vec());
+    Ok((mime_type, b64))
 }

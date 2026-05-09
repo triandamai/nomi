@@ -23,7 +23,7 @@ pub mod reminder;
 
 pub async fn handle_get_user_channels(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
+    axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
 ) -> ApiResponse<UserChannelsResponse> {
     let user_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => id,
@@ -582,6 +582,7 @@ pub async fn handle_chat_stream(
             conversation_id,
             user_id,
             text_content: user_message,
+            image_url: None,
             source: crate::feature::message_processor::MessageSource::Web,
         };
 

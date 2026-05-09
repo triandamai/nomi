@@ -27,59 +27,70 @@ pub async fn send_prompt(
             message,
             system_prompt,
         } => {
-            info!("sending user prompt");
+            info!("\n ==== sending user prompt ===== \n");
             // info!("history text user:\n {} \n", history);
             // info!("memories:\n {} \n", memories);
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-            // info!("system :\n {} \n", build_prompt);
+            // info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
             gemini
                 .generate_content()
                 .with_system_prompt(build_prompt)
                 .with_user_message(message)
                 .with_tool(ToolDispatcher::generate_tool_for_prompt())
                 .with_function_calling_mode(FunctionCallingMode::Auto)
+                .with_max_output_tokens(4096)
         }
         PromptActor::MultiTool {
             history,
             memories,
             message,
             system_prompt,
-            tool_results,
-            previous_calls,
+            tool_turns,
         } => {
-            info!("sending multitool prompt");
-            // info!("history text multi tool:\n {} \n", history);
+            info!("\n ==== sending tool prompt ===== \n");
+            // info!("history text user:\n {} \n", history);
             // info!("memories:\n {} \n", memories);
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-            // info!("system :\n {} \n", build_prompt);
+            // info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
+
             let mut builder = gemini
                 .generate_content()
                 .with_system_prompt(build_prompt)
                 .with_user_message(message);
 
-            // Add previous assistant tool calls
-            for call in previous_calls {
-                builder = builder.with_message(Message {
-                    content: Content::function_call(call),
-                    role: Role::Model,
-                });
-            }
+            // Add turns of interactions
+            for (calls, results) in tool_turns {
+                // First, the model's calls for this turn
+                for call in calls {
+                    builder = builder.with_message(Message {
+                        content: Content::function_call(call),
+                        role: Role::Model,
+                    });
+                }
 
-            // Add function responses
-            for (name, result) in tool_results {
-                builder = builder.with_function_response(name, result).unwrap();
+                // Then, the responses for those calls
+                for (name, result) in results {
+                    info!("sending tool response: {}",result.follow_up_prompt);
+                    builder = builder.with_function_response(name, result).unwrap();
+                }
             }
 
             builder
                 .with_tool(ToolDispatcher::generate_tool_for_prompt())
                 .with_function_calling_mode(FunctionCallingMode::Auto)
+                .with_max_output_tokens(4096)
         }
     };
     // D. Streaming Egress
     match gemini_builder.execute().await {
         Ok(s) => {
             let text = s.text();
+            info!("===== response ===== \n {} \n ================ \n",text);
             let parse = parse_llm_output(&text);
+
+            let finish_reason = s.candidates.first().and_then(|c| {
+                c.finish_reason.as_ref().map(|r| format!("{:?}", r))
+            });
             
             let usage = s.usage_metadata.clone().unwrap_or(
                 UsageMetadata{
@@ -104,6 +115,7 @@ pub async fn send_prompt(
                 prompt_tokens,
                 answer_tokens,
                 total_tokens,
+                finish_reason,
             };
             Ok((s, payload))
         }
@@ -341,8 +353,8 @@ You're not just a chatbot; you're **Nomi**, Trian's **General Purpose Life Assis
         - Keep the final response concise\n
 
        ### OUTPUT STRUCTURE\n\
-        - ALWAYS give response from thought so user can now what happen\n
-        - ALWAYS wrap your internal reasoning in <thinking>...</thinking>.\n
+        - ALWAYS wrap your internal reasoning in <thinking>...</thinking>.\n\
+        - STRICTLY FORBIDDEN: NEVER put your user-facing response or final answer inside the <thinking> block.\n\
         - ALWAYS wrap code or data results in triple backticks ```...```. \n\
         - Put content json from tools into triple backticks ```...``` as code block.\n
         - Put your conversational response OUTSIDE of these blocks. \n
@@ -373,46 +385,37 @@ pub fn build_context(history: String, memories: String) -> String {
 
 pub fn parse_llm_output(raw_text: &str) -> ChatResponse {
     // 1. Extract Thinking
-    let thought = if let Some(start) = raw_text.find("<thinking>") {
-        let end = raw_text.find("</thinking>").unwrap_or(raw_text.len());
-        raw_text[start + 10..end].to_string()
-    } else {
-        "".to_string()
-    };
+    let mut thought = String::new();
+    let mut clean_content = raw_text.to_string();
 
-    // 2. Extract Code Block (Improved)
-    let mut code_block = String::new();
-    if let Some(start) = raw_text.find("```") {
-        // Find the end of the block starting from after the first ```
-        let rest = &raw_text[start + 3..];
-        if let Some(end_offset) = rest.find("```") {
-            // Found a complete block
-            code_block = raw_text[start..start + 3 + end_offset + 3].to_string();
+    if let Some(start) = raw_text.find("<thinking>") {
+        if let Some(end) = raw_text.find("</thinking>") {
+            thought = raw_text[start + 10..end].to_string();
+            // Remove the entire <thinking>...</thinking> block from the response
+            let before = &raw_text[..start];
+            let after = &raw_text[end + 11..];
+            clean_content = format!("{}{}", before, after);
         } else {
-            // Block started but not closed (common in streaming)
-            code_block = raw_text[start..].to_string();
+            // Unclosed thinking tag
+            thought = raw_text[start + 10..].to_string();
+            clean_content = raw_text[..start].to_string();
         }
     }
 
-    // 3. Clean Message (The "Response")
-    // Use a more aggressive cleanup to ensure tags don't leak into the UI
-    let clean_content = raw_text
-        .replace(&format!("<thinking>{}</thinking>", thought), "")
-        .replace("<thinking>", "")
-        .replace("</thinking>", "")
-        // .replace(&code_block, "")
-        .trim()
-        .to_string();
-
-    // Special Case: If the LLM ONLY sent a code block and nothing else,
-    // we might want to provide a small default response so the UI isn't empty.
-    // if clean_content.is_empty() && !code_block.is_empty() {
-    //     clean_content = "Here is the data I retrieved:".to_string();
-    // }
+    // 2. Extract Code Block (Improved)
+    let mut code_block = String::new();
+    if let Some(start) = clean_content.find("```") {
+        let rest = &clean_content[start + 3..];
+        if let Some(end_offset) = rest.find("```") {
+            code_block = clean_content[start..start + 3 + end_offset + 3].to_string();
+        } else {
+            code_block = clean_content[start..].to_string();
+        }
+    }
 
     ChatResponse {
         thought: thought.trim().to_string(),
         code: code_block.trim().to_string(),
-        response: clean_content,
+        response: clean_content.trim().to_string(),
     }
 }

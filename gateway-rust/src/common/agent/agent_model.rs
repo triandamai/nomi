@@ -16,8 +16,9 @@ pub enum PromptActor {
         memories: String,
         message: String,
         system_prompt: String,
-        tool_results: Vec<(String, ToolResult)>, // (tool_name, result)
-        previous_calls: Vec<gemini_rust::FunctionCall>,
+        /// Turn-based history of tool interactions.
+        /// Each turn is a pair of: (All tool calls in that turn, All results for those calls)
+        tool_turns: Vec<(Vec<gemini_rust::FunctionCall>, Vec<(String, ToolResult)>)>,
     },
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]

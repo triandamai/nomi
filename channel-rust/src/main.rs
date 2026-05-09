@@ -14,8 +14,8 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, fmt};
 
-mod common;
-mod feature;
+pub mod common;
+pub mod feature;
 
 #[derive(Clone)]
 struct AppState {

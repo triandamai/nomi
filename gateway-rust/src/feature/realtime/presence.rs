@@ -122,6 +122,7 @@ async fn process_debounced_message(
         conversation_id,
         user_id: Some(user_id),
         text_content: combined_message,
+        image_url: None,
         source,
     };
 

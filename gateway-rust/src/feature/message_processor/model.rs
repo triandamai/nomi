@@ -14,5 +14,6 @@ pub struct UnifiedMessage {
     pub conversation_id: Uuid,
     pub user_id: Option<Uuid>,
     pub text_content: String,
+    pub image_url: Option<String>,
     pub source: MessageSource,
 }
