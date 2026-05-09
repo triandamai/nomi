@@ -132,6 +132,26 @@ pub struct GetReminderStatsResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchUsersParameters {
+    pub query: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchUsersResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateUserProfileParameters {
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateUserProfileResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct GetInboxSummaryParameters {
     pub limit: Option<i32>,
     pub only_strangers: Option<bool>,
@@ -139,5 +159,16 @@ pub struct GetInboxSummaryParameters {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct GetInboxSummaryResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SendDirectMessageParameters {
+    pub recipient_jid: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SendDirectMessageResponse {
     pub content: String,
 }

@@ -237,7 +237,13 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         combined.push_str("
 
 ### Orchestrator Instructions
-You are operating in a multi-turn tool-use loop. You MUST wait to gather all necessary data from your tools before providing a final response to the user. Do not answer prematurely. Acknowledge and integrate all tool results into your final answer.");
+You are operating in a multi-turn tool-use loop. You MUST wait to gather all necessary data from your tools before providing a final response to the user. Do not answer prematurely. Acknowledge and integrate all tool results into your final answer.
+
+**Direct Messaging Flow:**
+- If a user says 'Tell [Name] [Message]', FIRST use `search_users` to find the correct JID.
+- If `search_users` returns multiple results, ask the user for clarification (e.g., 'I found two Billys. Did you mean Billy the Rider or Billy the Coder?').
+- Once the unique JID is identified, use `send_direct_message(recipient_jid, content)`.
+- After sending, confirm to the sender: 'Done! I've sent that message to [Name]. 🚀'");
         combined
     };
 
@@ -396,6 +402,7 @@ You are operating in a multi-turn tool-use loop. You MUST wait to gather all nec
                         "evolve_bootstrap" => "evolving".to_string(),
                         "create_reminder" | "modify_reminder" | "get_reminder_stats" => "managing reminders".to_string(),
                         "get_inbox_summary" => "checking your inbox".to_string(),
+                        "send_direct_message" => "sending".to_string(),
                         _ => format!("using {}", call.name),
                     };
                     send_status_update(&state.pool, conversation_id, format!("Nomi is {}...", action));

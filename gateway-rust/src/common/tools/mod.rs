@@ -9,6 +9,8 @@ use crate::common::tools::tools_model::{
     ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse,
     ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse,
     UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse, GetReminderStatsParameters, GetReminderStatsResponse,
+    SearchUsersParameters, SearchUsersResponse, UpdateUserProfileParameters, UpdateUserProfileResponse,
+    SendDirectMessageParameters, SendDirectMessageResponse,
 };
 use gemini_rust::{FunctionDeclaration, Tool};
 use serde::{Deserialize, Serialize};
@@ -80,6 +82,21 @@ pub enum ArtaTool {
     #[serde(rename = "get_reminder_stats")]
     GetReminderStats {
         params: GetReminderStatsParameters,
+        user_message: String,
+    },
+    #[serde(rename = "search_users")]
+    SearchUsers {
+        params: SearchUsersParameters,
+        user_message: String,
+    },
+    #[serde(rename = "update_user_profile")]
+    UpdateUserProfile {
+        params: UpdateUserProfileParameters,
+        user_message: String,
+    },
+    #[serde(rename = "send_direct_message")]
+    SendDirectMessage {
+        params: SendDirectMessageParameters,
         user_message: String,
     },
 }
@@ -168,6 +185,18 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.get_reminder_stats(params, user_message).await,
+            ArtaTool::SearchUsers {
+                params,
+                user_message,
+            } => self.search_users(params, user_message).await,
+            ArtaTool::UpdateUserProfile {
+                params,
+                user_message,
+            } => self.update_user_profile(params, user_message).await,
+            ArtaTool::SendDirectMessage {
+                params,
+                user_message,
+            } => self.send_direct_message(params, user_message).await,
         }
     }
 
@@ -256,6 +285,30 @@ impl ToolDispatcher {
             .with_parameters::<GetReminderStatsParameters>()
             .with_response::<GetReminderStatsResponse>();
 
+        let search_users = FunctionDeclaration::new(
+            "search_users",
+            "Searches the users table across username, display_name, and email using a case-insensitive partial match.",
+            None,
+        )
+            .with_parameters::<SearchUsersParameters>()
+            .with_response::<SearchUsersResponse>();
+
+        let update_user_profile = FunctionDeclaration::new(
+            "update_user_profile",
+            "Allows updating the display_name of the current user. Restricted to the user_id extracted from the current session/JWT.",
+            None,
+        )
+            .with_parameters::<UpdateUserProfileParameters>()
+            .with_response::<UpdateUserProfileResponse>();
+
+        let send_direct_message = FunctionDeclaration::new(
+            "send_direct_message",
+            "Sends a direct message to another user. Use search_users first to find their correct JID (user ID). Provide the recipient_jid and the message content.",
+            None,
+        )
+            .with_parameters::<SendDirectMessageParameters>()
+            .with_response::<SendDirectMessageResponse>();
+
         Tool::with_functions(vec![
             read_workspace_file,
             execute_read_query,
@@ -268,6 +321,9 @@ impl ToolDispatcher {
             modify_reminder,
             get_inbox_summary,
             get_reminder_stats,
+            search_users,
+            update_user_profile,
+            send_direct_message,
         ])
     }
 
@@ -1301,6 +1357,224 @@ Content:
                 follow_up_prompt: "".to_string(),
             },
         }
+    }
+
+    async fn publish_to_nomi_outbond(&self, text: &str) {
+        if let Some(conv_id) = self.conversation_id {
+            let channel_info = sqlx::query!(
+                "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
+                conv_id
+            ).fetch_all(&self.pool).await.unwrap_or_default();
+
+            if let Ok(redis_url) = std::env::var("REDIS_URL") {
+                if let Ok(client) = redis::Client::open(redis_url) {
+                    if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
+                        use redis::AsyncCommands;
+                        for channel in channel_info {
+                            let payload = serde_json::json!({
+                                "is_group": false,
+                                "sender_id": channel.external_id,
+                                "conversation_id": channel.external_chat_id,
+                                "text": text,
+                                "channel": channel.channel_type,
+                                "video_url": None::<String>,
+                                "image_url": None::<String>,
+                                "audio_url": None::<String>,
+                                "doc_url": None::<String>,
+                                "sticker_url": None::<String>,
+                                "metadata": None::<serde_json::Value>,
+                            }).to_string();
+                            let _ = conn.publish::<&str, String, ()>("nomi:outbound", payload).await;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    async fn search_users(
+        &self,
+        params: SearchUsersParameters,
+        user_message: String,
+    ) -> ToolResult {
+        info!("Searching users for query: {}", params.query);
+        let pattern = format!("%{}%", params.query);
+        // We use 'name' column for username based on the schema.
+        let results = sqlx::query!(
+            "SELECT id, name as username, display_name, email FROM users \
+             WHERE name ILIKE $1 OR display_name ILIKE $1 OR email ILIKE $1 LIMIT 20",
+            pattern
+        )
+        .fetch_all(&self.pool)
+        .await;
+
+        match results {
+            Ok(rows) => {
+                if rows.is_empty() {
+                    return ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content: "No users found".to_string(),
+                        follow_up_prompt: build_follow_up_prompt(
+                            user_message,
+                            "No users found".to_string(),
+                            "search_users".to_string(),
+                        ),
+                    };
+                }
+
+                let mut summary = String::new();
+                for row in rows {
+                    summary.push_str(&format!(
+                        "- ID: {}, Username: {}, Display: {}, Email: {}\n",
+                        row.id,
+                        row.username.as_deref().unwrap_or("N/A"),
+                        row.display_name.as_deref().unwrap_or("N/A"),
+                        row.email.as_deref().unwrap_or("N/A")
+                    ));
+                }
+
+                let content = format!("Found {} users:\n{}", summary.lines().count(), summary);
+                self.publish_to_nomi_outbond(&format!("Searched for users matching '{}'", params.query)).await;
+
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: content.clone(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        content,
+                        "search_users".to_string(),
+                    ),
+                }
+            }
+            Err(e) => ToolResult {
+                error: format!("Database error searching users: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        }
+    }
+
+    async fn update_user_profile(
+        &self,
+        params: UpdateUserProfileParameters,
+        user_message: String,
+    ) -> ToolResult {
+        info!("Updating user profile");
+
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                return ToolResult {
+                    error: "User ID not found in context".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        let result = sqlx::query!(
+            "UPDATE users SET display_name = $1 WHERE id = $2",
+            params.display_name,
+            user_id
+        )
+        .execute(&self.pool)
+        .await;
+
+        match result {
+            Ok(_) => {
+                let content = format!("Successfully updated display_name to '{}'", params.display_name);
+                self.publish_to_nomi_outbond(&content).await;
+
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: content.clone(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        content,
+                        "update_user_profile".to_string(),
+                    ),
+                }
+            }
+            Err(e) => ToolResult {
+                error: format!("Database error updating profile: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        }
+    }
+
+    async fn send_direct_message(
+        &self,
+        params: SendDirectMessageParameters,
+        user_message: String,
+    ) -> ToolResult {
+        info!("Sending direct message to: {}", params.recipient_jid);
+
+        // We need to find a channel for the recipient to know where to send it.
+        // For simplicity, we'll pick the most recent channel for that user.
+        let channel_info = sqlx::query!(
+            "SELECT channel_type, external_id, external_chat_id FROM channels WHERE external_id = $1 OR user_id::text = $1 ORDER BY created_at DESC LIMIT 1",
+            params.recipient_jid
+        ).fetch_optional(&self.pool).await;
+
+        match channel_info {
+            Ok(Some(channel)) => {
+                let outbound = crate::feature::OutboundMessage {
+                    is_group: false,
+                    sender_id: channel.external_id.clone(),
+                    conversation_id: channel.external_chat_id.clone(),
+                    text: params.content.clone(),
+                    channel: channel.channel_type.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
+                    metadata: None,
+                };
+
+                // Publish to Redis using the helper method or direct client
+                let _ = self.redis_publish_outbound(&outbound).await;
+
+                let content = format!("Message sent to {}: {}", params.recipient_jid, params.content);
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: content.clone(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        content,
+                        "send_direct_message".to_string(),
+                    ),
+                }
+            }
+            Ok(None) => ToolResult {
+                error: format!("No active channel found for user {}", params.recipient_jid),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+            Err(e) => ToolResult {
+                error: format!("Database error looking up recipient: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        }
+    }
+
+    async fn redis_publish_outbound(&self, outbound: &crate::feature::OutboundMessage) -> anyhow::Result<()> {
+        if let Ok(redis_url) = std::env::var("REDIS_URL") {
+            let client = crate::common::redis::RedisClient::new(&redis_url)?;
+            client.publish_event("nomi:channel", outbound).await?;
+        }
+        Ok(())
     }
 }
 

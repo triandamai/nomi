@@ -290,6 +290,26 @@ pub async fn execute_tools(
                         })
                         .await
                 }
+                "search_users" => {
+                    let param: crate::common::tools::tools_model::SearchUsersParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::SearchUsers {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
+                "update_user_profile" => {
+                    let param: crate::common::tools::tools_model::UpdateUserProfileParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::UpdateUserProfile {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
                 _ => ToolResult {
                     error: format!("Unknown tool: {}", call_name),
                     success: false,
