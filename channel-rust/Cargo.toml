@@ -28,3 +28,5 @@ uuid = { version = "1.23.1", features = ["v4", "serde"] }
 regex = "1.12.3"
 rust-s3 = {version = "0.37.2",default-features = false,features = ["tokio-rustls-tls"]}
 mime_guess = "2.0.5"
+image = "0.25.9"
+webp = "0.3.1"

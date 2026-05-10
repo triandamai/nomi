@@ -3,6 +3,7 @@ use crate::common::redis::RedisClient;
 use crate::common::storage::StorageClient;
 use crate::feature::{InboundMessage, OutboundMessage};
 use regex::Regex;
+use image::GenericImageView;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,6 +25,7 @@ use wa_rs_ureq_http::UreqHttpClient;
 pub struct WhatsAppWorker {
     client: Arc<Client>,
     qr_code: Arc<Mutex<Option<String>>>,
+    redis: RedisClient,
 }
 
 impl WhatsAppWorker {
@@ -291,6 +293,7 @@ impl WhatsAppWorker {
             Self {
                 client,
                 qr_code,
+                redis,
             },
             bot,
         ))
@@ -375,18 +378,76 @@ impl WhatsAppWorker {
         }
 
         if let Some(path) = msg.sticker_url {
-            let mut payload = Message::default();
-            let mime = mime_guess::from_path(&path).first_or_octet_stream();
-            if let Ok(bytes) = storage.get_file("conversations".to_string(), path).await {
-                if let Ok(upload) = self.client.upload(bytes.to_vec(), MediaType::Sticker).await {
-                    payload.sticker_message = Some(Box::new(StickerMessage {
-                        url: Some(upload.url),
-                        mimetype: Some(mime.to_string()),
-                        ..Default::default()
-                    }));
-                    let _ = self.client.send_message(chat.clone(), payload).await;
-                    let _ = tokio::time::sleep(Duration::from_secs(5)).await;
+            info!("Processing sticker for WhatsApp: {}", path);
+            let mut success = false;
+            if let Ok(bytes) = storage.get_file("conversations".to_string(), path.clone()).await {
+                // Load the image
+                if let Ok(img) = image::load_from_memory(&bytes.to_vec()) {
+                    // Create a 512x512 transparent background
+                    let mut final_img = image::ImageBuffer::new(512, 512);
+
+                    // Resize original image to fit in 512x512 while maintaining aspect ratio
+                    let resized = img.resize(512, 512, image::imageops::FilterType::Lanczos3);
+                    let (rw, rh) = resized.dimensions();
+
+                    // Center it
+                    let x = (512 - rw) / 2;
+                    let y = (512 - rh) / 2;
+                    
+                    // Convert resized to RGBA8 to ensure compatibility with final_img
+                    let resized_rgba = resized.to_rgba8();
+                    image::imageops::overlay(&mut final_img, &resized_rgba, x.into(), y.into());
+
+                    // Convert to DynamicImage for WebP encoder
+                    let dynamic_final = image::DynamicImage::ImageRgba8(final_img);
+
+                    // Convert to WebP
+                    if let Ok(encoder) = webp::Encoder::from_image(&dynamic_final) {
+                        let webp_data = encoder.encode(80.0).to_vec();
+
+                        // Upload to WhatsApp servers
+                        if let Ok(upload) = self.client.upload(webp_data.clone(), MediaType::Sticker).await {
+                             let mut payload = Message::default();
+                             payload.sticker_message = Some(Box::new(StickerMessage {
+                                url: Some(upload.url),
+                                mimetype: Some("image/webp".to_string()),
+                                file_sha256: Some(upload.file_sha256),
+                                file_enc_sha256: Some(upload.file_enc_sha256),
+                                media_key: Some(upload.media_key),
+                                file_length: Some(webp_data.len() as u64),
+                                ..Default::default()
+                            }));
+                            let _ = self.client.send_message(chat.clone(), payload).await;
+                            let _ = tokio::time::sleep(Duration::from_secs(2)).await;
+                            success = true;
+                        } else {
+                            error!("Failed to upload sticker to WhatsApp");
+                        }
+                    } else {
+                        error!("Failed to encode image to WebP");
+                    }
+                } else {
+                    error!("Failed to load image from memory for sticker");
                 }
+            } else {
+                error!("Failed to get file from storage for sticker: {}", path);
+            }
+
+            if !success {
+                let _ = self.redis.publish_event("nomi:outbound", &OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: msg.sender_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
+                    text: "Sorry, Nomi couldn't turn that specific image into a sticker! 🏍️💨".to_string(),
+                    channel: "whatsapp".to_string(),
+                    user_id: None,
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
+                    metadata: None,
+                }).await;
             }
         }
 

@@ -228,7 +228,7 @@ async fn handle_outbound(
     match payload.channel.as_str() {
         "telegram" => {
             if let Err(e) =
-                feature::telegram::send_telegram_message(state.bot.clone(), payload, &state.storage)
+                feature::telegram::send_telegram_message(state.bot.clone(), payload, &state.storage, &state.redis)
                     .await
             {
                 error!("Failed to send Telegram message: {}", e);

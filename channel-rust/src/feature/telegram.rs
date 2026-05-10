@@ -242,6 +242,7 @@ pub async fn send_telegram_message(
     bot: Bot,
     msg: OutboundMessage,
     storage: &StorageClient,
+    redis: &RedisClient,
 ) -> anyhow::Result<()> {
     if let Ok(chat_id) = msg.conversation_id.parse::<i64>() {
         if let Some(image) = msg.image_url {
@@ -331,25 +332,33 @@ pub async fn send_telegram_message(
         }
 
         if let Some(sticker) = msg.sticker_url {
-            if let Ok(sticker_url) = storage
+            let mut success = false;
+            if let Ok(sticker_data) = storage
                 .get_file("conversations".to_string(), sticker.clone())
                 .await
             {
-                let ext = mime_guess::from_path(sticker).first_or_octet_stream();
-                let ext = mime_guess::get_mime_extensions(&ext)
-                    .unwrap()
-                    .first()
-                    .unwrap()
-                    .to_string();
-                let buff = sticker_url.to_vec();
-                let image = InputFile::memory(buff).file_name(format!(
-                    "{}.{}",
-                    Utc::now().to_rfc3339(),
-                    ext
-                ));
-                let _ = bot
-                    .send_sticker(Recipient::Id(ChatId(chat_id)), image)
-                    .await;
+                let buff = sticker_data.to_vec();
+                let image = InputFile::memory(buff);
+                if let Ok(_) = bot.send_sticker(Recipient::Id(ChatId(chat_id)), image).await {
+                    success = true;
+                }
+            }
+
+            if !success {
+                let _ = redis.publish_event("nomi:outbound", &OutboundMessage {
+                    is_group: false,
+                    sender_id: msg.sender_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
+                    text: "Sorry, Nomi couldn't turn that specific image into a sticker! 🏍️💨".to_string(),
+                    channel: "telegram".to_string(),
+                    user_id: None,
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
+                    metadata: None,
+                }).await;
             }
         }
         bot.send_message(Recipient::Id(ChatId(chat_id)), msg.text)

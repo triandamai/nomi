@@ -11,6 +11,7 @@ use crate::common::tools::tools_model::{
     UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse, GetReminderStatsParameters, GetReminderStatsResponse,
     SearchUsersParameters, SearchUsersResponse, UpdateUserProfileParameters, UpdateUserProfileResponse,
     SendDirectMessageParameters, SendDirectMessageResponse,
+    MakeStickerParameters, MakeStickerResponse,
 };
 use gemini_rust::{FunctionDeclaration, Tool};
 use serde::{Deserialize, Serialize};
@@ -97,6 +98,11 @@ pub enum ArtaTool {
     #[serde(rename = "send_direct_message")]
     SendDirectMessage {
         params: SendDirectMessageParameters,
+        user_message: String,
+    },
+    #[serde(rename = "make_sticker")]
+    MakeSticker {
+        params: MakeStickerParameters,
         user_message: String,
     },
 }
@@ -197,6 +203,10 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.send_direct_message(params, user_message).await,
+            ArtaTool::MakeSticker {
+                params,
+                user_message,
+            } => self.make_sticker(params, user_message).await,
         }
     }
 
@@ -309,6 +319,14 @@ impl ToolDispatcher {
             .with_parameters::<SendDirectMessageParameters>()
             .with_response::<SendDirectMessageResponse>();
 
+        let make_sticker = FunctionDeclaration::new(
+            "make_sticker",
+            "Turns an image into a sticker. If no image_url is provided, it will use the most recently uploaded image in the conversation.",
+            None,
+        )
+            .with_parameters::<MakeStickerParameters>()
+            .with_response::<MakeStickerResponse>();
+
         Tool::with_functions(vec![
             read_workspace_file,
             execute_read_query,
@@ -324,6 +342,7 @@ impl ToolDispatcher {
             search_users,
             update_user_profile,
             send_direct_message,
+            make_sticker,
         ])
     }
 
@@ -1506,6 +1525,100 @@ Content:
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
             },
+        }
+    }
+
+    async fn make_sticker(
+        &self,
+        params: MakeStickerParameters,
+        user_message: String,
+    ) -> ToolResult {
+        let conversation_id = match self.conversation_id {
+            Some(id) => id,
+            None => return ToolResult {
+                error: "Conversation ID not found in context".to_string(),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        };
+
+        let image_url = if let Some(url) = params.image_url {
+            url
+        } else {
+            // Retrieve from conversation metadata
+            let res = sqlx::query!(
+                "SELECT metadata FROM conversations WHERE id = $1",
+                conversation_id
+            ).fetch_one(&self.pool).await;
+
+            match res {
+                Ok(rec) => {
+                    let metadata = rec.metadata.unwrap_or_default();
+                    if let Some(url) = metadata.get("last_image_url").and_then(|v| v.as_str()) {
+                        url.to_string()
+                    } else {
+                        return ToolResult {
+                            error: "No recent image found to turn into a sticker. Please upload an image first!".to_string(),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                        };
+                    }
+                }
+                Err(e) => return ToolResult {
+                    error: format!("Database error: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                },
+            }
+        };
+
+        info!("Generating sticker for URL: {}", image_url);
+
+        // Find channels for this conversation
+        let channel_info = sqlx::query!(
+            "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
+            conversation_id
+        ).fetch_all(&self.pool).await.unwrap_or_default();
+
+        if channel_info.is_empty() {
+             return ToolResult {
+                error: "No active channels found for this conversation".to_string(),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            };
+        }
+
+        for channel in channel_info {
+            let outbound = crate::feature::OutboundMessage {
+                is_group: false,
+                sender_id: channel.external_id.clone(),
+                conversation_id: channel.external_chat_id.clone(),
+                text: "Coming up! 🚀".to_string(),
+                channel: channel.channel_type.clone(),
+                video_url: None,
+                image_url: None,
+                audio_url: None,
+                doc_url: None,
+                sticker_url: Some(image_url.clone()),
+                metadata: None,
+            };
+            let _ = self.redis_publish_outbound(&outbound).await;
+        }
+
+        let content = "Sticker generation triggered! 🚀".to_string();
+        ToolResult {
+            error: "".to_string(),
+            success: true,
+            content: content.clone(),
+            follow_up_prompt: build_follow_up_prompt(
+                user_message,
+                content,
+                "make_sticker".to_string(),
+            ),
         }
     }
 

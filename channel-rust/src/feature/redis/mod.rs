@@ -64,7 +64,7 @@ async fn handle_outbound_message(state: AppState, msg: OutboundMessage) -> anyho
         },
         "telegram" => {
             info!("Sending to Telegram: {}", msg.conversation_id);
-            crate::feature::telegram::send_telegram_message(state.bot, msg,&state.storage).await?;
+            crate::feature::telegram::send_telegram_message(state.bot, msg,&state.storage, &state.redis).await?;
         },
         _ => error!("Unknown platform: {}", msg.channel),
     }

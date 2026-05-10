@@ -202,6 +202,13 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
             MediaClassification::Other => { media_context = "
 [SYSTEM: User uploaded an image (uncategorized).]".to_string(); }
         }
+
+        // Save last_image_url to conversation metadata for just-in-time sticker generation
+        let _ = sqlx::query!(
+            "UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('last_image_url', $1::text) WHERE id = $2",
+            image_url,
+            conversation_id
+        ).execute(&state.pool).await;
     }
 
     let augmented_text = format!("{}{}", text_content, media_context);
@@ -243,7 +250,11 @@ You are operating in a multi-turn tool-use loop. You MUST wait to gather all nec
 - If a user says 'Tell [Name] [Message]', FIRST use `search_users` to find the correct JID.
 - If `search_users` returns multiple results, ask the user for clarification (e.g., 'I found two Billys. Did you mean Billy the Rider or Billy the Coder?').
 - Once the unique JID is identified, use `send_direct_message(recipient_jid, content)`.
-- After sending, confirm to the sender: 'Done! I've sent that message to [Name]. 🚀'");
+- After sending, confirm to the sender: 'Done! I've sent that message to [Name]. 🚀'
+
+**Sticker Generation:**
+- If a user asks to turn an image into a sticker (e.g., 'Make this a sticker', 'Sticker-in', 'Jadikan sticker'), use the `make_sticker` tool.
+- If no URL is provided, the tool will automatically use the most recent image from the conversation.");
         combined
     };
 
@@ -403,6 +414,7 @@ You are operating in a multi-turn tool-use loop. You MUST wait to gather all nec
                         "create_reminder" | "modify_reminder" | "get_reminder_stats" => "managing reminders".to_string(),
                         "get_inbox_summary" => "checking your inbox".to_string(),
                         "send_direct_message" => "sending".to_string(),
+                        "make_sticker" => "creating sticker".to_string(),
                         _ => format!("using {}", call.name),
                     };
                     send_status_update(&state.pool, conversation_id, format!("Nomi is {}...", action));

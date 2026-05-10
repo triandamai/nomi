@@ -172,3 +172,13 @@ pub struct SendDirectMessageParameters {
 pub struct SendDirectMessageResponse {
     pub content: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MakeStickerParameters {
+    pub image_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MakeStickerResponse {
+    pub content: String,
+}
