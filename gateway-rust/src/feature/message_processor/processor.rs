@@ -861,10 +861,9 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
         "start registering from channel {} sender_id {}",
         msg.channel, msg.sender_id
     );
-    
+
     if msg.is_group {
-        
-        return Ok(());
+        return process_group_registration(state, msg).await;
     }
     let channel_exists = sqlx::query!("SELECT u.id as user_id FROM channels c JOIN users u ON u.id = c.user_id WHERE c.channel_type = $1 AND c.external_chat_id = $2",msg.channel,msg.conversation_id)
         .fetch_optional(&state.pool)
@@ -1094,6 +1093,170 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
         })
         .await;
     Ok(())
+}
+
+pub async fn process_group_registration(
+    state: &AppState,
+    msg: &InboundMessage,
+) -> anyhow::Result<()> {
+    info!(
+        "Registering group: {} on channel {}",
+        msg.conversation_id, msg.channel
+    );
+
+    let mut tx = state.pool.begin().await?;
+
+    let existing_user =
+        channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.sender_id).await;
+
+    if let Err(err) = existing_user {
+        info!("Only registered user can pair group:{}",err);
+        let _ = state
+            .publish_outbond(&OutboundMessage {
+                is_group: true,
+                sender_id: "nomi".to_string(),
+                conversation_id: msg.conversation_id.clone(),
+                text: "Whoops! 🏍️💨 Only a registered Nomi user can pair me with a group."
+                    .to_string(),
+                channel: msg.channel.clone(),
+                video_url: None,
+                image_url: None,
+                audio_url: None,
+                doc_url: None,
+                sticker_url: None,
+                metadata: msg.metadata.clone(),
+            })
+            .await;
+        return Ok(());
+    }
+
+    let existing_user = existing_user.unwrap();
+    if let None = existing_user {
+        info!("Only registered user can pair group");
+        let _ = state
+            .publish_outbond(&OutboundMessage {
+                is_group: true,
+                sender_id: "nomi".to_string(),
+                conversation_id: msg.conversation_id.clone(),
+                text: "Whoops! 🏍️💨 Only a registered Nomi user can pair me with a group. 🚀"
+                    .to_string(),
+                channel: msg.channel.clone(),
+                video_url: None,
+                image_url: None,
+                audio_url: None,
+                doc_url: None,
+                sticker_url: None,
+                metadata: msg.metadata.clone(),
+            })
+            .await;
+        return Ok(());
+    }
+    let existing_user = existing_user.unwrap();
+
+    // 1. Check if already registered
+    let existing = sqlx::query!(
+        "SELECT id FROM channel_group WHERE external_group_id = $1 AND channel = $2",
+        msg.conversation_id,
+        msg.channel
+    )
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    if existing.is_some() {
+        let _ = state
+            .publish_outbond(&OutboundMessage {
+                is_group: true,
+                sender_id: "nomi".to_string(),
+                conversation_id: msg.conversation_id.clone(),
+                text: "This group is already registered! 🚀".to_string(),
+                channel: msg.channel.clone(),
+                video_url: None,
+                image_url: None,
+                audio_url: None,
+                doc_url: None,
+                sticker_url: None,
+                metadata: msg.metadata.clone(),
+            })
+            .await;
+
+        let existing = existing.unwrap();
+        let _ = channel_repo::link_channel(
+            &state.pool,
+            &msg.channel,
+            &msg.sender_id,
+            &msg.conversation_id,
+            existing.id,
+            existing_user.user_id,
+            None,
+        )
+        .await;
+        return Ok(());
+    }
+
+    // 2. Create new conversation for this group
+    let conv_id = Uuid::new_v4();
+    let title = format!("Group: {} via {}", msg.conversation_id, msg.channel);
+
+    let trx_convo = sqlx::query!(
+        "INSERT INTO conversations (id, title) VALUES ($1, $2) RETURNING id",
+        conv_id,
+        title
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+
+    // 3. Register in channel_group
+    sqlx::query!(
+        "INSERT INTO channel_group (conversation_id, channel, external_group_id) VALUES ($1, $2, $3)",
+        conv_id,
+        msg.channel,
+        msg.conversation_id
+    ).execute(&mut *tx).await?;
+
+    let trx = tx.commit().await;
+    if let Ok(_) = trx {
+        let _ = channel_repo::link_channel(
+            &state.pool,
+            &msg.channel,
+            &msg.sender_id,
+            &msg.conversation_id,
+            trx_convo.id,
+            existing_user.user_id,
+            None,
+        )
+        .await;
+    }
+
+    let _ = state
+        .publish_outbond(&OutboundMessage {
+            is_group: true,
+            sender_id: "nomi".to_string(),
+            conversation_id: msg.conversation_id.clone(),
+            text: "Group registered! I'm ready to help here whenever you mention me. 🚀"
+                .to_string(),
+            channel: msg.channel.clone(),
+            video_url: None,
+            image_url: None,
+            audio_url: None,
+            doc_url: None,
+            sticker_url: None,
+            metadata: msg.metadata.clone(),
+        })
+        .await;
+
+    Ok(())
+}
+
+pub async fn is_group_registered(pool: &sqlx::PgPool, external_id: &str, channel: &str) -> bool {
+    sqlx::query!(
+        "SELECT is_active FROM channel_group WHERE external_group_id = $1 AND channel = $2",
+        external_id,
+        channel
+    )
+    .fetch_optional(pool)
+    .await
+    .map(|r| r.map(|row| row.is_active.unwrap_or(true)).unwrap_or(false))
+    .unwrap_or(false)
 }
 
 pub async fn process_login(state: &AppState, msg: &InboundMessage) -> anyhow::Result<()> {

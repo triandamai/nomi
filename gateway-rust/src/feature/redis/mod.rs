@@ -62,13 +62,72 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         msg.sender_id, msg.conversation_id, msg.text
     );
 
-    if msg.is_group && !msg.is_mentioned {
-        info!("Message is from group, and not mentioned, ignoring");
-        return Ok(());
+    let text = msg.text.trim();
+
+    // 1. Group Filtering & Registration Check
+    if msg.is_group {
+        let registered = crate::feature::message_processor::is_group_registered(
+            &state.pool,
+            &msg.conversation_id,
+            &msg.channel,
+        )
+        .await;
+
+        if !registered {
+            // Only allow registration command in unregistered groups
+            if text.starts_with("/register") {
+                return process_register(&state, &msg).await;
+            }
+            info!(
+                "Group {} not registered, ignoring message",
+                msg.conversation_id
+            );
+            let _ = state
+                .publish_outbond(&crate::feature::OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: msg.sender_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
+                    text: "Whoops! 🏍️💨 Only a registered Nomi user can pair me with a group."
+                        .to_string(),
+                    channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
+            return Ok(());
+        }
+
+        // Group is registered, only respond if mentioned
+        if !msg.is_mentioned
+            && (msg.image_url.is_none()
+                && msg.video_url.is_none()
+                && msg.audio_url.is_none()
+                && msg.doc_url.is_none()
+                && msg.sticker_url.is_none())
+        {
+            info!("Message is from registered group, but not mentioned, ignoring");
+            return Ok(());
+        }
     }
-    // 1. Resolve Identity and Channel Info
-    let channel_info =
-        channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.conversation_id).await?;
+
+    // 2. Resolve Identity and Channel Info
+    let channel_info = if msg.is_group {
+        // For groups, we look up the channel_group table instead of the regular channels table
+        sqlx::query!(
+            "SELECT conversation_id FROM channel_group WHERE external_group_id = $1 AND channel = $2",
+            msg.conversation_id,
+            msg.channel
+        ).fetch_optional(&state.pool).await?.map(|r| crate::common::repository::channel_repo::ChannelInfo {
+            user_id: Uuid::nil(), // No single user for a group
+            conversation_id: r.conversation_id,
+        })
+    } else {
+        channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.conversation_id).await?
+    };
 
     let (user_id, external_conversation_id) = if let Some(ci) = channel_info {
         (ci.user_id, ci.conversation_id)
@@ -79,8 +138,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     };
 
     // ================================== BEGIN COMMAND ============================//
-    // 2. Check for Pairing Code
-    let text = msg.text.trim();
+    // 3. Check for Pairing/Register/Login
     if text.to_uppercase().starts_with("PAIR ") || text.to_uppercase().starts_with("/PAIR ") {
         return process_pairing(&state, &msg, text, user_id.clone()).await;
     } else if text.starts_with("/register") {

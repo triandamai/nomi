@@ -18,7 +18,6 @@ use uuid::Uuid;
 
 pub mod auth;
 pub mod chat_model;
-pub mod internal_model;
 pub mod reminder;
 
 pub async fn handle_get_user_channels(
