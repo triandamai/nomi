@@ -310,6 +310,16 @@ pub async fn execute_tools(
                         })
                         .await
                 }
+                "send_direct_message" => {
+                    let param: crate::common::tools::tools_model::SendDirectMessageParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::SendDirectMessage {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
                 _ => ToolResult {
                     error: format!("Unknown tool: {}", call_name),
                     success: false,
