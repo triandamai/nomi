@@ -8,6 +8,7 @@ pub mod bridge;
 pub struct InboundMessage {
     pub is_group: bool,
     pub is_private: bool,
+    pub is_mentioned: bool,
     pub sender_id: String,
     pub conversation_id: String,
     pub message_id: String,
@@ -29,7 +30,6 @@ pub struct OutboundMessage {
     pub conversation_id: String,
     pub text: String,
     pub channel: String,
-    pub user_id: Option<uuid::Uuid>,
     pub video_url:Option<String>,
     pub image_url:Option<String>,
     pub audio_url:Option<String>,
@@ -37,6 +37,13 @@ pub struct OutboundMessage {
     pub sticker_url:Option<String>,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FallBackPayload {
+    pub payload: Option<OutboundMessage>,
+    pub error: Option<String>,
+    pub code:i32
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

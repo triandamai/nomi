@@ -10,6 +10,7 @@ pub mod message_processor;
 pub struct InboundMessage {
     pub is_group: bool,
     pub is_private: bool,
+    pub is_mentioned: bool,
     pub sender_id: String,
     pub conversation_id: String,
     pub message_id: String,

@@ -15,6 +15,10 @@ pub struct UnifiedMessage {
     pub user_id: Option<Uuid>,
     pub text_content: String,
     pub image_url: Option<String>,
+    pub audio_url: Option<String>,
+    pub video_url: Option<String>,
+    pub sticker_url: Option<String>,
+    pub doc_url: Option<String>,
     pub source: MessageSource,
     pub v2:bool
 }

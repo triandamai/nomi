@@ -7,7 +7,6 @@ pub mod utils;
 
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::common::sse::sse_emitter::SseBroadcaster;
-use crate::feature::realtime::presence::PresenceManager;
 use crate::feature::{OutboundMessage, PresenceMessage};
 use axum::Router;
 use dotenvy::dotenv;
@@ -24,7 +23,7 @@ pub struct AppState {
     pub pool: Pool<Postgres>,
     pub gemini: Arc<Gemini>,
     pub gemini_api_key: String,
-    pub presence: Arc<PresenceManager>,
+    // pub presence: Arc<PresenceManager>,
     pub redis: common::redis::RedisClient,
     pub storage: common::storage::StorageClient,
 }
@@ -233,28 +232,13 @@ async fn main() -> anyhow::Result<()> {
     let gemini = Arc::new(gemini);
     let sse = SseBroadcaster::create();
 
-    // Create a temporary state to initialize PresenceManager
-    let partial_state = AppState {
-        sse: sse.clone(),
-        pool: pool.clone(),
-        gemini: gemini.clone(),
-        gemini_api_key: gemini_api_key.clone(),
-        presence: Arc::new(PresenceManager {
-            debouncers: dashmap::DashMap::new(),
-            channel_tx: tokio::sync::mpsc::channel(1).0, // Dummy
-        }),
-        redis: redis.clone(),
-        storage: storage.clone(),
-    };
-
-    let presence = PresenceManager::new(partial_state);
 
     let state = AppState {
         sse,
         pool,
         gemini,
         gemini_api_key,
-        presence,
+        // presence,
         redis,
         storage,
     };

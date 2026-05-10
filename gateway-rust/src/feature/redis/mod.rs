@@ -1,7 +1,7 @@
-use crate::AppState;
 use crate::common::identity;
 use crate::common::repository::{channel_repo, message_repo, pairing_repo};
 use crate::feature::{InboundMessage, OutboundMessage};
+use crate::AppState;
 use rand::RngExt;
 use serde_json::json;
 use tokio_stream::StreamExt;
@@ -43,6 +43,10 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         msg.sender_id, msg.conversation_id, msg.text
     );
 
+    if msg.is_group && !msg.is_mentioned {
+        info!("Message is from group, and not mentioned");
+        return Ok(());
+    }
     // 1. Resolve Identity and Channel Info
     let channel_info =
         channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.conversation_id).await?;
@@ -314,7 +318,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         if let Err(e) = tx.commit().await {
             error!("Failed to commit registration: {}", e);
             let _ = state
-                .publish_outbond(&crate::feature::OutboundMessage {
+                .publish_outbond(&OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: msg.sender_id.clone(),
                     conversation_id: msg.conversation_id.clone(),
@@ -364,7 +368,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         if let Err(err) = channel_exists {
             info!("failed get channel data: {}", err);
             let _ = state
-                .publish_outbond(&crate::feature::OutboundMessage {
+                .publish_outbond(&OutboundMessage {
                     is_group: msg.is_group,
                     sender_id: msg.sender_id.clone(),
                     conversation_id: msg.conversation_id.clone(),
@@ -519,6 +523,10 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     let chat_id = msg.conversation_id.clone();
     let channel = msg.channel.clone();
     let image_url = msg.image_url.clone();
+    let audio_url = msg.audio_url.clone();
+    let video_url = msg.video_url.clone();
+    let document_url = msg.doc_url.clone();
+    let sticker_url = msg.sticker_url.clone();
 
     tokio::spawn(async move {
         // A. Presence
@@ -545,6 +553,10 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             user_id: Some(user_id),
             text_content: user_text,
             image_url,
+            audio_url ,
+            video_url,
+            sticker_url,
+            doc_url: document_url,
             source: match msg.channel.as_str() {
                 "telegram" => crate::feature::message_processor::MessageSource::Telegram,
                 "whatsapp" => crate::feature::message_processor::MessageSource::WhatsApp,

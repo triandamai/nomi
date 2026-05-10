@@ -1,8 +1,8 @@
 use crate::common::storage::StorageClient;
 use axum::{
-    Json, Router,
-    extract::State,
-    routing::{get, post},
+    extract::State, routing::{get, post},
+    Json,
+    Router,
 };
 use dotenvy::{dotenv, var};
 use std::sync::Arc;
@@ -12,19 +12,19 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 pub mod common;
 pub mod feature;
 
 #[derive(Clone)]
-struct AppState {
-    qr_code: Arc<Mutex<Option<String>>>,
-    bot: Bot,
-    redis: common::redis::RedisClient,
-    storage: StorageClient,
-    wa_tx: tokio::sync::mpsc::UnboundedSender<feature::OutboundMessage>,
-    wa_cmd_tx: tokio::sync::mpsc::UnboundedSender<feature::WhatsAppCommand>,
+pub struct AppState {
+    pub qr_code: Arc<Mutex<Option<String>>>,
+    pub bot: Bot,
+    pub redis: common::redis::RedisClient,
+    pub storage: StorageClient,
+    pub wa_tx: tokio::sync::mpsc::UnboundedSender<feature::OutboundMessage>,
+    pub wa_cmd_tx: tokio::sync::mpsc::UnboundedSender<feature::WhatsAppCommand>,
 }
 
 #[tokio::main]
@@ -133,6 +133,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Configuring Router...");
     let app = Router::new()
         .route("/api/whatsapp/qr", get(get_whatsapp_qr))
+        .route("/api/whatsapp/generate", get(generate_whatsapp_qr))
         .route("/api/whatsapp/logout", post(logout_whatsapp))
         .route("/api/outbound", post(handle_outbound))
         .route("/api/presence/typing", post(handle_typing))

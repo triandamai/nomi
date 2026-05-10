@@ -1,6 +1,7 @@
 use crate::common::redis::RedisClient;
 use crate::common::storage::StorageClient;
 use crate::feature::{InboundMessage, OutboundMessage};
+use anyhow::anyhow;
 use chrono::Utc;
 use regex::Regex;
 use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
@@ -108,7 +109,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                     file_id.clone(),
                     format!("{}/{}", sender_id, message_id),
                 )
-                    .await;
+                .await;
                 info!("result vn upload {:?}", extract);
                 if let Ok(file) = extract {
                     info!("vn uploaded");
@@ -150,17 +151,8 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 }
             }
 
-            let mut is_mentioned = false;
+            let mut is_mentioned = Regex::new(r"(?i)@?(nomi|nom\s*nom|nomnom|nomiii|nom)\b").unwrap().is_match(&text);
 
-            // Task 1: The Mention Gate
-            let keyword_regex = Regex::new(r"(?i)@?(nomi|nom\s*nom|nomnom|nomiii|nom)\b").unwrap();
-            if keyword_regex.is_match(&text) {
-                is_mentioned = true;
-                // Task 3: Clean the Input
-                if !is_private {
-                    text = keyword_regex.replace_all(&text, "").to_string();
-                }
-            }
 
             // Task 2: Handle Native Mentions
             let bot_mention_str = format!("@{}", bot_username_clone.to_lowercase());
@@ -184,10 +176,6 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 }
             }
 
-            if is_group && !is_mentioned {
-                return respond(());
-            }
-
             text = text.trim().to_string();
             if text.is_empty() {
                 text = original_text.trim().to_string();
@@ -209,6 +197,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 message_id,
                 is_group,
                 is_private,
+                is_mentioned,
                 sender_id,
                 conversation_id,
                 text,
@@ -221,7 +210,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 metadata: Some(metadata),
             };
 
-            info!("nomi:inbound => {:?}",inbound);
+            info!("nomi:inbound => {:?}", inbound);
             if let Err(e) = redis.publish_event("nomi:inbound", &inbound).await {
                 error!("Failed to publish Telegram inbound to Redis: {}", e);
             }
@@ -245,120 +234,63 @@ pub async fn send_telegram_message(
     redis: &RedisClient,
 ) -> anyhow::Result<()> {
     if let Ok(chat_id) = msg.conversation_id.parse::<i64>() {
-        if let Some(image) = msg.image_url {
-            if let Ok(image_url) = storage
-                .get_file("conversations".to_string(), image.clone())
-                .await
-            {
-                let ext = mime_guess::from_path(image).first_or_octet_stream();
-                let ext = mime_guess::get_mime_extensions(&ext)
-                    .unwrap()
-                    .first()
-                    .unwrap()
-                    .to_string();
-                let buff = image_url.to_vec();
-                let image = InputFile::memory(buff).file_name(format!(
-                    "{}.{}",
-                    Utc::now().to_rfc3339(),
-                    ext
-                ));
-                let _ = bot.send_photo(Recipient::Id(ChatId(chat_id)), image).await;
-            }
-        }
-
-        if let Some(video) = msg.video_url {
-            if let Ok(video_url) = storage
-                .get_file("conversations".to_string(), video.clone())
-                .await
-            {
-                let ext = mime_guess::from_path(video).first_or_octet_stream();
-                let ext = mime_guess::get_mime_extensions(&ext)
-                    .unwrap()
-                    .first()
-                    .unwrap()
-                    .to_string();
-                let buff = video_url.to_vec();
-                let image = InputFile::memory(buff).file_name(format!(
-                    "{}.{}",
-                    Utc::now().to_rfc3339(),
-                    ext
-                ));
-                let _ = bot.send_video(Recipient::Id(ChatId(chat_id)), image).await;
-            }
-        }
-
-        if let Some(audio) = msg.audio_url {
-            if let Ok(audio_url) = storage
-                .get_file("conversations".to_string(), audio.clone())
-                .await
-            {
-                let ext = mime_guess::from_path(audio).first_or_octet_stream();
-                let ext = mime_guess::get_mime_extensions(&ext)
-                    .unwrap()
-                    .first()
-                    .unwrap()
-                    .to_string();
-                let buff = audio_url.to_vec();
-                let image = InputFile::memory(buff).file_name(format!(
-                    "{}.{}",
-                    Utc::now().to_rfc3339(),
-                    ext
-                ));
-                let _ = bot.send_audio(Recipient::Id(ChatId(chat_id)), image).await;
-            }
-        }
-
-        if let Some(document) = msg.doc_url {
-            if let Ok(document_url) = storage
-                .get_file("conversations".to_string(), document.clone())
-                .await
-            {
-                let ext = mime_guess::from_path(document).first_or_octet_stream();
-                let ext = mime_guess::get_mime_extensions(&ext)
-                    .unwrap()
-                    .first()
-                    .unwrap()
-                    .to_string();
-                let buff = document_url.to_vec();
-                let image = InputFile::memory(buff).file_name(format!(
-                    "{}.{}",
-                    Utc::now().to_rfc3339(),
-                    ext
-                ));
-                let _ = bot
-                    .send_document(Recipient::Id(ChatId(chat_id)), image)
+        if let Some(image) = msg.image_url.clone() {
+            if let Err(err) = send_telegram_audio(storage, &bot, chat_id, image).await {
+                let _ = redis
+                    .publish_fallback(
+                        format!("Failed to sent image reason:{}", err),
+                        400,
+                        Some(msg.clone()),
+                    )
                     .await;
             }
         }
 
-        if let Some(sticker) = msg.sticker_url {
-            let mut success = false;
-            if let Ok(sticker_data) = storage
-                .get_file("conversations".to_string(), sticker.clone())
-                .await
-            {
-                let buff = sticker_data.to_vec();
-                let image = InputFile::memory(buff);
-                if let Ok(_) = bot.send_sticker(Recipient::Id(ChatId(chat_id)), image).await {
-                    success = true;
-                }
+        if let Some(video) = msg.video_url.clone() {
+            if let Err(err) = send_telegram_audio(storage, &bot, chat_id, video).await {
+                let _ = redis
+                    .publish_fallback(
+                        format!("Failed to sent video reason:{}", err),
+                        400,
+                        Some(msg.clone()),
+                    )
+                    .await;
             }
+        }
 
-            if !success {
-                let _ = redis.publish_event("nomi:outbound", &OutboundMessage {
-                    is_group: false,
-                    sender_id: msg.sender_id.clone(),
-                    conversation_id: msg.conversation_id.clone(),
-                    text: "Sorry, Nomi couldn't turn that specific image into a sticker! 🏍️💨".to_string(),
-                    channel: "telegram".to_string(),
-                    user_id: None,
-                    video_url: None,
-                    image_url: None,
-                    audio_url: None,
-                    doc_url: None,
-                    sticker_url: None,
-                    metadata: None,
-                }).await;
+        if let Some(audio) = msg.audio_url.clone() {
+            if let Err(err) = send_telegram_audio(storage, &bot, chat_id, audio).await {
+                let _ = redis
+                    .publish_fallback(
+                        format!("Failed to sent audio reason:{}", err),
+                        400,
+                        Some(msg.clone()),
+                    )
+                    .await;
+            }
+        }
+
+        if let Some(document) = msg.doc_url.clone() {
+            if let Err(err) = send_telegram_document(storage, &bot, chat_id, document).await {
+                let _ = redis
+                    .publish_fallback(
+                        format!("Failed to sent document reason:{}", err),
+                        400,
+                        Some(msg.clone()),
+                    )
+                    .await;
+            }
+        }
+
+        if let Some(sticker) = msg.sticker_url.clone() {
+            if let Err(err) = send_telegram_sticker(storage, &bot, chat_id, sticker).await {
+                let _ = redis
+                    .publish_fallback(
+                        format!("Failed to sent sticker reason:{}", err),
+                        400,
+                        Some(msg.clone()),
+                    )
+                    .await;
             }
         }
         bot.send_message(Recipient::Id(ChatId(chat_id)), msg.text)
@@ -392,9 +324,17 @@ pub async fn extract_and_upload_file_telegram(
                 .unwrap()
                 .to_string();
             let file_name = format!("{}.{}", bot_file.id, ext);
-            let temp_file = tokio::fs::OpenOptions::new().read(true).write(true).create_new(true).open(file_name.clone()).await;
+            let temp_file = tokio::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(file_name.clone())
+                .await;
             match temp_file {
-                Ok(mut file_destination) => match bot.download_file(&bot_file.path, &mut file_destination).await {
+                Ok(mut file_destination) => match bot
+                    .download_file(&bot_file.path, &mut file_destination)
+                    .await
+                {
                     Ok(_) => match file_destination.read_to_end(&mut buff).await {
                         Ok(_) => match storage
                             .upload_byte(
@@ -421,4 +361,173 @@ pub async fn extract_and_upload_file_telegram(
         }
         Err(e) => Err(format!("Failed download  file: {}", e)),
     }
+}
+
+pub async fn send_telegram_sticker(
+    storage: &StorageClient,
+    tele_client: &Bot,
+    target: i64,
+    sticker_path: String,
+) -> anyhow::Result<String> {
+    let get_sticker = storage
+        .get_file("conversations".to_string(), sticker_path.clone())
+        .await;
+
+    if let Err(err) = get_sticker {
+        info!("failed sent sticker message: {}", err);
+        return Err(anyhow::anyhow!(err.to_string()));
+    }
+
+    let buff = get_sticker.unwrap().to_vec();
+    let image = InputFile::memory(buff);
+    let send_sticker = tele_client
+        .send_sticker(Recipient::Id(ChatId(target)), image)
+        .await;
+    if let Err(err) = send_sticker {
+        info!("sending sticker:{} failed: {}", sticker_path, err);
+        return Err(anyhow!("Failed to send sticker"));
+    }
+    info!("sticker sent");
+    Ok("sticker sent".to_string())
+}
+
+pub async fn send_telegram_document(
+    storage: &StorageClient,
+    tele_client: &Bot,
+    target: i64,
+    document_path: String,
+) -> anyhow::Result<String> {
+    let get_file = storage
+        .get_file("conversations".to_string(), document_path.clone())
+        .await;
+    if let Err(err) = get_file {
+        info!("failed sent document:{} failed: {}", document_path, err);
+        return Err(anyhow::anyhow!(err.to_string()));
+    }
+
+    let doc = get_file.unwrap();
+
+    let ext = mime_guess::from_path(document_path.clone()).first_or_octet_stream();
+    let ext = mime_guess::get_mime_extensions(&ext)
+        .unwrap()
+        .first()
+        .unwrap()
+        .to_string();
+    let buff = doc.to_vec();
+    let image = InputFile::memory(buff).file_name(format!("{}.{}", Utc::now().to_rfc3339(), ext));
+    let send = tele_client
+        .send_document(Recipient::Id(ChatId(target)), image)
+        .await;
+    if let Err(err) = send {
+        info!("failed sent document:{} failed: {}", document_path, err);
+        return Err(anyhow::anyhow!(err.to_string()));
+    }
+    info!("document:{} sent", target);
+    Ok("document:sent".to_string())
+}
+
+pub async fn send_telegram_audio(
+    storage: &StorageClient,
+    tele_client: &Bot,
+    target: i64,
+    audio_path: String,
+) -> anyhow::Result<String> {
+    let get_file = storage
+        .get_file("conversations".to_string(), audio_path.clone())
+        .await;
+    if let Err(err) = get_file {
+        info!("failed sent audio:{} failed: {}", audio_path, err);
+        return Err(anyhow::anyhow!(err.to_string()));
+    }
+    let audio_url = get_file.unwrap();
+
+    let ext = mime_guess::from_path(audio_path.clone()).first_or_octet_stream();
+    let ext = mime_guess::get_mime_extensions(&ext)
+        .unwrap()
+        .first()
+        .unwrap()
+        .to_string();
+    let buff = audio_url.to_vec();
+    let image = InputFile::memory(buff).file_name(format!("{}.{}", Utc::now().to_rfc3339(), ext));
+    let send = tele_client
+        .send_audio(Recipient::Id(ChatId(target)), image)
+        .await;
+    if let Err(err) = send {
+        info!("sending audio:{} failed: {}", audio_path, err);
+        return Err(anyhow::anyhow!(err));
+    }
+
+    info!("audio:{} sent", target);
+    Ok("audio:{} sent".to_string())
+}
+
+pub async fn send_telegram_video(
+    storage: &StorageClient,
+    tele_client: &Bot,
+    target: i64,
+    video_path: String,
+) -> anyhow::Result<String> {
+    let get_file = storage
+        .get_file("conversations".to_string(), video_path.clone())
+        .await;
+    if let Err(err) = get_file {
+        info!("Failed download  file: {}", err);
+        return Err(anyhow::anyhow!(err.to_string()));
+    }
+    let video_url = get_file.unwrap();
+
+    let ext = mime_guess::from_path(video_path.clone()).first_or_octet_stream();
+    let ext = mime_guess::get_mime_extensions(&ext)
+        .unwrap()
+        .first()
+        .unwrap()
+        .to_string();
+    let buff = video_url.to_vec();
+    let image = InputFile::memory(buff).file_name(format!("{}.{}", Utc::now().to_rfc3339(), ext));
+    let send = tele_client
+        .send_video(Recipient::Id(ChatId(target)), image)
+        .await;
+
+    if let Err(err) = send {
+        info!("sending video:{} failed: {}", video_path, err);
+        return Err(anyhow::anyhow!(err));
+    }
+
+    info!("video:{} sent", target);
+    Ok("video:{} sent".to_string())
+}
+
+pub async fn send_telegram_image(
+    storage: &StorageClient,
+    tele_client: &Bot,
+    target: i64,
+    image_path: String,
+) -> anyhow::Result<String> {
+    let get_file = storage
+        .get_file("conversations".to_string(), image_path.clone())
+        .await;
+    if let Err(err) = get_file {
+        info!("failed download  file: {}", err);
+        return Err(anyhow::anyhow!(err.to_string()));
+    }
+    let image_url = get_file.unwrap();
+
+    let ext = mime_guess::from_path(image_path.clone()).first_or_octet_stream();
+    let ext = mime_guess::get_mime_extensions(&ext)
+        .unwrap()
+        .first()
+        .unwrap()
+        .to_string();
+    let buff = image_url.to_vec();
+    let image = InputFile::memory(buff).file_name(format!("{}.{}", Utc::now().to_rfc3339(), ext));
+    let send = tele_client
+        .send_photo(Recipient::Id(ChatId(target)), image)
+        .await;
+    if let Err(err) = send {
+        info!("sending image:{} failed: {}", image_path, err);
+        return Err(anyhow::anyhow!(err));
+    }
+
+    info!("image:{} sent", target);
+    Ok("image:{} sent".to_string())
 }

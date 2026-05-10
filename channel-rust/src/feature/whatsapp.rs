@@ -2,8 +2,8 @@ use crate::AppState;
 use crate::common::redis::RedisClient;
 use crate::common::storage::StorageClient;
 use crate::feature::{InboundMessage, OutboundMessage};
-use regex::Regex;
 use image::GenericImageView;
+use regex::Regex;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -51,9 +51,7 @@ impl WhatsAppWorker {
                 let storage = storage_clone.clone();
                 async move {
                     match event {
-                        Event::LoggedOut {
-                            ..
-                        } => {
+                        Event::LoggedOut { .. } => {
                             info!("logged out from whatsapp");
                         }
                         Event::PairingQrCode { code, .. } => {
@@ -187,97 +185,88 @@ impl WhatsAppWorker {
                                 }
                             }
 
-                            let original_text = msg.conversation.clone().or(msg
-                                .extended_text_message
-                                .as_ref()
-                                .and_then(|m| m.text.clone()));
-
-                            if let Some(original_text) = original_text {
-                                let mut text = original_text.clone();
-
-                                // Task 1: The Mention Gate
-                                let keyword_regex =
-                                    Regex::new(r"(?i)@?(nomi|nom\s*nom|nomnom|nomiii|nom)\b")
-                                        .unwrap();
-                                if keyword_regex.is_match(&text) {
-                                    is_mentioned = true;
-                                    // Task 3: Clean the Input
-                                    if !is_private {
-                                        text = keyword_regex.replace_all(&text, "").to_string();
-                                    }
-                                }
-
-                                // Task 2: Handle Native Mentions (WhatsApp)
-                                let mentioned_jids = msg
+                            let original_text = msg
+                                .conversation
+                                .clone()
+                                .or(msg
                                     .extended_text_message
                                     .as_ref()
-                                    .and_then(|m| m.context_info.as_ref())
-                                    .map(|c| c.mentioned_jid.clone())
-                                    .unwrap_or_default();
+                                    .and_then(|m| m.text.clone()))
+                                .unwrap_or("".to_string());
 
-                                if let Some(own_jid) = client.get_pn().await {
-                                    let own_jid_str = own_jid.to_string();
-                                    if mentioned_jids.contains(&own_jid_str) {
-                                        is_mentioned = true;
-                                        if !is_private {
-                                            let jid_user =
-                                                own_jid_str.split('@').next().unwrap_or("");
-                                            let mention_regex = Regex::new(&format!(
-                                                r"(?i)@{}\b",
-                                                regex::escape(jid_user)
-                                            ))
-                                            .unwrap();
-                                            text = mention_regex.replace_all(&text, "").to_string();
-                                        }
+                            let mut text = original_text.clone();
+
+                            // Task 1: The Mention Gate
+                            is_mentioned =
+                                Regex::new(r"(?i)@?(nomi|nom\s*nom|nomnom|nomiii|nom)\b")
+                                    .unwrap()
+                                    .is_match(&text);
+
+                            // Task 2: Handle Native Mentions (WhatsApp)
+                            let mentioned_jids = msg
+                                .extended_text_message
+                                .as_ref()
+                                .and_then(|m| m.context_info.as_ref())
+                                .map(|c| c.mentioned_jid.clone())
+                                .unwrap_or_default();
+
+                            if let Some(own_jid) = client.get_pn().await {
+                                let own_jid_str = own_jid.to_string();
+                                if mentioned_jids.contains(&own_jid_str) {
+                                    is_mentioned = true;
+                                    if !is_private {
+                                        let jid_user = own_jid_str.split('@').next().unwrap_or("");
+                                        let mention_regex = Regex::new(&format!(
+                                            r"(?i)@{}\b",
+                                            regex::escape(jid_user)
+                                        ))
+                                        .unwrap();
+                                        text = mention_regex.replace_all(&text, "").to_string();
                                     }
                                 }
+                            }
 
-                                if !is_private && !is_mentioned {
-                                    return;
-                                }
+                            text = text.trim().to_string();
+                            if text.is_empty() {
+                                text = original_text.trim().to_string();
+                            }
 
-                                text = text.trim().to_string();
-                                if text.is_empty() {
-                                    text = original_text.trim().to_string();
-                                }
+                            info!("Received WhatsApp message from {}: {} \n", sender_id, text);
+                            let display_name = info.push_name.clone();
+                            let phone_number = info
+                                .source
+                                .sender
+                                .to_string()
+                                .split('@')
+                                .next()
+                                .unwrap_or("")
+                                .to_string();
 
-                                info!("Received WhatsApp message from {}: {} \n", sender_id, text);
-                                let display_name = info.push_name.clone();
-                                let phone_number = info
-                                    .source
-                                    .sender
-                                    .to_string()
-                                    .split('@')
-                                    .next()
-                                    .unwrap_or("")
-                                    .to_string();
+                            let metadata = serde_json::json!({
+                                "display_name": display_name,
+                                "phone_number": phone_number
+                            });
 
-                                let metadata = serde_json::json!({
-                                    "display_name": display_name,
-                                    "phone_number": phone_number
-                                });
+                            let inbound = InboundMessage {
+                                is_group: !is_private,
+                                is_mentioned,
+                                is_private,
+                                sender_id,
+                                conversation_id,
+                                message_id,
+                                text,
+                                video_url,
+                                image_url,
+                                doc_url,
+                                audio_url,
+                                sticker_url,
+                                channel: "whatsapp".to_string(),
+                                metadata: Some(metadata),
+                            };
 
-                                let inbound = InboundMessage {
-                                    is_group: !is_private,
-                                    is_private,
-                                    sender_id,
-                                    conversation_id,
-                                    message_id,
-                                    text,
-                                    video_url,
-                                    image_url,
-                                    doc_url,
-                                    audio_url,
-                                    sticker_url,
-                                    channel: "whatsapp".to_string(),
-                                    metadata: Some(metadata),
-                                };
-
-                                info!("nomi:inbound => {:?}",&inbound);
-                                if let Err(e) = redis.publish_event("nomi:inbound", &inbound).await
-                                {
-                                    error!("Failed to publish WhatsApp inbound to Redis: {}", e);
-                                }
+                            info!("nomi:inbound => {:?}", &inbound);
+                            if let Err(e) = redis.publish_event("nomi:inbound", &inbound).await {
+                                error!("Failed to publish WhatsApp inbound to Redis: {}", e);
                             }
                         }
                         _ => {}
@@ -308,23 +297,21 @@ impl WhatsAppWorker {
             .map_err(|e| anyhow::anyhow!("Invalid chat id: {}", e))?;
         let formatted_text = crate::common::format::markdown_to_whatsapp(&msg.text);
 
-        if let Some(path) = msg.image_url {
-            let mut payload = Message::default();
-            let mime = mime_guess::from_path(&path).first_or_octet_stream();
-            if let Ok(bytes) = storage.get_file("conversations".to_string(), path).await {
-                if let Ok(upload) = self.client.upload(bytes.to_vec(), MediaType::Image).await {
-                    payload.image_message = Some(Box::new(ImageMessage {
-                        url: Some(upload.url),
-                        mimetype: Some(mime.to_string()),
-                        ..Default::default()
-                    }));
-                    let _ = self.client.send_message(chat.clone(), payload).await;
-                    let _ = tokio::time::sleep(Duration::from_secs(5)).await;
-                }
+        if let Some(path) = msg.image_url.clone() {
+            info!("Processing image for WhatsApp:{}", path);
+            if let Err(err) = send_wa_image(storage, &self.client, &chat, path).await {
+                let _ = self
+                    .redis
+                    .publish_fallback(
+                        format!("Image failed to send reason: {}", err),
+                        400,
+                        Some(msg.clone()),
+                    )
+                    .await;
             }
         }
 
-        if let Some(path) = msg.video_url {
+        if let Some(path) = msg.video_url.clone() {
             let mut payload = Message::default();
             let mime = mime_guess::from_path(&path).first_or_octet_stream();
             if let Ok(bytes) = storage.get_file("conversations".to_string(), path).await {
@@ -340,114 +327,45 @@ impl WhatsAppWorker {
             }
         }
 
-        if let Some(path) = msg.audio_url {
-            let mut payload = Message::default();
-            let mime = mime_guess::from_path(&path).first_or_octet_stream();
-            if let Ok(bytes) = storage.get_file("conversations".to_string(), path).await {
-                if let Ok(upload) = self.client.upload(bytes.to_vec(), MediaType::Audio).await {
-                    payload.audio_message = Some(Box::new(AudioMessage {
-                        url: Some(upload.url),
-                        mimetype: Some(mime.to_string()),
-                        ..Default::default()
-                    }));
-                    let _ = self.client.send_message(chat.clone(), payload).await;
-                    let _ = tokio::time::sleep(Duration::from_secs(5)).await;
-                }
+        if let Some(path) = msg.audio_url.clone() {
+            info!("Processing audio for WhatsApp:{}", path);
+            if let Err(err) = send_wa_audio(storage, &self.client, &chat, path).await {
+                let _ = self
+                    .redis
+                    .publish_fallback(
+                        format!("Audio failed to send reason: {}", err),
+                        400,
+                        Some(msg.clone()),
+                    )
+                    .await;
             }
         }
 
-
-        if let Some(path) = msg.doc_url {
-            let mut payload = Message::default();
-            let mime = mime_guess::from_path(&path).first_or_octet_stream();
-            if let Ok(bytes) = storage.get_file("conversations".to_string(), path).await {
-                if let Ok(upload) = self
-                    .client
-                    .upload(bytes.to_vec(), MediaType::Document)
-                    .await
-                {
-                    payload.document_message = Some(Box::new(DocumentMessage {
-                        url: Some(upload.url),
-                        mimetype: Some(mime.to_string()),
-                        ..Default::default()
-                    }));
-                    let _ = self.client.send_message(chat.clone(), payload).await;
-                    let _ = tokio::time::sleep(Duration::from_secs(5)).await;
-                }
+        if let Some(path) = msg.doc_url.clone() {
+            info!("Processing document for WhatsApp:{}", path);
+            if let Err(err) = send_wa_document(storage, &self.client, &chat, path).await {
+                let _ = self
+                    .redis
+                    .publish_fallback(
+                        format!("Document failed to send reason: {}", err),
+                        400,
+                        Some(msg.clone()),
+                    )
+                    .await;
             }
         }
 
-        if let Some(path) = msg.sticker_url {
+        if let Some(path) = msg.sticker_url.clone() {
             info!("Processing sticker for WhatsApp: {}", path);
-            let mut success = false;
-            if let Ok(bytes) = storage.get_file("conversations".to_string(), path.clone()).await {
-                // Load the image
-                if let Ok(img) = image::load_from_memory(&bytes.to_vec()) {
-                    // Create a 512x512 transparent background
-                    let mut final_img = image::ImageBuffer::new(512, 512);
-
-                    // Resize original image to fit in 512x512 while maintaining aspect ratio
-                    let resized = img.resize(512, 512, image::imageops::FilterType::Lanczos3);
-                    let (rw, rh) = resized.dimensions();
-
-                    // Center it
-                    let x = (512 - rw) / 2;
-                    let y = (512 - rh) / 2;
-                    
-                    // Convert resized to RGBA8 to ensure compatibility with final_img
-                    let resized_rgba = resized.to_rgba8();
-                    image::imageops::overlay(&mut final_img, &resized_rgba, x.into(), y.into());
-
-                    // Convert to DynamicImage for WebP encoder
-                    let dynamic_final = image::DynamicImage::ImageRgba8(final_img);
-
-                    // Convert to WebP
-                    if let Ok(encoder) = webp::Encoder::from_image(&dynamic_final) {
-                        let webp_data = encoder.encode(80.0).to_vec();
-
-                        // Upload to WhatsApp servers
-                        if let Ok(upload) = self.client.upload(webp_data.clone(), MediaType::Sticker).await {
-                             let mut payload = Message::default();
-                             payload.sticker_message = Some(Box::new(StickerMessage {
-                                url: Some(upload.url),
-                                mimetype: Some("image/webp".to_string()),
-                                file_sha256: Some(upload.file_sha256),
-                                file_enc_sha256: Some(upload.file_enc_sha256),
-                                media_key: Some(upload.media_key),
-                                file_length: Some(webp_data.len() as u64),
-                                ..Default::default()
-                            }));
-                            let _ = self.client.send_message(chat.clone(), payload).await;
-                            let _ = tokio::time::sleep(Duration::from_secs(2)).await;
-                            success = true;
-                        } else {
-                            error!("Failed to upload sticker to WhatsApp");
-                        }
-                    } else {
-                        error!("Failed to encode image to WebP");
-                    }
-                } else {
-                    error!("Failed to load image from memory for sticker");
-                }
-            } else {
-                error!("Failed to get file from storage for sticker: {}", path);
-            }
-
-            if !success {
-                let _ = self.redis.publish_event("nomi:outbound", &OutboundMessage {
-                    is_group: msg.is_group,
-                    sender_id: msg.sender_id.clone(),
-                    conversation_id: msg.conversation_id.clone(),
-                    text: "Sorry, Nomi couldn't turn that specific image into a sticker! 🏍️💨".to_string(),
-                    channel: "whatsapp".to_string(),
-                    user_id: None,
-                    video_url: None,
-                    image_url: None,
-                    audio_url: None,
-                    doc_url: None,
-                    sticker_url: None,
-                    metadata: None,
-                }).await;
+            if let Err(send_sticker) = send_wa_sticker(storage, &self.client, &chat, path).await {
+                let _ = self
+                    .redis
+                    .publish_fallback(
+                        format!("Sticker failed to send reason: {}", send_sticker),
+                        400,
+                        Some(msg.clone()),
+                    )
+                    .await;
             }
         }
 
@@ -457,20 +375,262 @@ impl WhatsAppWorker {
         Ok(())
     }
 
-    pub async fn regenerate(&self, state: &AppState) -> anyhow::Result<()> {
+    pub async fn regenerate(&self, _state: &AppState) -> anyhow::Result<()> {
         info!("Regenarate qr wa...");
 
         Ok(())
     }
-    pub async fn logout(&self, state: &AppState) -> anyhow::Result<()> {
+    pub async fn logout(&self, _state: &AppState) -> anyhow::Result<()> {
         info!("Logging out from WhatsApp...");
         // let _ = state.wa_cmd_tx.send(WhatsAppCommand::Logout);
         let _ = self.client.disconnect().await;
-        let _ = tokio::fs::remove_file("/data/whatsapp.db").await;
-        let _ = tokio::fs::remove_file("/data/whatsapp.db-shmb").await;
-        let _ = tokio::fs::remove_file("/data/whatsapp.db-wal").await;
+        let _ = tokio::fs::remove_file("/app/data/whatsapp.db").await;
+        let _ = tokio::fs::remove_file("/app/data/whatsapp.db-shm").await;
+        let _ = tokio::fs::remove_file("/app/data/whatsapp.db-wal").await;
         let mut qr_lock = self.qr_code.lock().await;
         *qr_lock = None;
         Ok(())
     }
+}
+
+pub async fn send_wa_sticker(
+    storage: &StorageClient,
+    wa_client: &Client,
+    target: &Jid,
+    sticker_path: String,
+) -> anyhow::Result<String> {
+    let get_file = storage
+        .get_file("conversations".to_string(), sticker_path.clone())
+        .await;
+
+    if let Err(err) = get_file {
+        error!("Failed to get file from storage for sticker: {}", err);
+        return Err(anyhow::anyhow!(
+            "Failed to get file from storage for sticker"
+        ));
+    }
+    let bytes = get_file.unwrap();
+    let load_from_memory = image::load_from_memory(&bytes.to_vec());
+    if let Err(err) = load_from_memory {
+        error!("Failed to load image from memory for sticker :{}", err);
+        return Err(anyhow::anyhow!(
+            "Failed to load image from storage for sticker"
+        ));
+    }
+    // Load the image
+    let img = load_from_memory.unwrap();
+    // Create a 512x512 transparent background
+    let mut final_img = image::ImageBuffer::new(512, 512);
+
+    // Resize original image to fit in 512x512 while maintaining aspect ratio
+    let resized = img.resize(512, 512, image::imageops::FilterType::Lanczos3);
+    let (rw, rh) = resized.dimensions();
+
+    // Center it
+    let x = (512 - rw) / 2;
+    let y = (512 - rh) / 2;
+
+    // Convert resized to RGBA8 to ensure compatibility with final_img
+    let resized_rgba = resized.to_rgba8();
+    image::imageops::overlay(&mut final_img, &resized_rgba, x.into(), y.into());
+
+    // Convert to DynamicImage for WebP encoder
+    let dynamic_final = image::DynamicImage::ImageRgba8(final_img);
+
+    let encode_to_webp = webp::Encoder::from_image(&dynamic_final);
+    if let Err(err) = encode_to_webp {
+        error!("Failed to encode image to WebP:{}", err);
+        return Err(anyhow::anyhow!("Failed to encode image to WebP"));
+    }
+    // Convert to WebP
+    let encoder = encode_to_webp.unwrap();
+    let webp_data = encoder.encode(80.0).to_vec();
+
+    let upload_to_wa = wa_client
+        .upload(webp_data.clone(), MediaType::Sticker)
+        .await;
+    if let Err(err) = upload_to_wa {
+        error!("Failed to upload sticker to WhatsApp:{}", err);
+        return Err(anyhow::anyhow!("Failed to upload sticker to WhatsApp"));
+    }
+    // Upload to WhatsApp servers
+    let upload = upload_to_wa.unwrap();
+
+    let mut payload = Message::default();
+    payload.sticker_message = Some(Box::new(StickerMessage {
+        url: Some(upload.url),
+        mimetype: Some("image/webp".to_string()),
+        file_sha256: Some(upload.file_sha256),
+        file_enc_sha256: Some(upload.file_enc_sha256),
+        media_key: Some(upload.media_key),
+        file_length: Some(webp_data.len() as u64),
+        ..Default::default()
+    }));
+    let sent = wa_client.send_message(target.clone(), payload).await;
+
+    if let Err(er) = sent {
+        info!("failed sending message to WhatsApp reason: {}", er);
+        return Err(anyhow::anyhow!(
+            "Failed to send message to WhatsApp reason: {}",
+            er
+        ));
+    }
+    info!("sticker sent");
+    Ok("sticker sent".to_string())
+}
+
+pub async fn send_wa_document(
+    storage: &StorageClient,
+    wa_client: &Client,
+    target: &Jid,
+    document_path: String,
+) -> anyhow::Result<String> {
+    let mut payload = Message::default();
+    let mime = mime_guess::from_path(&document_path).first_or_octet_stream();
+    let extract_file = storage
+        .get_file("conversations".to_string(), document_path)
+        .await;
+    if let Err(er) = extract_file {
+        info!("failed getting file from storage:{}", er);
+        return Err(anyhow::anyhow!("Failed to extract file"));
+    }
+    let bytes = extract_file.unwrap();
+    let uploading = wa_client.upload(bytes.to_vec(), MediaType::Document).await;
+    if let Err(er) = uploading {
+        info!("failed uploading to WhatsApp:{}", er);
+        return Err(anyhow::anyhow!("Failed to upload to WhatsApp"));
+    }
+    let upload = uploading.unwrap();
+    payload.document_message = Some(Box::new(DocumentMessage {
+        url: Some(upload.url),
+        mimetype: Some(mime.to_string()),
+        ..Default::default()
+    }));
+    let sent = wa_client.send_message(target.clone(), payload).await;
+    if let Err(er) = sent {
+        info!("failed sending message to WhatsApp reason: {}", er);
+        return Err(anyhow::anyhow!(
+            "Failed to send message to WhatsApp reason: {}",
+            er
+        ));
+    }
+    info!("document sent");
+    Ok("document sent".to_string())
+}
+
+pub async fn send_wa_audio(
+    storage: &StorageClient,
+    wa_client: &Client,
+    target: &Jid,
+    audio_path: String,
+) -> anyhow::Result<String> {
+    let mut payload = Message::default();
+    let mime = mime_guess::from_path(&audio_path).first_or_octet_stream();
+    let extract_file = storage
+        .get_file("conversations".to_string(), audio_path)
+        .await;
+    if let Err(er) = extract_file {
+        info!("failed getting file from storage:{}", er);
+        return Err(anyhow::anyhow!("Failed to extract file"));
+    }
+    let bytes = extract_file.unwrap();
+    let uploading = wa_client.upload(bytes.to_vec(), MediaType::Audio).await;
+    if let Err(er) = uploading {
+        info!("failed uploading to WhatsApp :{}", er);
+        return Err(anyhow::anyhow!("Failed to upload to WhatsApp"));
+    }
+    let upload = uploading?;
+    payload.audio_message = Some(Box::new(AudioMessage {
+        url: Some(upload.url),
+        mimetype: Some(mime.to_string()),
+        ..Default::default()
+    }));
+    let sent = wa_client.send_message(target.clone(), payload).await;
+    if let Err(er) = sent {
+        info!("failed sending message to WhatsApp reason: {}", er);
+        return Err(anyhow::anyhow!(
+            "Failed to send message to WhatsApp reason: {}",
+            er
+        ));
+    }
+    info!("audio sent");
+    Ok("audio sent".to_string())
+}
+
+pub async fn send_wa_video(
+    storage: &StorageClient,
+    wa_client: &Client,
+    target: &Jid,
+    video_path: String,
+) -> anyhow::Result<String> {
+    let mut payload = Message::default();
+    let mime = mime_guess::from_path(&video_path).first_or_octet_stream();
+    let extract_file = storage
+        .get_file("conversations".to_string(), video_path)
+        .await;
+    if let Err(er) = extract_file {
+        info!("failed getting file from storage:{}", er);
+        return Err(anyhow::anyhow!("Failed to extract file"));
+    }
+    let bytes = extract_file.unwrap();
+    let uploading = wa_client.upload(bytes.to_vec(), MediaType::Video).await;
+    if let Err(er) = uploading {
+        info!("failed uploading to WhatsApp:{}", er);
+        return Err(anyhow::anyhow!("Failed to upload to WhatsApp"));
+    }
+    let upload = uploading.unwrap();
+    payload.video_message = Some(Box::new(VideoMessage {
+        url: Some(upload.url),
+        mimetype: Some(mime.to_string()),
+        ..Default::default()
+    }));
+    let sent = wa_client.send_message(target.clone(), payload).await;
+    if let Err(er) = sent {
+        info!("failed sending message to WhatsApp reason: {}", er);
+        return Err(anyhow::anyhow!(
+            "Failed to send message to WhatsApp reason: {}",
+            er
+        ));
+    }
+    info!("video sent");
+    Ok("video sent".to_string())
+}
+
+pub async fn send_wa_image(
+    storage: &StorageClient,
+    wa_client: &Client,
+    target: &Jid,
+    video_path: String,
+) -> anyhow::Result<String> {
+    let mut payload = Message::default();
+    let mime = mime_guess::from_path(&video_path).first_or_octet_stream();
+    let extract_file = storage
+        .get_file("conversations".to_string(), video_path)
+        .await;
+    if let Err(er) = extract_file {
+        info!("failed getting file from storage:{}", er);
+        return Err(anyhow::anyhow!("Failed to extract file"));
+    }
+    let bytes = extract_file.unwrap();
+    let uploading = wa_client.upload(bytes.to_vec(), MediaType::Image).await;
+    if let Err(er) = uploading {
+        info!("failed uploading to WhatsApp:{}", er);
+        return Err(anyhow::anyhow!("Failed to upload image to WhatsApp"));
+    }
+    let upload = uploading.unwrap();
+    payload.image_message = Some(Box::new(ImageMessage {
+        url: Some(upload.url),
+        mimetype: Some(mime.to_string()),
+        ..Default::default()
+    }));
+    let sent = wa_client.send_message(target.clone(), payload).await;
+    if let Err(er) = sent {
+        info!("failed sending message to WhatsApp reason: {}", er);
+        return Err(anyhow::anyhow!(
+            "Failed to send message to WhatsApp reason: {}",
+            er
+        ));
+    }
+    info!("image sent");
+    Ok("image sent".to_string())
 }

@@ -583,6 +583,10 @@ pub async fn handle_chat_stream(
             user_id,
             text_content: user_message,
             image_url: None,
+            audio_url: None,
+            video_url: None,
+            sticker_url: None,
+            doc_url: None,
             source: crate::feature::message_processor::MessageSource::Web,
             v2: true,
         };
