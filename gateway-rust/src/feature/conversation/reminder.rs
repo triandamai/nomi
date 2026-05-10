@@ -74,6 +74,11 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
                     0,
                     0,
                     0,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
                 )
                 .await
                 {

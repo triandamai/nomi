@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-pub mod redis;
 pub mod conversation;
-pub mod realtime;
 pub mod graph;
 pub mod message_processor;
+pub mod realtime;
+pub mod redis;
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InboundMessage {
@@ -16,15 +17,20 @@ pub struct InboundMessage {
     pub message_id: String,
     pub text: String,
     pub channel: String,
-    pub video_url:Option<String>,
-    pub image_url:Option<String>,
-    pub audio_url:Option<String>,
-    pub doc_url:Option<String>,
-    pub sticker_url:Option<String>,
+    pub video_url: Option<String>,
+    pub image_url: Option<String>,
+    pub audio_url: Option<String>,
+    pub doc_url: Option<String>,
+    pub sticker_url: Option<String>,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
-
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FallBackPayload {
+    pub payload: Option<OutboundMessage>,
+    pub error: Option<String>,
+    pub code: i32,
+}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OutboundMessage {
     pub is_group: bool,
@@ -32,11 +38,11 @@ pub struct OutboundMessage {
     pub conversation_id: String,
     pub text: String,
     pub channel: String,
-    pub video_url:Option<String>,
-    pub image_url:Option<String>,
-    pub audio_url:Option<String>,
-    pub doc_url:Option<String>,
-    pub sticker_url:Option<String>,
+    pub video_url: Option<String>,
+    pub image_url: Option<String>,
+    pub audio_url: Option<String>,
+    pub doc_url: Option<String>,
+    pub sticker_url: Option<String>,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }

@@ -1,4 +1,5 @@
 use crate::feature::conversation::chat_model::MessageItem;
+use serde_json::json;
 use sqlx::PgPool;
 use tracing::info;
 use uuid::Uuid;
@@ -13,6 +14,11 @@ pub async fn save_message(
     prompt_tokens: i32,
     answer_tokens: i32,
     total_tokens: i32,
+    image_url: Option<String>,
+    video_url: Option<String>,
+    audio_url: Option<String>,
+    document_url: Option<String>,
+    sticker_url: Option<String>
 ) -> anyhow::Result<MessageItem> {
     let mut tx = pool.begin().await?;
 
@@ -27,7 +33,7 @@ pub async fn save_message(
         user_id,
         prompt_tokens,
         answer_tokens,
-        total_tokens,
+        total_tokens
     )
         .fetch_one(&mut *tx)
         .await;
@@ -39,9 +45,17 @@ pub async fn save_message(
 
     let row = save_message?;
 
+    let meta = Some(json!({
+        "last_image_url":image_url,
+        "last_video_url":video_url,
+        "last_audio_url":audio_url,
+        "last_doc_url":document_url,
+        "last_sticker_url":sticker_url
+    }));
     let save_convo = sqlx::query!(
-        "UPDATE conversations SET cumulative_tokens = COALESCE(cumulative_tokens, 0) + $1 WHERE id = $2",
+        "UPDATE conversations SET cumulative_tokens = COALESCE(cumulative_tokens, 0) + $1, metadata=$2 WHERE id = $3",
         total_tokens,
+        meta,
         conversation_id
     )
     .execute(&mut *tx)
@@ -62,9 +76,9 @@ pub async fn save_message(
                 role: role.to_string(),
                 content: content.to_string(),
                 thought: thought.map(|s| s.to_string()),
-                total_tokens:Some(total_tokens),
-                prompt_tokens:Some(prompt_tokens),
-                answer_tokens:Some(answer_tokens),
+                total_tokens: Some(total_tokens),
+                prompt_tokens: Some(prompt_tokens),
+                answer_tokens: Some(answer_tokens),
                 user_id,
                 created_at: row.created_at.unwrap_or_else(chrono::Utc::now),
             })

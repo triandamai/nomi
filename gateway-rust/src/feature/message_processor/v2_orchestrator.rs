@@ -458,6 +458,11 @@ You are operating in a multi-turn tool-use loop. You MUST wait to gather all nec
             function_result.prompt_tokens,
             function_result.answer_tokens,
             function_result.total_tokens,
+            None,
+            None,
+            None,
+            None,
+            None,
         ).await {
             let payload = json!({
                 "id": record.id,

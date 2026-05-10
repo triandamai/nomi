@@ -2,8 +2,6 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS vector;
 
-
-
 -- User
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -49,6 +47,11 @@ CREATE TABLE IF NOT EXISTS messages (
     role TEXT NOT NULL, -- 'user', 'assistant', 'system'
     content TEXT NOT NULL, -- Saved as Markdown for user
     thought TEXT DEFAULT '',
+    image_url VARCHAR(255),
+    video_url VARCHAR(255),
+    audio_url VARCHAR(255),
+    document_url VARCHAR(255),
+    sticker_url VARCHAR(255),
     embedding vector(1536), -- For RAG (Gemini embedding size)
     user_id UUID REFERENCES users(id),
     created_at TIMESTAMPTZ DEFAULT NOW()
