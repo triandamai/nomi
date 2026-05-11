@@ -246,8 +246,8 @@ impl WhatsAppWorker {
                                 "display_name": display_name,
                                 "phone_number": phone_number
                             });
-                            
-                            let original_meta = serde_json::json!(msg);
+
+                            let original_meta = serde_json::json!(info);
 
                             let inbound = InboundMessage {
                                 is_group: !is_private,

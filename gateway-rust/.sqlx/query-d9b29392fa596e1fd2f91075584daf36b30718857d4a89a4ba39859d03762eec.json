@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT c.channel_type, c.external_id, c.external_chat_id,c.user_id\n                            FROM channels c\n                            JOIN conversation_members cm ON c.user_id = cm.user_id\n                            WHERE cm.conversation_id = $1 AND c.channel_type = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "channel_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "external_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "external_chat_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "user_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "d9b29392fa596e1fd2f91075584daf36b30718857d4a89a4ba39859d03762eec"
+}
