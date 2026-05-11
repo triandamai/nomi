@@ -72,7 +72,7 @@ impl WhatsAppWorker {
                             let sender_id = info.source.sender.to_string();
                             let conversation_id = info.source.chat.to_string();
                             let message_id = info.id.to_string();
-                            let is_group = conversation_id.ends_with("@g.us");
+                            let is_group = info.source.is_group;
                             let is_private = !is_group;
                             let mut image_url: Option<String> = None;
                             let mut video_url: Option<String> = None;
