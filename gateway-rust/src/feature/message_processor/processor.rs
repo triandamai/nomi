@@ -666,11 +666,8 @@ pub async fn process_group_registration(
     );
 
     let mut tx = state.pool.begin().await?;
-
-    let existing_user =
-        channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.sender_id).await;
-
-    if let Err(err) = existing_user {
+    let existing_channel = channel_repo::get_channel_group_info(&state.pool, &msg.channel, &msg.sender_id).await;
+    if let Err(err) = existing_channel {
         info!("Only registered user can pair group:{}",err);
         let _ = state
             .publish_outbond(&OutboundMessage {
@@ -691,8 +688,8 @@ pub async fn process_group_registration(
         return Ok(());
     }
 
-    let existing_user = existing_user.unwrap();
-    if let None = existing_user {
+    let existing_channel = existing_channel?;
+    if let None = existing_channel {
         info!("Only registered user can pair group");
         let _ = state
             .publish_outbond(&OutboundMessage {
@@ -712,18 +709,8 @@ pub async fn process_group_registration(
             .await;
         return Ok(());
     }
-    let existing_user = existing_user.unwrap();
 
-    // 1. Check if already registered
-    let existing = sqlx::query!(
-        "SELECT id FROM channel_group WHERE external_group_id = $1 AND channel = $2",
-        msg.conversation_id,
-        msg.channel
-    )
-    .fetch_optional(&mut *tx)
-    .await?;
-
-    if existing.is_some() {
+    if existing_channel.is_some() {
         let _ = state
             .publish_outbond(&OutboundMessage {
                 is_group: true,
@@ -740,15 +727,12 @@ pub async fn process_group_registration(
             })
             .await;
 
-        let existing = existing.unwrap();
-        let _ = channel_repo::link_channel(
+        let existing_group_channel = existing_channel.unwrap();
+        let _ = channel_repo::link_channel_group(
             &state.pool,
             &msg.channel,
-            &msg.sender_id,
             &msg.conversation_id,
-            existing.id,
-            existing_user.user_id,
-            None,
+            existing_group_channel.conversation_id,
         )
         .await;
         return Ok(());
@@ -766,24 +750,14 @@ pub async fn process_group_registration(
     .fetch_one(&mut *tx)
     .await?;
 
-    // 3. Register in channel_group
-    sqlx::query!(
-        "INSERT INTO channel_group (conversation_id, channel, external_group_id) VALUES ($1, $2, $3)",
-        conv_id,
-        msg.channel,
-        msg.conversation_id
-    ).execute(&mut *tx).await?;
 
     let trx = tx.commit().await;
     if let Ok(_) = trx {
-        let _ = channel_repo::link_channel(
+        let _ = channel_repo::link_channel_group(
             &state.pool,
             &msg.channel,
-            &msg.sender_id,
             &msg.conversation_id,
-            trx_convo.id,
-            existing_user.user_id,
-            None,
+            trx_convo.id
         )
         .await;
     }

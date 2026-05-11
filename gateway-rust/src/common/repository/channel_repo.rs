@@ -6,6 +6,10 @@ pub struct ChannelInfo {
     pub conversation_id: Uuid,
 }
 
+pub struct ChannelGroupInfo {
+    pub conversation_id: Uuid,
+}
+
 pub async fn get_channel_info(
     pool: &PgPool,
     channel_type: &str,
@@ -27,6 +31,26 @@ pub async fn get_channel_info(
                 conversation_id: c,
             }));
         }
+    }
+    Ok(None)
+}
+
+pub async fn get_channel_group_info(
+    pool: &PgPool,
+    channel: &str,
+    external_chat_id: &str,
+) -> anyhow::Result<Option<ChannelGroupInfo>> {
+    let row = sqlx::query!(
+        "SELECT conversation_id FROM channel_group
+         WHERE channel = $1 AND external_group_id = $2",
+        channel,
+        external_chat_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(r) = row {
+        return Ok(Some(ChannelGroupInfo { conversation_id: r.conversation_id }));
     }
     Ok(None)
 }
@@ -70,8 +94,27 @@ pub async fn link_channel(
             display_name,
             user_id
         )
-            .execute(pool)
-            .await;
+        .execute(pool)
+        .await;
     }
+    Ok(())
+}
+
+pub async fn link_channel_group(
+    pool: &PgPool,
+    channel: &str,
+    external_group_id: &str,
+    conversation_id: Uuid,
+) -> anyhow::Result<()> {
+    let _ = sqlx::query!(
+        "INSERT INTO channel_group (conversation_id, channel, external_group_id, registered_at,is_active)
+         VALUES ($1, $2, $3, now(), true)
+         ON CONFLICT (channel,conversation_id,external_group_id)
+         DO UPDATE SET conversation_id = EXCLUDED.conversation_id, channel = EXCLUDED.channel",
+        conversation_id,
+        channel,
+        external_group_id
+    ).execute(pool).await;
+
     Ok(())
 }
