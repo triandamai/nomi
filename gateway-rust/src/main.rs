@@ -62,7 +62,7 @@ impl AppState {
                 sse_data,
             ))
             .await;
-        let _ = self.publish_outbond(redis_data);
+        let _ = self.publish_outbond(redis_data).await;
         Ok(())
     }
 
@@ -97,7 +97,7 @@ impl AppState {
             ))
             .await;
 
-        let _ = self.publish_outbond(redis_data);
+        let _ = self.publish_outbond(redis_data).await;
         Ok(())
     }
 
@@ -116,7 +116,7 @@ impl AppState {
                 sse_data,
             ))
             .await;
-        let _ = self.publish_presence(redis_data);
+        let _ = self.publish_presence(redis_data).await;
         Ok(())
     }
 
@@ -134,7 +134,7 @@ impl AppState {
             ))
             .await;
 
-        let _ = self.publish_presence(redis_data);
+        let _ = self.publish_presence(redis_data).await;
         Ok(())
     }
 
@@ -178,6 +178,7 @@ impl AppState {
                 error!("outbound publishing failed: {}", err);
             }
         };
+
     }
 
     pub async fn publish_presence(&self, redis_data: &PresenceMessage) {

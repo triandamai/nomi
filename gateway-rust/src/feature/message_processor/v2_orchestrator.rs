@@ -516,11 +516,13 @@ async fn process_v2_message_with_intent(
         };
 
         // Status: Model is thinking
-        send_status_update(
-            &state.pool,
-            conversation_id,
-            crate::prompts::PromptRegistry::status_thinking().to_string(),
-        );
+        if loop_count <= 1 {
+            send_status_update(
+                &state.pool,
+                conversation_id,
+                crate::prompts::PromptRegistry::status_thinking().to_string(),
+            );
+        }
 
         let result = crate::common::agent::send_prompt(state.gemini.as_ref(), current_actor).await;
 
@@ -722,9 +724,9 @@ async fn process_v2_message_with_intent(
                     };
                 }
                 MessageSource::Telegram { name } | MessageSource::WhatsApp { name } => {
-
+                    info!("send to channel :{}",name);
                     let channel_info = sqlx::query!(
-                        "SELECT c.channel_type, c.external_id, c.external_chat_id
+                        "SELECT c.channel_type, c.external_id, c.external_chat_id,c.user_id
                             FROM channels c
                             JOIN conversation_members cm ON c.user_id = cm.user_id
                             WHERE cm.conversation_id = $1 AND c.channel_type = $2",
@@ -749,7 +751,8 @@ async fn process_v2_message_with_intent(
                             metadata: None,
                         };
 
-                        if let Some(id) = user_id {
+                        if let Some(id) = channel.user_id {
+                            info!("sending to {}",id);
                             let _ = state
                                 .send_to_user(
                                     id.to_string().as_str(),

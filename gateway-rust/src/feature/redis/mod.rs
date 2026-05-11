@@ -74,6 +74,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         )
         .await;
 
+        info!("group registered status {}",registered);
         if !registered {
             // Only allow registration command in unregistered groups
             if text.starts_with("/register") {

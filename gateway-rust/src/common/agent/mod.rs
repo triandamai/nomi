@@ -31,7 +31,7 @@ pub async fn send_prompt(
             // info!("history text user:\n {} \n", history);
             // info!("memories:\n {} \n", memories);
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-            info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
+            // info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
             gemini
                 .generate_content()
                 .with_system_prompt(build_prompt)
@@ -51,7 +51,7 @@ pub async fn send_prompt(
             // info!("history text user:\n {} \n", history);
             // info!("memories:\n {} \n", memories);
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-            info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
+            // info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
 
             let mut builder = gemini
                 .generate_content()
