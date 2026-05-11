@@ -1,43 +1,36 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO messages (conversation_id, role, content, thought, user_id, created_at) VALUES ($1, 'user', $2, '', $3, now()) RETURNING id, role, content, thought, created_at, user_id",
+  "query": "\n        SELECT conversation_id, media_url, media_type, classification, created_at\n        FROM pending_media\n        WHERE conversation_id = $1\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
+        "name": "conversation_id",
         "type_info": "Uuid"
       },
       {
         "ordinal": 1,
-        "name": "role",
+        "name": "media_url",
         "type_info": "Text"
       },
       {
         "ordinal": 2,
-        "name": "content",
+        "name": "media_type",
         "type_info": "Text"
       },
       {
         "ordinal": 3,
-        "name": "thought",
+        "name": "classification",
         "type_info": "Text"
       },
       {
         "ordinal": 4,
         "name": "created_at",
         "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 5,
-        "name": "user_id",
-        "type_info": "Uuid"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Text",
         "Uuid"
       ]
     },
@@ -46,9 +39,8 @@
       false,
       false,
       true,
-      true,
-      true
+      false
     ]
   },
-  "hash": "c093fa0d795270a4b2872b3e74981d9381140d2db25e253c82b2d83b650dd011"
+  "hash": "0fa897fafc9999eeab92a56a4c7e3fa662029bcb88b54b4caf96dd5b04663ceb"
 }

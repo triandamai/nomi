@@ -51,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
         var("S3_ACCESS_KEY").unwrap_or("this-is-access-key".to_string()),
         var("S3_SECRET_KEY").unwrap_or("this-is-secret-and-important".to_string()),
         var("S3_URL").unwrap_or("http://localhost:4000".to_string()),
+        var("BASE_URL").unwrap_or("http://localhost:3000".to_string()),
     );
 
     let qr_code = Arc::new(Mutex::new(None));

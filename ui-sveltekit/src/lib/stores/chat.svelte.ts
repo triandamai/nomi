@@ -6,6 +6,7 @@ export type Message = {
     role: 'user' | 'assistant' | 'system';
     content: string;
     thought?: string;
+    image_url?: string;
     id: string;
     user_id?: string;
     total_tokens:number;
@@ -24,14 +25,16 @@ function createChatStore() {
 
     // Subscribe to SSE events via EventBus
     eventBus.subscribe('sse-message', (data) => {
-        if (data.content) {
+        if (data.id) {
             const find = messages.findIndex(v=>v.id == data.id)
+            console.log("find",find)
             if(find > 0){
                 messages[find] = ({
                     id: data.id || crypto.randomUUID(),
                     role: data.role || "assistant",
                     content: data.content,
                     thought: data.thought,
+                    image_url: data.image_url,
                     user_id: data.user_id,
                     total_tokens:data.total_tokens
                 } as Message)
@@ -41,6 +44,7 @@ function createChatStore() {
                     role: data.role || "assistant",
                     content: data.content,
                     thought: data.thought,
+                    image_url: data.image_url,
                     user_id: data.user_id,
                     total_tokens:data.total_tokens
                 } as Message)
@@ -125,7 +129,7 @@ function createChatStore() {
         },
 
 
-        async sendMessage(content: string) {
+        async sendMessage(content: string, media?: { image_url?: string, audio_url?: string, video_url?: string, doc_url?: string }) {
             conversationId = conversationStore.activeConversationId
             if (!conversationId) {
                 error = 'Conversation ID is missing';
@@ -136,7 +140,7 @@ function createChatStore() {
             error = null;
 
             try {
-                await chatApi.streamChat(content, conversationId);
+                await chatApi.streamChat(content, conversationId, media);
             } catch (err) {
                 error = err instanceof Error ? err.message : 'Failed to send message';
                 console.error('Chat Store Error:', err);

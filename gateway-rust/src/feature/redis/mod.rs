@@ -40,6 +40,7 @@ pub async fn start_redis_listener(state: AppState) -> anyhow::Result<()> {
                     }
                 };
 
+                info!("inbound \n data:{:?}\n", inbound);
                 let state_clone = state.clone();
                 tokio::spawn(async move {
                     if let Err(e) = handle_inbound_message(state_clone, inbound).await {
@@ -82,22 +83,6 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 "Group {} not registered, ignoring message",
                 msg.conversation_id
             );
-            let _ = state
-                .publish_outbond(&crate::feature::OutboundMessage {
-                    is_group: msg.is_group,
-                    sender_id: msg.sender_id.clone(),
-                    conversation_id: msg.conversation_id.clone(),
-                    text: "Whoops! 🏍️💨 Only a registered Nomi user can pair me with a group."
-                        .to_string(),
-                    channel: msg.channel.clone(),
-                    video_url: None,
-                    image_url: None,
-                    audio_url: None,
-                    doc_url: None,
-                    sticker_url: None,
-                    metadata: msg.metadata.clone(),
-                })
-                .await;
             return Ok(());
         }
 
@@ -109,7 +94,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
                 && msg.doc_url.is_none()
                 && msg.sticker_url.is_none())
         {
-            info!("Message is from registered group, but not mentioned, ignoring");
+            info!("Message is from registered group, but not mentioned or image, ignoring");
             return Ok(());
         }
     }
@@ -199,8 +184,13 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     )
     .await?;
 
+    let mut sse_payload = serde_json::to_value(&user_message)?;
+    if let Some(path) = user_message.image_url {
+        sse_payload["image_url"] = json!(state.storage.get_full_url(&path));
+    }
+
     let _ = state
-        .send_sse_to_user(user_id.to_string().as_str(), "message", json!(user_message))
+        .send_sse_to_user(user_id.to_string().as_str(), "message", sse_payload)
         .await;
 
     // 5. Trigger Agentic Loop

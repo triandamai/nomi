@@ -18,8 +18,18 @@ pub enum MediaClassification {
 pub struct ExpenseData {
     pub merchant: String,
     pub total: f64,
-    pub items: Vec<String>,
+    pub tax: Option<f64>,
+    pub service: Option<f64>,
+    pub discount: Option<f64>,
+    pub items: Vec<ExpenseItem>,
     pub category: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExpenseItem {
+    pub name: String,
+    pub quantity: i32,
+    pub amount: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

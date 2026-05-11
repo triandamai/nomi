@@ -1,3 +1,4 @@
+use dotenvy::var;
 use s3::creds::Credentials;
 use s3::request::ResponseData;
 use s3::{Bucket, Region};
@@ -7,18 +8,23 @@ use tracing::log::info;
 pub struct StorageClient {
     access_key: String,
     secret_key: String,
-    url_server: String,
+    url_server: String
 }
 
 impl StorageClient {
-    pub fn new(access_key: String, secret_key: String, url_server: String) -> StorageClient {
+    pub fn new(
+        access_key: String,
+        secret_key: String,
+        url_server: String
+    ) -> StorageClient {
         info!(target:"app::minio","Init minio");
         StorageClient {
             access_key,
             secret_key,
-            url_server,
+            url_server
         }
     }
+
 
     pub async fn get_file(
         &self,
@@ -179,5 +185,10 @@ impl StorageClient {
             Ok(_) => Ok("Successfully delete  file".to_string()),
             Err(e) => Err(format!("Error uploading file: {}", e)),
         }
+    }
+
+    pub fn get_full_url(&self, path: &str) -> String {
+        let base_url = var("PUBLIC_GATEWAY_URL").expect("http://localhost:8000/api");
+        format!("{}/files/{}",base_url, path)
     }
 }

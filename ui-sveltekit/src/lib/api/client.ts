@@ -67,7 +67,7 @@ export const chatApi = {
         });
     },
 
-    streamChat: async (message: string, conversationId: string) => {
+    streamChat: async (message: string, conversationId: string, media?: { image_url?: string, audio_url?: string, video_url?: string, doc_url?: string }) => {
         const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
         const response = await fetch(`${BASE_URL}/chat/stream`, {
             method: 'POST',
@@ -75,9 +75,33 @@ export const chatApi = {
                 'Content-Type': 'application/json',
                 ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             },
-            body: JSON.stringify({message, conversation_id: conversationId})
+            body: JSON.stringify({
+                message, 
+                conversation_id: conversationId,
+                ...media
+            })
         });
         return response;
+    },
+
+    uploadFile: async (file: File) => {
+        const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`${BASE_URL}/upload`, {
+            method: 'POST',
+            headers: {
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            },
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error('Upload failed');
+        }
+
+        return response.json();
     },
 
     streamEvent() {

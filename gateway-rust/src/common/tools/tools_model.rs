@@ -74,6 +74,7 @@ pub struct UpdateConversationSoulResponse {
 pub struct UpdateKnowledgeBaseParameters {
     pub content: String,
     pub category: String,
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -180,5 +181,41 @@ pub struct MakeStickerParameters {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MakeStickerResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct LogExpenseParameters {
+    pub merchant: String,
+    pub total: f64,
+    pub category: String,
+    pub items: Vec<LogExpenseItem>,
+    pub tax: Option<f64>,
+    pub service: Option<f64>,
+    pub discount: Option<f64>,
+    pub image_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct LogExpenseItem {
+    pub name: String,
+    pub quantity: i32,
+    pub amount: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetLatestMediaContextParameters {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetLatestMediaContextResponse {
+    pub media_url: Option<String>,
+    pub media_type: Option<String>,
+    pub classification: Option<String>,
+    pub created_at: Option<String>,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct LogExpenseResponse {
     pub content: String,
 }

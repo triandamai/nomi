@@ -8,15 +8,22 @@ pub struct StorageClient {
     access_key: String,
     secret_key: String,
     url_server: String,
+    base_url: String,
 }
 
 impl StorageClient {
-    pub fn new(access_key: String, secret_key: String, url_server: String) -> StorageClient {
+    pub fn new(
+        access_key: String,
+        secret_key: String,
+        url_server: String,
+        base_url: String,
+    ) -> StorageClient {
         info!(target:"app::minio","Init minio");
         StorageClient {
             access_key,
             secret_key,
             url_server,
+            base_url,
         }
     }
 
@@ -178,6 +185,19 @@ impl StorageClient {
         match upload {
             Ok(_) => Ok("Successfully delete  file".to_string()),
             Err(e) => Err(format!("Error uploading file: {}", e)),
+        }
+    }
+
+    pub fn get_full_url(&self, _bucket: &str, path: &str) -> String {
+        format!("{}/api/files/{}", self.base_url, path)
+    }
+
+    pub fn extract_path_from_url(&self, url: &str) -> String {
+        let prefix = format!("{}/api/files/", self.base_url);
+        if url.starts_with(&prefix) {
+            url.replacen(&prefix, "", 1)
+        } else {
+            url.to_string()
         }
     }
 }

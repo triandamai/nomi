@@ -1,9 +1,13 @@
 <script lang="ts">
     import {onMount} from 'svelte';
-    import {ChevronDown, ChevronRight, Cpu} from 'lucide-svelte';
+    import {ChevronDown, ChevronRight, Cpu, ExternalLink} from 'lucide-svelte';
     import {mdIt} from "$lib/utils";
+    import {env} from '$env/dynamic/public';
 
-    let { content = '', thought = '' } = $props();
+    let {content = '', thought = '', image_url = ''} = $props();
+
+    const BASE_URL = env.PUBLIC_GATEWAY_URL || 'http://localhost:8000/api';
+    const FILE_URL = BASE_URL.replace('/api', '') + '/api/files/';
 
     let renderedContent = $state('');
     let renderedThought = $state('');
@@ -25,9 +29,10 @@
         }
     }
 
+
     onMount(() => {
         init();
-        
+
         if (typeof window !== 'undefined' && !(window as any).copyToClipboard) {
             (window as any).copyToClipboard = (btn: HTMLButtonElement) => {
                 const code = decodeURIComponent(btn.getAttribute('data-code') || '');
@@ -54,19 +59,19 @@
 <div class="flex flex-col space-y-4">
     {#if thought}
         <div class="relative group/thought">
-            <button 
-                onclick={() => thoughtExpanded = !thoughtExpanded}
-                class="flex items-center gap-2 mb-2 text-[9px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
+            <button
+                    onclick={() => thoughtExpanded = !thoughtExpanded}
+                    class="flex items-center gap-2 mb-2 text-[9px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
             >
                 <Cpu class="w-3 h-3"/>
                 Deep Thought
                 {#if thoughtExpanded}
-                    <ChevronDown class="w-3 h-3" />
+                    <ChevronDown class="w-3 h-3"/>
                 {:else}
-                    <ChevronRight class="w-3 h-3" />
+                    <ChevronRight class="w-3 h-3"/>
                 {/if}
             </button>
-            
+
             {#if thoughtExpanded}
                 <div class="p-4 bg-zinc-900/30 border-l-2 border-zinc-700 rounded-r-lg text-xs text-zinc-500 font-mono italic leading-relaxed prose prose-invert prose-sm max-w-none animate-in fade-in slide-in-from-top-1 duration-200">
                     {@html renderedThought}
@@ -76,6 +81,23 @@
     {/if}
 
     <div class="prose prose-invert max-w-none prose-sm text-zinc-200">
+        {#if image_url}
+            <div class="mb-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900/50 group/image relative">
+                <img
+                        src={image_url.startsWith("http") ? image_url : FILE_URL + image_url}
+                        alt="Uploaded content"
+                        class="max-w-full h-auto max-h-[400px] object-contain mx-auto"
+                />
+                <a
+                        href={image_url.startsWith("http") ? image_url : FILE_URL + image_url}
+                        target="_blank"
+                        class="absolute top-2 right-2 p-2 bg-zinc-900/80 rounded-lg opacity-0 group-hover/image:opacity-100 transition-opacity hover:text-emerald-400"
+                        title="Open full size"
+                >
+                    <ExternalLink class="w-4 h-4"/>
+                </a>
+            </div>
+        {/if}
         {@html renderedContent}
     </div>
 </div>
@@ -91,9 +113,11 @@
         word-break: break-all;
         position: relative;
     }
+
     :global(.prose pre code) {
         white-space: pre-wrap;
     }
+
     :global(.prose :not(pre) > code) {
         background-color: #18181b;
         padding: 0.2rem 0.4rem;

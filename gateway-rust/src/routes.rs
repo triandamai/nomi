@@ -4,7 +4,7 @@ use crate::feature::conversation::{
     handle_chat_stream, handle_create_conversation, handle_create_pairing,
     handle_delete_conversation, handle_get_conversations, handle_get_messages,
     handle_get_soul_history, handle_get_user_channels,
-    handle_restore_conversation_soul, handle_update_conversation,
+    handle_restore_conversation_soul, handle_update_conversation, handle_upload_file, handle_get_file,
     auth::{handle_request_otp, handle_verify_otp, handle_get_profile, handle_logout},
     reminder::handle_get_reminders,
 };
@@ -17,6 +17,7 @@ use axum::routing::{delete, get, put};
 use axum::{Json, Router, routing::post};
 use crate::feature::graph::{handle_get_graph, handle_search_graph};
 use crate::feature::realtime::register_public_sse;
+use axum::extract::DefaultBodyLimit;
 
 pub fn create_router(state: AppState) -> Router {
     let protected_routes = Router::new()
@@ -38,12 +39,15 @@ pub fn create_router(state: AppState) -> Router {
         .route("/conversations/{id}/pairing", post(handle_create_pairing))
         .route("/graph", get(handle_get_graph))
         .route("/graph/search", get(handle_search_graph))
+        .route("/upload", post(handle_upload_file))
+        .layer(DefaultBodyLimit::max(20 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
     Router::new()
         .route("/auth/request-otp", post(handle_request_otp))
         .route("/auth/verify-otp", post(handle_verify_otp))
         .route("/realtime", get(register_public_sse))
+        .route("/files/{filename}", get(handle_get_file))
         .merge(protected_routes)
         .layer(axum::middleware::from_fn(method_not_allowed))
         .fallback(handle_fallback)

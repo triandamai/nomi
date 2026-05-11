@@ -36,7 +36,7 @@ services:
       retries: 5
 
   gateway:
-    image: ${DOCKERHUB_USERNAME}/nomi-gateway:v0.0.11
+    image: ${DOCKERHUB_USERNAME}/nomi-gateway:v0.0.21
     container_name: open-agent-gateway
     restart: unless-stopped
     environment:
@@ -51,6 +51,7 @@ services:
       - S3_URL=${S3_URL}
       - S3_SECRET_KEY=${S3_SECRET_KEY}
       - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - PUBLIC_GATEWAY_URL=${PUBLIC_GATEWAY_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -62,7 +63,7 @@ services:
           memory: 800M
 
   channel:
-    image: ${DOCKERHUB_USERNAME}/nomi-channel:v0.0.11
+    image: ${DOCKERHUB_USERNAME}/nomi-channel:v0.0.19
     container_name: open-agent-channel
     restart: unless-stopped
     environment:
@@ -73,6 +74,7 @@ services:
       - S3_URL=${S3_URL}
       - S3_SECRET_KEY=${S3_SECRET_KEY}
       - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - PUBLIC_GATEWAY_URL=${PUBLIC_GATEWAY_URL}
     volumes:
       - channel_data:/app/data
     depends_on:
@@ -84,7 +86,7 @@ services:
           memory: 500M
 
   web:
-    image: ${DOCKERHUB_USERNAME}/nomi-ui:v0.0.11
+    image: ${DOCKERHUB_USERNAME}/nomi-ui:v0.0.21
     container_name: open-agent-web
     restart: unless-stopped
     environment:

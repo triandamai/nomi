@@ -31,7 +31,7 @@ pub async fn send_prompt(
             // info!("history text user:\n {} \n", history);
             // info!("memories:\n {} \n", memories);
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-            // info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
+            info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
             gemini
                 .generate_content()
                 .with_system_prompt(build_prompt)
@@ -51,7 +51,7 @@ pub async fn send_prompt(
             // info!("history text user:\n {} \n", history);
             // info!("memories:\n {} \n", memories);
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-            // info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
+            info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
 
             let mut builder = gemini
                 .generate_content()
@@ -325,6 +325,26 @@ pub async fn execute_tools(
                         serde_json::from_value(args).unwrap();
                     dispatcher
                         .dispatch(ArtaTool::MakeSticker {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
+                "log_expense" => {
+                    let param: crate::common::tools::tools_model::LogExpenseParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::LogExpense {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
+                "get_latest_media_context"=>{
+                    let param: crate::common::tools::tools_model::GetLatestMediaContextParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::GetLatestMediaContext {
                             params: param,
                             user_message: user_message.clone(),
                         })

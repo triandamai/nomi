@@ -23,8 +23,8 @@ pub async fn save_message(
     let mut tx = pool.begin().await?;
 
     let save_message = sqlx::query!(
-        "INSERT INTO messages (conversation_id, role, content, thought, user_id,prompt_tokens,answer_tokens,total_tokens)
-         VALUES ($1, $2, $3, $4, $5,$6,$7,$8)
+        "INSERT INTO messages (conversation_id, role, content, thought, user_id, prompt_tokens, answer_tokens, total_tokens, image_url, video_url, audio_url, document_url, sticker_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING id, created_at",
         conversation_id,
         role,
@@ -33,7 +33,12 @@ pub async fn save_message(
         user_id,
         prompt_tokens,
         answer_tokens,
-        total_tokens
+        total_tokens,
+        image_url,
+        video_url,
+        audio_url,
+        document_url,
+        sticker_url
     )
         .fetch_one(&mut *tx)
         .await;
@@ -79,6 +84,11 @@ pub async fn save_message(
                 total_tokens: Some(total_tokens),
                 prompt_tokens: Some(prompt_tokens),
                 answer_tokens: Some(answer_tokens),
+                image_url,
+                video_url,
+                audio_url,
+                document_url,
+                sticker_url,
                 user_id,
                 created_at: row.created_at.unwrap_or_else(chrono::Utc::now),
             })

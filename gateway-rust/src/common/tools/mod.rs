@@ -4,15 +4,17 @@ use crate::Arc;
 use crate::common::tools::tools_model::{
     CreateReminderParameters, CreateReminderResponse, EvolveBootstrapParameters,
     EvolveBootstrapResponse, ExecuteReadQueryParameters, ExecuteReadQueryResponse,
-    GetInboxSummaryParameters, GetInboxSummaryResponse, ModifyReminderParameters,
-    ModifyReminderResponse, ParseToJsonParameters, ReadWebPageParameters, ReadWebPageResponse,
-    ReadWorkSpaceParameters, ReadWorkSpaceResponse, SearchWebParameters, SearchWebResponse,
-    ToolResult, UpdateConversationSoulParameters, UpdateConversationSoulResponse,
-    UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse, GetReminderStatsParameters, GetReminderStatsResponse,
-    SearchUsersParameters, SearchUsersResponse, UpdateUserProfileParameters, UpdateUserProfileResponse,
-    SendDirectMessageParameters, SendDirectMessageResponse,
-    MakeStickerParameters, MakeStickerResponse,
+    GetInboxSummaryParameters, GetInboxSummaryResponse, GetLatestMediaContextParameters,
+    GetLatestMediaContextResponse, GetReminderStatsParameters, GetReminderStatsResponse,
+    MakeStickerParameters, MakeStickerResponse, ModifyReminderParameters, ModifyReminderResponse,
+    ParseToJsonParameters, ReadWebPageParameters, ReadWebPageResponse, ReadWorkSpaceParameters,
+    ReadWorkSpaceResponse, SearchUsersParameters, SearchUsersResponse, SearchWebParameters,
+    SearchWebResponse, SendDirectMessageParameters, SendDirectMessageResponse, ToolResult,
+    UpdateConversationSoulParameters, UpdateConversationSoulResponse,
+    UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse, UpdateUserProfileParameters,
+    UpdateUserProfileResponse,
 };
+use crate::prompts::PromptRegistry;
 use gemini_rust::{FunctionDeclaration, Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -105,6 +107,16 @@ pub enum ArtaTool {
         params: MakeStickerParameters,
         user_message: String,
     },
+    #[serde(rename = "log_expense")]
+    LogExpense {
+        params: tools_model::LogExpenseParameters,
+        user_message: String,
+    },
+    #[serde(rename = "get_latest_media_context")]
+    GetLatestMediaContext {
+        params: GetLatestMediaContextParameters,
+        user_message: String,
+    },
 }
 
 #[derive(Clone)]
@@ -116,6 +128,7 @@ pub struct ToolDispatcher {
     gemini: Arc<gemini_rust::Gemini>,
     gemini_api_key: String,
     sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
+    storage: crate::common::storage::StorageClient,
 }
 
 impl ToolDispatcher {
@@ -127,6 +140,7 @@ impl ToolDispatcher {
         gemini: Arc<gemini_rust::Gemini>,
         gemini_api_key: String,
         sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
+        storage: crate::common::storage::StorageClient,
     ) -> Self {
         Self {
             pool,
@@ -136,6 +150,7 @@ impl ToolDispatcher {
             gemini,
             gemini_api_key,
             sse,
+            storage,
         }
     }
 
@@ -207,6 +222,14 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.make_sticker(params, user_message).await,
+            ArtaTool::LogExpense {
+                params,
+                user_message,
+            } => self.log_expense(params, user_message).await,
+            ArtaTool::GetLatestMediaContext {
+                params,
+                user_message,
+            } => self.get_latest_media_context(params, user_message).await,
         }
     }
 
@@ -265,7 +288,7 @@ impl ToolDispatcher {
 
         let create_reminder = FunctionDeclaration::new(
             "create_reminder",
-            "Schedule a new reminder for the user. Supports natural language descriptions and recurrence (daily, weekly, monthly).  Always convert relative times (e.g., 'in 2 minutes') into an absolute ISO 8601 UTC timestamp based on the current time provided in the system prompt.",
+            "Schedule a new reminder for the user. Supports natural language descriptions and recurrence (daily, weekly, monthly). ALWAYS use the format YYYY-MM-DDTHH:MM:SSZ for due_at. Do not use milliseconds or offsets unless explicitly required. Always convert relative times (e.g., 'in 2 minutes') into an absolute ISO 8601 UTC timestamp based on the current time provided in the system prompt.",
             None,
         )
             .with_parameters::<CreateReminderParameters>()
@@ -327,6 +350,22 @@ impl ToolDispatcher {
             .with_parameters::<MakeStickerParameters>()
             .with_response::<MakeStickerResponse>();
 
+        let log_expense = FunctionDeclaration::new(
+            "log_expense",
+            "Log a financial expense. DO NOT guess or hallucinate item names (like Lorem Ipsum) or prices. If data is missing or unclear, DO NOT use dummy data; instead, ask the user for clarification.",
+            None,
+        )
+            .with_parameters::<tools_model::LogExpenseParameters>()
+            .with_response::<tools_model::LogExpenseResponse>();
+
+        let get_latest_media_context = FunctionDeclaration::new(
+            "get_latest_media_context",
+            "Retrieve the latest media (image, video, etc.) context from the current conversation if not provided in the current turn.",
+            None,
+        )
+            .with_parameters::<GetLatestMediaContextParameters>()
+            .with_response::<GetLatestMediaContextResponse>();
+
         Tool::with_functions(vec![
             read_workspace_file,
             execute_read_query,
@@ -343,6 +382,8 @@ impl ToolDispatcher {
             update_user_profile,
             send_direct_message,
             make_sticker,
+            log_expense,
+            get_latest_media_context,
         ])
     }
 
@@ -1017,21 +1058,24 @@ impl ToolDispatcher {
         params: UpdateKnowledgeBaseParameters,
         user_message: String,
     ) -> ToolResult {
-        let summarizer_prompt = format!(
-            "Analyze the following content and return a JSON object with:
-1. 'summary': A concise summary of the facts or details.
-2. 'nodes': An array of entities ({{'id': 'unique_id', 'label': 'Entity Name', 'node_type': 'Technology|Project|Person|Organization|Memory'}}).
-3. 'edges': An array of relationships ({{'source': 'node_id', 'target': 'node_id', 'relationship': 'Description'}}).
+        // Intent-Media Linking
+        let image_url = if let Some(url) = params.image_url {
+            Some(self.storage.get_full_url(&url))
+        } else if let Some(conv_id) = self.conversation_id {
+            match crate::common::repository::pending_media_repo::get_pending_media(
+                &self.pool, conv_id,
+            )
+            .await
+            {
+                Ok(Some(media)) => Some(media.media_url),
+                _ => None,
+            }
+        } else {
+            None
+        };
 
-Rules:
-- 'id' should be lowercase and snake_case.
-- Focus on the core 'Atomic Truth' being saved.
-
-Content:
-{}
-",
-            params.content
-        );
+        let summarizer_prompt =
+            PromptRegistry::memory_consolidation_summarizer(params.content.as_str());
 
         let summary_res = self
             .gemini
@@ -1072,6 +1116,7 @@ Content:
             let metadata = serde_json::json!({
                 "type": "memory",
                 "category": params.category,
+                "image_url": image_url,
                 "graph": {
                     "nodes": parsed_data["nodes"],
                     "links": parsed_data["edges"]
@@ -1089,7 +1134,19 @@ Content:
 
             match save_result {
                 Ok(_) => {
-                    let msg = format!("Successfully saved to knowledge base: {}", params.category);
+                    // Cleanup: Clear pending media from table
+                    if let Some(conv_id) = self.conversation_id {
+                        let _ =
+                            crate::common::repository::pending_media_repo::delete_pending_media(
+                                &self.pool, conv_id,
+                            )
+                            .await;
+                    }
+
+                    let msg = format!(
+                        "Successfully saved to knowledge base: {}. Linked image cleared from pending queue.",
+                        params.category
+                    );
                     ToolResult {
                         error: "".to_string(),
                         success: true,
@@ -1402,8 +1459,11 @@ Content:
                                 "doc_url": None::<String>,
                                 "sticker_url": None::<String>,
                                 "metadata": None::<serde_json::Value>,
-                            }).to_string();
-                            let _ = conn.publish::<&str, String, ()>("nomi:outbound", payload).await;
+                            })
+                            .to_string();
+                            let _ = conn
+                                .publish::<&str, String, ()>("nomi:outbound", payload)
+                                .await;
                         }
                     }
                 }
@@ -1454,7 +1514,11 @@ Content:
                 }
 
                 let content = format!("Found {} users:\n{}", summary.lines().count(), summary);
-                self.publish_to_nomi_outbond(&format!("Searched for users matching '{}'", params.query)).await;
+                self.publish_to_nomi_outbond(&format!(
+                    "Searched for users matching '{}'",
+                    params.query
+                ))
+                .await;
 
                 ToolResult {
                     error: "".to_string(),
@@ -1505,7 +1569,10 @@ Content:
 
         match result {
             Ok(_) => {
-                let content = format!("Successfully updated display_name to '{}'", params.display_name);
+                let content = format!(
+                    "Successfully updated display_name to '{}'",
+                    params.display_name
+                );
                 self.publish_to_nomi_outbond(&content).await;
 
                 ToolResult {
@@ -1528,6 +1595,84 @@ Content:
         }
     }
 
+    async fn log_expense(
+        &self,
+        params: tools_model::LogExpenseParameters,
+        user_message: String,
+    ) -> ToolResult {
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                return ToolResult {
+                    error: "User not authenticated".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        if let None = self.conversation_id {
+            info!("Logging user {} to expense but conversation id is null", user_id);
+            return ToolResult {
+                error: "Conversation ID not found".to_string(),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            };
+        }
+
+        let expense_data = crate::feature::message_processor::media::ExpenseData {
+            merchant: params.merchant,
+            total: params.total,
+            tax: params.tax,
+            service: params.service,
+            discount: params.discount,
+            items: params
+                .items
+                .into_iter()
+                .map(|i| crate::feature::message_processor::media::ExpenseItem {
+                    name: i.name,
+                    quantity: i.quantity,
+                    amount: i.amount,
+                })
+                .collect(),
+            category: params.category,
+        };
+
+        match crate::feature::message_processor::processor::log_expense_transaction(
+            &self.pool,
+            user_id,
+            self.conversation_id,
+            &expense_data,
+        )
+        .await
+        {
+            Ok(_) => {
+                let content = format!(
+                    "Expense of {} at {} logged successfully under {}. Attached image linked and cleared from pending queue.",
+                    expense_data.total, expense_data.merchant, expense_data.category
+                );
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: content.clone(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        content,
+                        "log_expense".to_string(),
+                    ),
+                }
+            }
+            Err(e) => ToolResult {
+                error: format!("Failed to log expense: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        }
+    }
+
     async fn make_sticker(
         &self,
         params: MakeStickerParameters,
@@ -1535,47 +1680,47 @@ Content:
     ) -> ToolResult {
         let conversation_id = match self.conversation_id {
             Some(id) => id,
-            None => return ToolResult {
-                error: "Conversation ID not found in context".to_string(),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
+            None => {
+                return ToolResult {
+                    error: "Conversation ID not found in context".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
         };
 
         let image_url = if let Some(url) = params.image_url {
-            url
+            self.storage.get_full_url(&url)
         } else {
-            // Retrieve from conversation metadata
-            let res = sqlx::query!(
-                "SELECT metadata FROM conversations WHERE id = $1",
-                conversation_id
-            ).fetch_one(&self.pool).await;
-
-            match res {
-                Ok(rec) => {
-                    let metadata = rec.metadata.unwrap_or_default();
-                    if let Some(url) = metadata.get("last_image_url").and_then(|v| v.as_str()) {
-                        url.to_string()
-                    } else {
-                        return ToolResult {
+            // Retrieve from pending_media table
+            match crate::common::repository::pending_media_repo::get_pending_media(
+                &self.pool,
+                conversation_id,
+            )
+            .await
+            {
+                Ok(Some(media)) => media.media_url,
+                Ok(None) => {
+                    return ToolResult {
                             error: "No recent image found to turn into a sticker. Please upload an image first!".to_string(),
                             success: false,
                             content: "".to_string(),
                             follow_up_prompt: "".to_string(),
                         };
-                    }
                 }
-                Err(e) => return ToolResult {
-                    error: format!("Database error: {}", e),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                },
+                Err(e) => {
+                    return ToolResult {
+                        error: format!("Database error: {}", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                    };
+                }
             }
         };
 
-        info!("Generating sticker for URL: {}", image_url);
+        info!("Generating sticker for path: {}", image_url);
 
         // Find channels for this conversation
         let channel_info = sqlx::query!(
@@ -1584,7 +1729,7 @@ Content:
         ).fetch_all(&self.pool).await.unwrap_or_default();
 
         if channel_info.is_empty() {
-             return ToolResult {
+            return ToolResult {
                 error: "No active channels found for this conversation".to_string(),
                 success: false,
                 content: "".to_string(),
@@ -1609,7 +1754,15 @@ Content:
             let _ = self.redis_publish_outbound(&outbound).await;
         }
 
-        let content = "Sticker generation triggered! 🚀".to_string();
+        // Cleanup: Clear pending media from table
+        let _ = crate::common::repository::pending_media_repo::delete_pending_media(
+            &self.pool,
+            conversation_id,
+        )
+        .await;
+
+        let content = "Sticker generation triggered! 🚀 (Linked image cleared from pending queue)"
+            .to_string();
         ToolResult {
             error: "".to_string(),
             success: true,
@@ -1655,7 +1808,10 @@ Content:
                 // Publish to Redis using the helper method or direct client
                 let _ = self.redis_publish_outbound(&outbound).await;
 
-                let content = format!("Message sent to {}: {}", params.recipient_jid, params.content);
+                let content = format!(
+                    "Message sent to {}: {}",
+                    params.recipient_jid, params.content
+                );
                 ToolResult {
                     error: "".to_string(),
                     success: true,
@@ -1682,7 +1838,69 @@ Content:
         }
     }
 
-    async fn redis_publish_outbound(&self, outbound: &crate::feature::OutboundMessage) -> anyhow::Result<()> {
+    async fn get_latest_media_context(
+        &self,
+        _params: GetLatestMediaContextParameters,
+        user_message: String,
+    ) -> ToolResult {
+        info!("Retrieving latest media context");
+        let conversation_id = match self.conversation_id {
+            Some(id) => id,
+            None => {
+                return ToolResult {
+                    error: "No active conversation context".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        match crate::common::repository::pending_media_repo::get_pending_media(
+            &self.pool,
+            conversation_id,
+        )
+        .await
+        {
+            Ok(Some(media)) => {
+                let full_url = self.storage.get_full_url(&media.media_url);
+                let content = format!(
+                    "Latest media in conversation: URL: {}, Type: {}, Classification: {}, Created At: {}",
+                    full_url,
+                    media.media_type,
+                    media.classification.as_deref().unwrap_or("None"),
+                    media.created_at
+                );
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: content.clone(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        content,
+                        "get_latest_media_context".to_string(),
+                    ),
+                }
+            }
+            Ok(None) => ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: "No pending media found for this conversation.".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+            Err(e) => ToolResult {
+                error: format!("Database error: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
+        }
+    }
+
+    async fn redis_publish_outbound(
+        &self,
+        outbound: &crate::feature::OutboundMessage,
+    ) -> anyhow::Result<()> {
         if let Ok(redis_url) = std::env::var("REDIS_URL") {
             let client = crate::common::redis::RedisClient::new(&redis_url)?;
             client.publish_event("nomi:channel", outbound).await?;

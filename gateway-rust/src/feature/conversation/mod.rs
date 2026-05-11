@@ -7,6 +7,7 @@ use crate::feature::conversation::chat_model::{
 };
 use axum::Json;
 use axum::extract::{Path, State};
+use axum::response::IntoResponse;
 use chrono::Utc;
 
 use rand::distr::Alphanumeric;
@@ -173,7 +174,12 @@ pub async fn handle_get_messages(
                created_at as "created_at!",
                total_tokens,
                answer_tokens,
-               prompt_tokens
+               prompt_tokens,
+               image_url,
+               video_url,
+               audio_url,
+               document_url,
+               sticker_url
         FROM messages
         WHERE conversation_id = $1 AND created_at < $2
         ORDER BY created_at DESC
@@ -200,6 +206,33 @@ pub async fn handle_get_messages(
         Err(e) => {
             error!("Failed to fetch messages: {}", e);
             ApiResponse::failed("Failed to fetch messages")
+        }
+    }
+}
+
+pub async fn handle_get_file(
+    State(state): State<AppState>,
+    Path(filename): Path<String>,
+) -> impl axum::response::IntoResponse {
+    let bucket = "conversations";
+    match state.storage.get_file(bucket.to_string(), filename.clone()).await {
+        Ok(data) => {
+            let mime = mime_guess::from_path(&filename)
+                .first_or_octet_stream()
+                .to_string();
+            
+            (
+                [
+                    (axum::http::header::CONTENT_TYPE, mime),
+                    (axum::http::header::CACHE_CONTROL, "public, max-age=31536000".to_string()),
+                ],
+                data.to_vec(),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            error!("Failed to get file from storage: {}", e);
+            (axum::http::StatusCode::NOT_FOUND, "File not found").into_response()
         }
     }
 }
@@ -560,6 +593,47 @@ pub async fn handle_delete_conversation(
     }
 }
 
+pub async fn handle_upload_file(
+    State(state): State<AppState>,
+    mut multipart: axum::extract::Multipart,
+) -> ApiResponse<String> {
+    info!("Handling file upload...");
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or_default().to_string();
+        let file_name = field.file_name().unwrap_or_default().to_string();
+        let _content_type = field.content_type().unwrap_or_default().to_string();
+
+        if name == "file" {
+            let data = match field.bytes().await {
+                Ok(b) => b,
+                Err(e) => {
+                    error!("Failed to read multipart bytes: {}", e);
+                    return ApiResponse::failed(&format!("Failed to read file data: {}", e));
+                }
+            };
+
+            let bucket = "conversations";
+            let unique_name = format!("{}_{}", Uuid::new_v4(), file_name);
+
+            match state
+                .storage
+                .upload_byte(bucket.to_string(), unique_name.clone(), data.to_vec())
+                .await
+            {
+                Ok(_) => {
+                    info!("File uploaded successfully: {}", unique_name);
+                    return ApiResponse::ok(unique_name, "File uploaded successfully");
+                }
+                Err(e) => {
+                    error!("Storage upload error: {}", e);
+                    return ApiResponse::failed(&format!("Storage error: {}", e));
+                }
+            }
+        }
+    }
+
+    ApiResponse::failed("No file field found in request or multipart parsing error occurred")
+}
 pub async fn handle_chat_stream(
     State(state): State<AppState>,
     axum::extract::Extension(claims): axum::extract::Extension<
@@ -581,11 +655,11 @@ pub async fn handle_chat_stream(
             conversation_id,
             user_id,
             text_content: user_message,
-            image_url: None,
-            audio_url: None,
-            video_url: None,
+            image_url: payload.image_url,
+            audio_url: payload.audio_url,
+            video_url: payload.video_url,
             sticker_url: None,
-            doc_url: None,
+            doc_url: payload.doc_url,
             source: crate::feature::message_processor::MessageSource::Web,
             v2: true,
         };

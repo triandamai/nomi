@@ -7,6 +7,10 @@ use uuid::Uuid;
 pub struct ChatRequest {
     pub conversation_id: Uuid,
     pub message: String,
+    pub image_url: Option<String>,
+    pub audio_url: Option<String>,
+    pub video_url: Option<String>,
+    pub doc_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -62,6 +66,11 @@ pub struct MessageItem {
     pub answer_tokens: Option<i32>,
     pub prompt_tokens: Option<i32>,
     pub thought: Option<String>,
+    pub image_url: Option<String>,
+    pub video_url: Option<String>,
+    pub audio_url: Option<String>,
+    pub document_url: Option<String>,
+    pub sticker_url: Option<String>,
     pub user_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }

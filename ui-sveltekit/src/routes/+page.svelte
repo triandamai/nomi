@@ -1,7 +1,8 @@
 <script lang="ts">
-    import {Send, Bot, User, Sparkles, MessageSquarePlus, Share2} from 'lucide-svelte';
+    import {Send, Bot, User, Sparkles, MessageSquarePlus, Share2, Paperclip, X, Image as ImageIcon, FileAudio, FileText, Loader2} from 'lucide-svelte';
     import {chatStore} from '$lib/stores/chat.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
+    import {chatApi} from '$lib/api/client';
     import ToolResult from '$lib/components/ToolResult.svelte';
     import ChatBubble from '$lib/components/ChatBubble.svelte';
     import {onMount, tick} from 'svelte';
@@ -11,6 +12,9 @@
     let inputMessage = $state('');
     let scrollContainer = $state<HTMLElement | null>(null);
     let isNearBottom = true;
+    let fileInput = $state<HTMLInputElement | null>(null);
+    let selectedFile = $state<File | null>(null);
+    let isUploading = $state(false);
 
     function handleScroll() {
         if (!scrollContainer) return;
@@ -41,14 +45,48 @@
     });
 
     async function handleSubmit() {
-        if (!inputMessage.trim() || chatStore.loading || !conversationStore.activeConversationId) return;
+        if ((!inputMessage.trim() && !selectedFile) || chatStore.loading || !conversationStore.activeConversationId) return;
+        
+        let media = undefined;
+        if (selectedFile) {
+            isUploading = true;
+            try {
+                const res = await chatApi.uploadFile(selectedFile);
+                const fileUrl = res.data; // This is the unique_name from backend
+                
+                const type = selectedFile.type;
+                if (type.startsWith('image/')) media = { image_url: fileUrl };
+                else if (type.startsWith('audio/')) media = { audio_url: fileUrl };
+                else if (type.startsWith('video/')) media = { video_url: fileUrl };
+                else media = { doc_url: fileUrl };
+            } catch (err) {
+                console.error("Upload failed", err);
+                return;
+            } finally {
+                isUploading = false;
+            }
+        }
+
         const msg = inputMessage;
         inputMessage = '';
+        selectedFile = null;
         
         // Force scroll to bottom when user sends a message
         isNearBottom = true;
         
-        await chatStore.sendMessage(msg);
+        await chatStore.sendMessage(msg, media);
+    }
+
+    function handleFileSelect(e: Event) {
+        const target = e.target as HTMLInputElement;
+        if (target.files && target.files.length > 0) {
+            selectedFile = target.files[0];
+        }
+    }
+
+    function removeFile() {
+        selectedFile = null;
+        if (fileInput) fileInput.value = '';
     }
 
     function handleKeydown(e: KeyboardEvent) {
@@ -154,7 +192,7 @@
                         </div>
                         {/if}
 
-                        <ChatBubble content={msg.content} thought={msg.thought} />
+                        <ChatBubble content={msg.content} thought={msg.thought} image_url={msg.image_url} />
                     </div>
                 </div>
             {/each}
@@ -222,6 +260,33 @@
     <div class="max-w-4xl mx-auto">
         <div class="relative transition-all duration-500 rounded-2xl {chatStore.isTyping ? 'ring-2 ring-emerald-500/20 shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)]' : ''}">
             <div class="relative bg-zinc-900/50 border border-zinc-800 rounded-2xl p-1 shadow-2xl focus-within:border-zinc-700 transition-colors">
+                
+                {#if selectedFile}
+                    <div class="px-5 pt-4">
+                        <div class="inline-flex items-center gap-3 p-2 bg-zinc-800/50 border border-zinc-700 rounded-xl animate-in fade-in slide-in-from-left-2">
+                            <div class="w-10 h-10 bg-zinc-900 rounded-lg flex items-center justify-center border border-zinc-700">
+                                {#if selectedFile.type.startsWith('image/')}
+                                    <ImageIcon class="w-5 h-5 text-emerald-500" />
+                                {:else if selectedFile.type.startsWith('audio/')}
+                                    <FileAudio class="w-5 h-5 text-blue-500" />
+                                {:else}
+                                    <FileText class="w-5 h-5 text-zinc-400" />
+                                {/if}
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[11px] font-bold text-zinc-200 truncate max-w-[150px]">{selectedFile.name}</span>
+                                <span class="text-[9px] text-zinc-500 uppercase">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                            </div>
+                            <button 
+                                onclick={removeFile}
+                                class="p-1 hover:bg-zinc-700 rounded-lg transition-colors ml-1"
+                            >
+                                <X class="w-4 h-4 text-zinc-500" />
+                            </button>
+                        </div>
+                    </div>
+                {/if}
+
                 <textarea
                         bind:value={inputMessage}
                         onkeydown={handleKeydown}
@@ -231,6 +296,19 @@
 
                 <div class="flex items-center justify-between px-3 pb-2 pt-1">
                     <div class="flex items-center gap-1">
+                        <input 
+                            type="file" 
+                            bind:this={fileInput} 
+                            onchange={handleFileSelect} 
+                            class="hidden" 
+                            accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt"
+                        />
+                        <button 
+                            onclick={() => fileInput?.click()}
+                            class="p-2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                        >
+                            <Paperclip class="w-4 h-4"/>
+                        </button>
                         <button class="p-2 text-zinc-500 hover:text-zinc-300 transition-colors">
                             <Sparkles class="w-4 h-4"/>
                         </button>
@@ -238,11 +316,16 @@
 
                     <button
                             onclick={handleSubmit}
-                            disabled={!inputMessage.trim() || chatStore.loading}
+                            disabled={(!inputMessage.trim() && !selectedFile) || chatStore.loading || isUploading}
                             class="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-950 text-xs font-bold hover:bg-zinc-200 disabled:opacity-20 transition-all shadow-lg"
                     >
-                        Send
-                        <Send class="w-3.5 h-3.5"/>
+                        {#if isUploading}
+                            <Loader2 class="w-3.5 h-3.5 animate-spin"/>
+                            Uploading...
+                        {:else}
+                            Send
+                            <Send class="w-3.5 h-3.5"/>
+                        {/if}
                     </button>
                 </div>
             </div>
