@@ -29,6 +29,8 @@ services:
       resources:
         limits:
           memory: 300M
+    ports:
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -36,7 +38,7 @@ services:
       retries: 5
 
   gateway:
-    image: ${DOCKERHUB_USERNAME}/nomi-gateway:v0.0.21
+    image: ${DOCKERHUB_USERNAME}/nomi-gateway:v0.0.22
     container_name: open-agent-gateway
     restart: unless-stopped
     environment:
@@ -86,7 +88,7 @@ services:
           memory: 500M
 
   web:
-    image: ${DOCKERHUB_USERNAME}/nomi-ui:v0.0.21
+    image: ${DOCKERHUB_USERNAME}/nomi-ui:v0.0.22
     container_name: open-agent-web
     restart: unless-stopped
     environment:

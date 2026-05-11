@@ -3,10 +3,12 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MessageSource {
-    Web,
-    Telegram,
-    WhatsApp,
-    Other(String),
+    Web{name: String},
+    Telegram{name: String},
+    WhatsApp{name: String},
+    Other{
+        name: String
+    },
 }
 
 #[derive(Debug, Clone)]

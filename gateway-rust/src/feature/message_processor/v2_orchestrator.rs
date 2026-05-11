@@ -429,24 +429,24 @@ async fn process_v2_message_with_intent(
     let mut history_text = String::new();
     for msg in history.into_iter().rev() {
         let image_url = match msg.image_url {
-            Some(path) => state.storage.get_full_url(&path),
+            Some(path) => format!(" - Image: {} \n", state.storage.get_full_url(&path)),
             None => "".to_string(),
         };
         let video_url = match msg.video_url {
-            Some(path) => state.storage.get_full_url(&path),
+            Some(path) => format!("- Video: {} \n", state.storage.get_full_url(&path)),
             None => "".to_string(),
         };
         let audio_url = match msg.audio_url {
-            Some(path) => state.storage.get_full_url(&path),
+            Some(path) => format!(" - Audio: {} \n", state.storage.get_full_url(&path)),
             None => "".to_string(),
         };
         let document_url = match msg.document_url {
-            Some(path) => state.storage.get_full_url(&path),
+            Some(path) => format!("- Document: {} \n", state.storage.get_full_url(&path)),
             None => "".to_string(),
         };
 
         let sticker_url = match msg.sticker_url {
-            Some(path) => state.storage.get_full_url(&path),
+            Some(path) => format!("- Sticker: {} \n", state.storage.get_full_url(&path)),
             None => "".to_string(),
         };
         let role_label = match msg.role.as_str() {
@@ -458,13 +458,7 @@ async fn process_v2_message_with_intent(
             _ => "System".to_string(),
         };
         history_text.push_str(&format!(
-            "-[{}] {}: {}.\n
-                - Image: {} \n
-                - Video: {} \n
-                - Audio: {} \n
-                - Document: {} \n
-                - Sticker: {} \n\
-            ",
+            "-[{}] {}: {}.\n {}{}{}{}{}",
             msg.created_at
                 .unwrap_or(Utc::now())
                 .format("%Y-%m-%d %H:%M")
@@ -711,33 +705,35 @@ async fn process_v2_message_with_intent(
                         "created_at": record.created_at
             });
 
-
             match msg.source {
-                MessageSource::Web => {
+                MessageSource::Web { name } => {
+                    info!("Channel other:{}",name);
                     let _ = match user_id {
                         None => state.broadcast_sse("message", payload.clone()).await,
                         Some(ref id) => {
                             state
-                                .send_sse_to_user(id.to_string().as_str(), "message", payload.clone())
+                                .send_sse_to_user(
+                                    id.to_string().as_str(),
+                                    "message",
+                                    payload.clone(),
+                                )
                                 .await
                         }
                     };
-
                 }
-                MessageSource::Telegram | MessageSource::WhatsApp => {
-                    let channel = match msg.source {
-                        MessageSource::Telegram => "telegram",
-                        MessageSource::WhatsApp => "whatsapp",
-                        _ => ""
-                    };
+                MessageSource::Telegram { name } | MessageSource::WhatsApp { name } => {
+
                     let channel_info = sqlx::query!(
                         "SELECT c.channel_type, c.external_id, c.external_chat_id
                             FROM channels c
                             JOIN conversation_members cm ON c.user_id = cm.user_id
                             WHERE cm.conversation_id = $1 AND c.channel_type = $2",
-                            conversation_id,
-                            channel
-                        ).fetch_all(&state.pool).await.unwrap_or_default();
+                        conversation_id,
+                        name
+                    )
+                    .fetch_all(&state.pool)
+                    .await
+                    .unwrap_or_default();
                     for channel in channel_info {
                         let outbound = OutboundMessage {
                             is_group: false,
@@ -754,21 +750,28 @@ async fn process_v2_message_with_intent(
                         };
 
                         if let Some(id) = user_id {
-                           let _ = state.send_to_user(
-                                id.to_string().as_str(),
-                                "nomi:outbound",
-                                payload.clone(),
-                                &outbound
-                            ).await;
+                            let _ = state
+                                .send_to_user(
+                                    id.to_string().as_str(),
+                                    "message",
+                                    payload.clone(),
+                                    &outbound,
+                                )
+                                .await;
                         }
                     }
                 }
-                MessageSource::Other(_) => {
+                MessageSource::Other { name } => {
+                    info!("channel other :{}",name);
                     let _ = match user_id {
                         None => state.broadcast_sse("message", payload.clone()).await,
                         Some(ref id) => {
                             state
-                                .send_sse_to_user(id.to_string().as_str(), "message", payload.clone())
+                                .send_sse_to_user(
+                                    id.to_string().as_str(),
+                                    "message",
+                                    payload.clone(),
+                                )
                                 .await
                         }
                     };
@@ -780,7 +783,8 @@ async fn process_v2_message_with_intent(
         let gemini = state.gemini.clone();
         let gemini_api_key = state.gemini_api_key.clone();
         tokio::spawn(async move {
-            let _ = trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id).await;
+            let _ =
+                trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id).await;
         });
 
         let payload = json!({

@@ -211,9 +211,9 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             .send_presence_to_user(
                 user_id.to_string().as_str(),
                 json! ({
-                "conversation_id": external_conversation_id,
-                "is_typing": true,
-                "user_id": "nomi"
+                    "conversation_id": external_conversation_id,
+                    "is_typing": true,
+                    "user_id": "nomi"
                 }),
                 &crate::feature::PresenceMessage {
                     sender_id: sender_id.clone(),
@@ -235,9 +235,15 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             sticker_url,
             doc_url: document_url,
             source: match msg.channel.as_str() {
-                "telegram" => crate::feature::message_processor::MessageSource::Telegram,
-                "whatsapp" => crate::feature::message_processor::MessageSource::WhatsApp,
-                _ => crate::feature::message_processor::MessageSource::Other(msg.channel),
+                "telegram" => crate::feature::message_processor::MessageSource::Telegram{
+                    name:msg.channel
+                },
+                "whatsapp" => crate::feature::message_processor::MessageSource::WhatsApp{
+                    name:msg.channel
+                },
+                _ => crate::feature::message_processor::MessageSource::Other{
+                    name:msg.channel
+                },
             },
             v2: true,
         };

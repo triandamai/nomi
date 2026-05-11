@@ -192,6 +192,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 "display_name": display_name,
                 "username": username
             });
+            let original_meta = serde_json::json!(msg);
 
             let inbound = InboundMessage {
                 message_id,
@@ -208,6 +209,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 doc_url,
                 sticker_url,
                 metadata: Some(metadata),
+                original_meta:Some(original_meta)
             };
 
             info!("nomi:inbound => {:?}", inbound);

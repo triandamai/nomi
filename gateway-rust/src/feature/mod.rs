@@ -24,6 +24,8 @@ pub struct InboundMessage {
     pub sticker_url: Option<String>,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    pub original_meta: Option<serde_json::Value>,
 }
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FallBackPayload {

@@ -246,6 +246,8 @@ impl WhatsAppWorker {
                                 "display_name": display_name,
                                 "phone_number": phone_number
                             });
+                            
+                            let original_meta = serde_json::json!(msg);
 
                             let inbound = InboundMessage {
                                 is_group: !is_private,
@@ -262,6 +264,7 @@ impl WhatsAppWorker {
                                 sticker_url,
                                 channel: "whatsapp".to_string(),
                                 metadata: Some(metadata),
+                                original_meta: Some(original_meta)
                             };
 
                             info!("nomi:inbound => {:?}", &inbound);

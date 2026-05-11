@@ -660,7 +660,9 @@ pub async fn handle_chat_stream(
             video_url: payload.video_url,
             sticker_url: None,
             doc_url: payload.doc_url,
-            source: crate::feature::message_processor::MessageSource::Web,
+            source: crate::feature::message_processor::MessageSource::Web{
+                name:"web".to_string(),
+            },
             v2: true,
         };
 
