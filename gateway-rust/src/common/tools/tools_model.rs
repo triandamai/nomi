@@ -187,7 +187,7 @@ pub struct MakeStickerResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LogExpenseParameters {
     pub merchant: String,
-    pub total: f64,
+    pub total: Option<f64>,
     pub category: String,
     pub items: Vec<LogExpenseItem>,
     pub tax: Option<f64>,
@@ -213,6 +213,20 @@ pub struct GetLatestMediaContextResponse {
     pub classification: Option<String>,
     pub created_at: Option<String>,
     pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AnalyzeMediaParameters {
+    pub prompt: String,
+    pub media_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AnalyzeMediaResponse {
+    pub content: String,
+    pub prompt_tokens: Option<i32>,
+    pub candidates_tokens: Option<i32>,
+    pub total_tokens: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

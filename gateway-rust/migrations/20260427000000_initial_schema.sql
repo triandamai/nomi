@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     soul_content TEXT, -- Saved as Markdown
     bootstrap_content TEXT, -- Saved as Markdown
     channel_group_id TEXT,
+    conversation_type TEXT NOT NULL DEFAULT 'private',
     user_id UUID REFERENCES users(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()

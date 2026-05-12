@@ -5,17 +5,18 @@ use crate::common::tools::tools_model::{
     CreateReminderParameters, CreateReminderResponse, EvolveBootstrapParameters,
     EvolveBootstrapResponse, ExecuteReadQueryParameters, ExecuteReadQueryResponse,
     GetInboxSummaryParameters, GetInboxSummaryResponse, GetLatestMediaContextParameters,
-    GetLatestMediaContextResponse, GetReminderStatsParameters, GetReminderStatsResponse,
-    MakeStickerParameters, MakeStickerResponse, ModifyReminderParameters, ModifyReminderResponse,
-    ParseToJsonParameters, ReadWebPageParameters, ReadWebPageResponse, ReadWorkSpaceParameters,
-    ReadWorkSpaceResponse, SearchUsersParameters, SearchUsersResponse, SearchWebParameters,
-    SearchWebResponse, SendDirectMessageParameters, SendDirectMessageResponse, ToolResult,
+    GetReminderStatsParameters, GetReminderStatsResponse, MakeStickerParameters,
+    MakeStickerResponse, ModifyReminderParameters, ModifyReminderResponse, ParseToJsonParameters,
+    ReadWebPageParameters, ReadWebPageResponse, ReadWorkSpaceParameters, ReadWorkSpaceResponse,
+    SearchUsersParameters, SearchUsersResponse, SearchWebParameters, SearchWebResponse,
+    SendDirectMessageParameters, SendDirectMessageResponse, ToolResult,
     UpdateConversationSoulParameters, UpdateConversationSoulResponse,
     UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse, UpdateUserProfileParameters,
     UpdateUserProfileResponse,
 };
 use crate::prompts::PromptRegistry;
-use gemini_rust::{FunctionDeclaration, Tool};
+use dotenvy::var;
+use gemini_rust::{FunctionDeclaration, Tool, UsageMetadata};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sqlx::{Column, Pool, Postgres, Row};
@@ -115,6 +116,11 @@ pub enum ArtaTool {
     #[serde(rename = "get_latest_media_context")]
     GetLatestMediaContext {
         params: GetLatestMediaContextParameters,
+        user_message: String,
+    },
+    #[serde(rename = "analyze_media")]
+    AnalyzeMedia {
+        params: tools_model::AnalyzeMediaParameters,
         user_message: String,
     },
 }
@@ -230,6 +236,10 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.get_latest_media_context(params, user_message).await,
+            ArtaTool::AnalyzeMedia {
+                params,
+                user_message,
+            } => self.analyze_media(params, user_message).await,
         }
     }
 
@@ -358,13 +368,21 @@ impl ToolDispatcher {
             .with_parameters::<tools_model::LogExpenseParameters>()
             .with_response::<tools_model::LogExpenseResponse>();
 
-        let get_latest_media_context = FunctionDeclaration::new(
-            "get_latest_media_context",
-            "Retrieve the latest media (image, video, etc.) context from the current conversation if not provided in the current turn.",
+        let analyze_media = FunctionDeclaration::new(
+            "analyze_media",
+            "Analyze a media file (image, video, audio, or document) and provide information based on a prompt. Use this when the user asks questions about a file, wants to read text from it, or needs a description/summary. If no media_url is provided, it will use the most recently uploaded file in the conversation.",
             None,
         )
-            .with_parameters::<GetLatestMediaContextParameters>()
-            .with_response::<GetLatestMediaContextResponse>();
+            .with_parameters::<tools_model::AnalyzeMediaParameters>()
+            .with_response::<tools_model::AnalyzeMediaResponse>();
+
+        // let get_latest_media_context = FunctionDeclaration::new(
+        //     "get_latest_media_context",
+        //     "Retrieve the latest media (image, video, etc.) context from the current conversation if not provided in the current turn.",
+        //     None,
+        // )
+        //     .with_parameters::<GetLatestMediaContextParameters>()
+        //     .with_response::<GetLatestMediaContextResponse>();
 
         Tool::with_functions(vec![
             read_workspace_file,
@@ -383,7 +401,8 @@ impl ToolDispatcher {
             send_direct_message,
             make_sticker,
             log_expense,
-            get_latest_media_context,
+            analyze_media,
+            // get_latest_media_context,
         ])
     }
 
@@ -1085,7 +1104,7 @@ impl ToolDispatcher {
             .await;
 
         let parsed_data = match summary_res {
-            Ok(resp) => {
+            Ok(ref resp) => {
                 let raw_json = resp.text();
                 if let Some(start) = raw_json.find('{') {
                     if let Some(end) = raw_json.rfind('}') {
@@ -1095,14 +1114,14 @@ impl ToolDispatcher {
                             "edges": []
                         }))
                     } else {
-                        serde_json::json!({"summary": params.content, "nodes": [], "edges": []})
+                        json!({"summary": params.content, "nodes": [], "edges": []})
                     }
                 } else {
-                    serde_json::json!({"summary": params.content, "nodes": [], "edges": []})
+                    json!({"summary": params.content, "nodes": [], "edges": []})
                 }
             }
             Err(_) => {
-                serde_json::json!({"summary": params.content, "nodes": [], "edges": []})
+                json!({"summary": params.content, "nodes": [], "edges": []})
             }
         };
 
@@ -1113,7 +1132,7 @@ impl ToolDispatcher {
 
         if let Ok(embedding) = crate::rag::get_embedding(&self.gemini_api_key, &summary_text).await
         {
-            let metadata = serde_json::json!({
+            let metadata = json!({
                 "type": "memory",
                 "category": params.category,
                 "image_url": image_url,
@@ -1123,59 +1142,112 @@ impl ToolDispatcher {
                 }
             });
 
-            let save_result = crate::rag::save_to_knowledge_base(
-                &self.pool,
-                &summary_text,
-                embedding,
-                Some(metadata),
-                self.conversation_id,
-            )
-            .await;
+            let usage = summary_res.map(|s| s.usage_metadata).map_or_else(
+                |_| UsageMetadata {
+                    prompt_token_count: None,
+                    candidates_token_count: None,
+                    total_token_count: None,
+                    thoughts_token_count: None,
+                    prompt_tokens_details: None,
+                    cached_content_token_count: None,
+                    cache_tokens_details: None,
+                },
+                |r| {
+                    r.unwrap_or(UsageMetadata {
+                        prompt_token_count: None,
+                        candidates_token_count: None,
+                        total_token_count: None,
+                        thoughts_token_count: None,
+                        prompt_tokens_details: None,
+                        cached_content_token_count: None,
+                        cache_tokens_details: None,
+                    })
+                },
+            );
+            let p_tokens = usage.prompt_token_count.unwrap_or(0);
+            let a_tokens = usage.candidates_token_count.unwrap_or(0);
+            let t_tokens = usage.total_token_count.unwrap_or(0);
 
-            match save_result {
-                Ok(_) => {
-                    // Cleanup: Clear pending media from table
-                    if let Some(conv_id) = self.conversation_id {
-                        let _ =
-                            crate::common::repository::pending_media_repo::delete_pending_media(
-                                &self.pool, conv_id,
+            if let Ok(mut tx) = self.pool.begin().await {
+                let save_result = crate::rag::save_to_knowledge_base(
+                    &self.pool,
+                    &summary_text,
+                    embedding.embedding.values,
+                    Some(metadata),
+                    self.conversation_id,
+                    p_tokens,
+                    a_tokens,
+                    t_tokens,
+                )
+                    .await;
+
+                match save_result {
+                    Ok(_) => {
+                        if let Some(conv_id) = self.conversation_id {
+                            let _ = sqlx::query!(
+                                "UPDATE conversations SET cumulative_tokens = cumulative_tokens + $1 WHERE id = $2",
+                                t_tokens,
+                                conv_id
                             )
-                            .await;
-                    }
+                                .execute(&mut *tx)
+                                .await;
 
-                    let msg = format!(
-                        "Successfully saved to knowledge base: {}. Linked image cleared from pending queue.",
-                        params.category
-                    );
-                    ToolResult {
-                        error: "".to_string(),
-                        success: true,
-                        content: msg.clone(),
-                        follow_up_prompt: build_follow_up_prompt(
-                            user_message,
-                            msg,
-                            "update_knowledge_base".to_string(),
-                        ),
+                            // Cleanup: Clear pending media from table
+                            let _ =
+                                crate::common::repository::pending_media_repo::delete_pending_media(
+                                    &self.pool, conv_id,
+                                )
+                                    .await;
+                        }
+
+                        let _ = tx.commit().await;
+
+                        let msg = format!(
+                            "Successfully saved to knowledge base: {}. Linked image cleared from pending queue.",
+                            params.category
+                        );
+                        ToolResult {
+                            error: "".to_string(),
+                            success: true,
+                            content: msg.clone(),
+                            follow_up_prompt: build_follow_up_prompt(
+                                user_message,
+                                msg,
+                                "update_knowledge_base".to_string(),
+                            ),
+                        }
+                    }
+                    Err(e) => {
+                        let msg = format!("Error saving to knowledge base: {}", e);
+                        ToolResult {
+                            error: msg.clone(),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: build_follow_up_prompt(
+                                user_message,
+                                msg,
+                                "update_knowledge_base".to_string(),
+                            ),
+                        }
                     }
                 }
-                Err(e) => {
-                    let msg = format!("Error saving to knowledge base: {}", e);
-                    ToolResult {
-                        error: msg.clone(),
-                        success: false,
-                        content: "".to_string(),
-                        follow_up_prompt: build_follow_up_prompt(
-                            user_message,
-                            msg,
-                            "update_knowledge_base".to_string(),
-                        ),
-                    }
+            } else {
+                let msg = "Error generating embedding for knowledge base update.".to_string();
+                ToolResult {
+                    error: msg.clone(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        msg,
+                        "update_knowledge_base".to_string(),
+                    ),
                 }
             }
-        } else {
+        }else {
             let msg = "Error generating embedding for knowledge base update.".to_string();
             ToolResult {
-                error: msg.clone(),
+                error:msg.clone(),
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: build_follow_up_prompt(
@@ -1613,7 +1685,10 @@ impl ToolDispatcher {
         };
 
         if let None = self.conversation_id {
-            info!("Logging user {} to expense but conversation id is null", user_id);
+            info!(
+                "Logging user {} to expense but conversation id is null",
+                user_id
+            );
             return ToolResult {
                 error: "Conversation ID not found".to_string(),
                 success: false,
@@ -1624,7 +1699,7 @@ impl ToolDispatcher {
 
         let expense_data = crate::feature::message_processor::media::ExpenseData {
             merchant: params.merchant,
-            total: params.total,
+            total: params.total.unwrap_or(0.),
             tax: params.tax,
             service: params.service,
             discount: params.discount,
@@ -1894,6 +1969,168 @@ impl ToolDispatcher {
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
             },
+        }
+    }
+
+    async fn analyze_media(
+        &self,
+        params: tools_model::AnalyzeMediaParameters,
+        user_message: String,
+    ) -> ToolResult {
+        use base64::Engine;
+        let conversation_id = match self.conversation_id {
+            Some(id) => id,
+            None => {
+                return ToolResult {
+                    error: "Conversation ID not found in context".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        let media_url = if let Some(url) = params.media_url {
+            url
+        } else {
+            // Retrieve from pending_media table
+            match crate::common::repository::pending_media_repo::get_pending_media(
+                &self.pool,
+                conversation_id,
+            )
+            .await
+            {
+                Ok(Some(media)) => media.media_url,
+                Ok(None) => {
+                    return ToolResult {
+                        error: "No recent image found to analyze. Please upload an image first!"
+                            .to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                    };
+                }
+                Err(e) => {
+                    return ToolResult {
+                        error: format!("Database error: {}", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                    };
+                }
+            }
+        };
+
+        let base_url = var("PUBLIC_GATEWAY_URL").unwrap_or("http://localhost:8000/api".to_string());
+
+        let image_url = if media_url.starts_with("http") && media_url.starts_with(base_url.as_str())
+        {
+            media_url.replace(format!("{}/files/", base_url).as_str(), "")
+        } else {
+            media_url.to_string()
+        };
+
+        if image_url.starts_with("http") {
+            return ToolResult {
+                error: format!("Tool doesnt support url from outside app"),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            };
+        }
+        info!(
+            "Analyzing image: {} with prompt: {}",
+            image_url, params.prompt
+        );
+
+        let data = match self
+            .storage
+            .get_file("conversations".to_string(), image_url.clone())
+            .await
+        {
+            Ok(d) => d,
+            Err(e) => {
+                return ToolResult {
+                    error: format!("Storage error: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        let mime_type = mime_guess::from_path(&image_url)
+            .first_or_octet_stream()
+            .to_string();
+
+        let base64_data = base64::engine::general_purpose::STANDARD.encode(data.to_vec());
+
+        let res = match self
+            .gemini
+            .generate_content()
+            .with_message(gemini_rust::Message {
+                role: gemini_rust::Role::User,
+                content: gemini_rust::Content {
+                    parts: Some(vec![
+                        gemini_rust::Part::Text {
+                            text: params.prompt.clone(),
+                            thought: None,
+                            thought_signature: None,
+                        },
+                        gemini_rust::Part::InlineData {
+                            inline_data: gemini_rust::Blob {
+                                mime_type,
+                                data: base64_data,
+                            },
+                            media_resolution: None,
+                        },
+                    ]),
+                    role: Some(gemini_rust::Role::User),
+                },
+            })
+            .execute()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                return ToolResult {
+                    error: format!("Gemini error: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        let analysis = res.text();
+        let usage = res.usage_metadata.unwrap_or(UsageMetadata {
+            prompt_token_count: None,
+            candidates_token_count: None,
+            total_token_count: None,
+            thoughts_token_count: None,
+            prompt_tokens_details: None,
+            cached_content_token_count: None,
+            cache_tokens_details: None,
+        });
+
+        let response_data = tools_model::AnalyzeMediaResponse {
+            content: analysis.clone(),
+            prompt_tokens: usage.prompt_token_count,
+            candidates_tokens: usage.candidates_token_count,
+            total_tokens: usage.total_token_count,
+        };
+
+        let content_json = serde_json::to_string_pretty(&response_data).unwrap_or_default();
+
+        ToolResult {
+            error: "".to_string(),
+            success: true,
+            content: content_json.clone(),
+            follow_up_prompt: build_follow_up_prompt(
+                user_message,
+                content_json,
+                "analyze_media".to_string(),
+            ),
         }
     }
 

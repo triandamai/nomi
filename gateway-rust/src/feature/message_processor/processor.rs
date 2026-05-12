@@ -1,21 +1,22 @@
+use crate::AppState;
 use crate::feature::message_processor::media::{ExpenseData, MaintenanceData, MediaClassification};
 use crate::feature::message_processor::model::UnifiedMessage;
 use crate::feature::{InboundMessage, OutboundMessage};
 use crate::rag;
-use crate::AppState;
 use chrono::{Datelike, Utc};
-use gemini_rust::{Content, Message};
+use gemini_rust::{Blob, Content, Message, Part, Role, UsageMetadata};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::common::repository::{channel_repo, pairing_repo};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use rand::RngExt;
 use tracing::{error, info};
 
 pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
     if msg.v2 {
-        return crate::feature::message_processor::v2_orchestrator::process_v2_message(state, msg).await;
+        return crate::feature::message_processor::v2_orchestrator::process_v2_message(state, msg)
+            .await;
     }
 
     info!("Received v1 message: {:?}, deprecated, ignoring", msg);
@@ -72,7 +73,8 @@ pub(crate) async fn trigger_memory_consolidation(
             summary_input.push_str(&format!("{}: {}\n", msg.role, msg.content));
         }
 
-        let summarizer_prompt = crate::prompts::PromptRegistry::memory_consolidation_summarizer(&summary_input);
+        let summarizer_prompt =
+            crate::prompts::PromptRegistry::memory_consolidation_summarizer(&summary_input);
 
         let summary_res = gemini
             .generate_content()
@@ -108,14 +110,42 @@ pub(crate) async fn trigger_memory_consolidation(
                 }
             });
 
+            let usage = summary_res.usage_metadata.unwrap_or(UsageMetadata{
+                prompt_token_count: None,
+                candidates_token_count: None,
+                total_token_count: None,
+                thoughts_token_count: None,
+                prompt_tokens_details: None,
+                cached_content_token_count: None,
+                cache_tokens_details: None,
+            });
+            let p_tokens = usage.prompt_token_count.unwrap_or(0);
+            let a_tokens = usage.candidates_token_count.unwrap_or(0);
+            let t_tokens = usage.total_token_count.unwrap_or(0);
+
+            let mut tx = pool.begin().await?;
+
             rag::save_to_knowledge_base(
                 &pool,
                 &summary_text,
-                embedding,
+                embedding.embedding.values,
                 Some(metadata),
                 Some(conversation_id.clone()),
+                p_tokens,
+                a_tokens,
+                t_tokens,
             )
             .await?;
+
+            sqlx::query!(
+                "UPDATE conversations SET cumulative_tokens = cumulative_tokens + $1 WHERE id = $2",
+                t_tokens,
+                conversation_id
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            tx.commit().await?;
             info!(conversation_id = %conversation_id, "Memory consolidation complete");
         }
     }
@@ -125,22 +155,50 @@ pub(crate) async fn trigger_memory_consolidation(
 
 pub(crate) async fn classify_media_context(
     state: &AppState,
-    image_url: &str,
+    media_url: &str,
 ) -> anyhow::Result<MediaClassification> {
     let prompt = crate::prompts::PromptRegistry::media_classification();
 
-    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
+    let (mime_type, base64_data) = fetch_media_from_storage(state, media_url).await?;
 
+    info!(image_url = %media_url);
+    info!("MIME type is {}", mime_type);
+    // info!("Base64 data is {}", base64_data);
     let res = state
         .gemini
         .generate_content()
-        .with_user_message(prompt)
         .with_message(Message {
-            role: gemini_rust::Role::User,
-            content: Content::inline_data(mime_type, base64_data),
+            role: Role::User,
+            content: Content {
+                parts: Some(vec![
+                    Part::Text {
+                        text: prompt.to_string(), // The Instruction
+                        thought: None,
+                        thought_signature: None,
+                    },
+                    Part::InlineData {
+                        inline_data: Blob {
+                            mime_type,
+                            data: base64_data, // The Image
+                        },
+
+                        media_resolution: None,
+                    },
+                ]),
+                role: Some(Role::User),
+            },
         })
         .execute()
         .await?;
+
+    if let Some(usage) = &res.usage_metadata {
+        info!(
+            "Media classification tokens: prompt={}, candidates={}, total={}",
+            usage.prompt_token_count.unwrap_or(0),
+            usage.candidates_token_count.unwrap_or(0),
+            usage.total_token_count.unwrap_or(0)
+        );
+    }
 
     let text = res.text().trim().to_uppercase();
     if text.contains("EXPENSE_RECEIPT") {
@@ -162,7 +220,7 @@ pub(crate) async fn extract_expense_data(
 ) -> anyhow::Result<ExpenseData> {
     let prompt = crate::prompts::PromptRegistry::expense_extraction();
 
-    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
+    let (mime_type, base64_data) = fetch_media_from_storage(state, image_url).await?;
 
     let res = state
         .gemini
@@ -174,6 +232,15 @@ pub(crate) async fn extract_expense_data(
         })
         .execute()
         .await?;
+
+    if let Some(usage) = &res.usage_metadata {
+        info!(
+            "Expense extraction tokens: prompt={}, candidates={}, total={}",
+            usage.prompt_token_count.unwrap_or(0),
+            usage.candidates_token_count.unwrap_or(0),
+            usage.total_token_count.unwrap_or(0)
+        );
+    }
 
     let text = res.text();
     let json_str = if let Some(start) = text.find('{') {
@@ -223,9 +290,12 @@ pub(crate) async fn log_expense_transaction(
         data.category,
         data.merchant,
         rust_decimal::Decimal::from_f64_retain(data.total).unwrap_or_default(),
-        data.tax.map(|v| rust_decimal::Decimal::from_f64_retain(v).unwrap_or_default()),
-        data.service.map(|v| rust_decimal::Decimal::from_f64_retain(v).unwrap_or_default()),
-        data.discount.map(|v| rust_decimal::Decimal::from_f64_retain(v).unwrap_or_default())
+        data.tax
+            .map(|v| rust_decimal::Decimal::from_f64_retain(v).unwrap_or_default()),
+        data.service
+            .map(|v| rust_decimal::Decimal::from_f64_retain(v).unwrap_or_default()),
+        data.discount
+            .map(|v| rust_decimal::Decimal::from_f64_retain(v).unwrap_or_default())
     )
     .fetch_one(&mut *tx)
     .await?;
@@ -267,12 +337,9 @@ pub(crate) async fn log_expense_transaction(
 
     // 5. Cleanup Pending Media if it exists for this conversation
     if let Some(cid) = conversation_id {
-        let _ = sqlx::query!(
-            "DELETE FROM pending_media WHERE conversation_id = $1",
-            cid
-        )
-        .execute(&mut *tx)
-        .await;
+        let _ = sqlx::query!("DELETE FROM pending_media WHERE conversation_id = $1", cid)
+            .execute(&mut *tx)
+            .await;
     }
 
     tx.commit().await?;
@@ -285,7 +352,7 @@ pub(crate) async fn extract_maintenance_data(
 ) -> anyhow::Result<MaintenanceData> {
     let prompt = crate::prompts::PromptRegistry::maintenance_extraction();
 
-    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
+    let (mime_type, base64_data) = fetch_media_from_storage(state, image_url).await?;
 
     let res = state
         .gemini
@@ -297,6 +364,15 @@ pub(crate) async fn extract_maintenance_data(
         })
         .execute()
         .await?;
+
+    if let Some(usage) = &res.usage_metadata {
+        info!(
+            "Maintenance extraction tokens: prompt={}, candidates={}, total={}",
+            usage.prompt_token_count.unwrap_or(0),
+            usage.candidates_token_count.unwrap_or(0),
+            usage.total_token_count.unwrap_or(0)
+        );
+    }
 
     let text = res.text();
     let json_str = if let Some(start) = text.find('{') {
@@ -319,7 +395,7 @@ pub(crate) async fn extract_technical_doc(
 ) -> anyhow::Result<String> {
     let prompt = crate::prompts::PromptRegistry::technical_doc_summarization();
 
-    let (mime_type, base64_data) = fetch_image_from_storage(state, image_url).await?;
+    let (mime_type, base64_data) = fetch_media_from_storage(state, image_url).await?;
 
     let res = state
         .gemini
@@ -332,10 +408,19 @@ pub(crate) async fn extract_technical_doc(
         .execute()
         .await?;
 
+    if let Some(usage) = &res.usage_metadata {
+        info!(
+            "Technical doc extraction tokens: prompt={}, candidates={}, total={}",
+            usage.prompt_token_count.unwrap_or(0),
+            usage.candidates_token_count.unwrap_or(0),
+            usage.total_token_count.unwrap_or(0)
+        );
+    }
+
     Ok(res.text())
 }
 
-async fn fetch_image_from_storage(
+async fn fetch_media_from_storage(
     state: &AppState,
     image_url: &str,
 ) -> anyhow::Result<(String, String)> {
@@ -345,7 +430,7 @@ async fn fetch_image_from_storage(
     // image_url from channel is typically just the filename/path in storage
     let data = state
         .storage
-        .get_file(bucket.to_string(), internal_path.clone())
+        .get_file(bucket.to_string(), image_url.to_string())
         .await
         .map_err(|e| anyhow::anyhow!("Storage error: {}", e))?;
 
@@ -436,8 +521,7 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
                 is_group: msg.is_group,
                 sender_id: msg.sender_id.clone(),
                 conversation_id: msg.conversation_id.clone(),
-                text: crate::prompts::PromptRegistry::error_general_trouble()
-                    .to_string(),
+                text: crate::prompts::PromptRegistry::error_general_trouble().to_string(),
                 channel: msg.channel.clone(),
                 video_url: None,
                 image_url: None,
@@ -666,9 +750,10 @@ pub async fn process_group_registration(
     );
 
     let mut tx = state.pool.begin().await?;
-    let existing_channel = channel_repo::get_channel_group_info(&state.pool, &msg.channel, &msg.sender_id).await;
+    let existing_channel =
+        channel_repo::get_channel_group_info(&state.pool, &msg.channel, &msg.sender_id).await;
     if let Err(err) = existing_channel {
-        info!("Only registered user can pair group:{}",err);
+        info!("Only registered user can pair group:{}", err);
         let _ = state
             .publish_outbond(&OutboundMessage {
                 is_group: true,
@@ -750,14 +835,13 @@ pub async fn process_group_registration(
     .fetch_one(&mut *tx)
     .await?;
 
-
     let trx = tx.commit().await;
     if let Ok(_) = trx {
         let _ = channel_repo::link_channel_group(
             &state.pool,
             &msg.channel,
             &msg.conversation_id,
-            trx_convo.id
+            trx_convo.id,
         )
         .await;
     }

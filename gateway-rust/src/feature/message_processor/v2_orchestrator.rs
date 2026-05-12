@@ -1,4 +1,3 @@
-use crate::AppState;
 use crate::common::agent::agent_model::PromptActor;
 use crate::common::agent::execute_tools;
 use crate::common::tools::ToolDispatcher;
@@ -6,16 +5,18 @@ use crate::feature::message_processor::media::MediaClassification;
 use crate::feature::message_processor::model::UnifiedMessage;
 use crate::feature::{OutboundMessage, PresenceMessage};
 use crate::rag;
+use crate::AppState;
 use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::common::repository::message_repo::save_message;
-use crate::feature::message_processor::MessageSource;
+use crate::feature::conversation::chat_model::MessageItem;
 use crate::feature::message_processor::processor::{
     classify_media_context, extract_expense_data, extract_maintenance_data, extract_technical_doc,
     trigger_memory_consolidation,
 };
+use crate::feature::message_processor::MessageSource;
 use tracing::{error, info};
 
 fn strip_thinking_tags(text: &str) -> String {
@@ -33,36 +34,262 @@ fn strip_thinking_tags(text: &str) -> String {
     stripped
 }
 
-fn send_status_update(pool: &sqlx::PgPool, conversation_id: Uuid, text: String) {
-    let pool = pool.clone();
+fn send_status_update(
+    state: &AppState,
+    conversation_id: Uuid,
+    source: MessageSource,
+    text: String,
+) {
+    info!("send_status_update start");
+    let state = state.clone();
+    let pool = state.pool.clone();
     tokio::spawn(async move {
-        let channel_info = sqlx::query!(
-            "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
+        let convo = sqlx::query!(
+            "SELECT conversation_type,id FROM conversations WHERE id = $1",
             conversation_id
-        ).fetch_all(&pool).await.unwrap_or_default();
+        )
+        .fetch_one(&pool)
+        .await;
 
-        if let Ok(redis_url) = std::env::var("REDIS_URL") {
-            if let Ok(client) = redis::Client::open(redis_url) {
-                if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
-                    use redis::AsyncCommands;
-                    for channel in channel_info {
-                        let outbound = OutboundMessage {
-                            is_group: false,
-                            sender_id: channel.external_id.clone(),
-                            conversation_id: channel.external_chat_id.clone(),
-                            text: text.clone(),
-                            channel: channel.channel_type.clone(),
-                            video_url: None,
-                            image_url: None,
-                            audio_url: None,
-                            doc_url: None,
-                            sticker_url: None,
-                            metadata: None,
-                        };
-                        let payload = serde_json::to_string(&outbound).unwrap();
-                        let _ = conn
-                            .publish::<&str, String, ()>("nomi:outbound", payload)
-                            .await;
+        let ch_name = match source.clone() {
+            MessageSource::Web { name } => name,
+            MessageSource::Telegram { name } => name,
+            MessageSource::WhatsApp { name } => name,
+            MessageSource::Other { name } => name,
+        };
+
+        if let Err(err) = &convo {
+            info!("Sent status update failed: {}", err);
+        }
+
+        if let Ok(data) = convo {
+            let members = sqlx::query!(
+                "SELECT m.user_id FROM conversation_members as m WHERE m.conversation_id = $1",
+                data.id
+            )
+            .fetch_all(&pool)
+            .await
+            .unwrap_or(Vec::new());
+
+            if data.conversation_type.eq_ignore_ascii_case("private") {
+                match source {
+                    MessageSource::Web { .. } => {
+                        info!("send_status_update web");
+                        for member in members {
+                            let _ = state.send_sse_to_user(member.user_id.to_string().as_str(), "", json!({})).await;
+                        }
+                    }
+                    MessageSource::Other { name } => {
+                        info!(
+                            "Sent status update failed, channel not supported : {}",
+                            name
+                        );
+                    }
+                    _ => {
+                        info!("send_status_update channel:{}",ch_name);
+                        let channel_info = sqlx::query!(
+                            "SELECT c.channel_type, c.external_id, c.external_chat_id
+                                    FROM channels c
+                                    JOIN conversation_members cm ON c.user_id = cm.user_id
+                                    WHERE cm.conversation_id = $1 AND c.channel_type = $2",
+                            conversation_id,
+                            ch_name
+                        )
+                        .fetch_all(&pool)
+                        .await
+                        .unwrap_or(Vec::new());
+
+                        for channel in channel_info {
+                            let outbound = OutboundMessage {
+                                is_group: false,
+                                sender_id: channel.external_id.clone(),
+                                conversation_id: channel.external_chat_id.clone(),
+                                text: text.clone(),
+                                channel: channel.channel_type.clone(),
+                                video_url: None,
+                                image_url: None,
+                                audio_url: None,
+                                doc_url: None,
+                                sticker_url: None,
+                                metadata: None,
+                            };
+                            let _ = state.publish_outbond(&outbound).await;
+                        }
+                    }
+                }
+            } else {
+                match source {
+                    MessageSource::Web { .. } => {
+                        info!("send_status_update web");
+                        for member in members {
+                            let _ = state.send_sse_to_user(member.user_id.to_string().as_str(), "", json!({})).await;
+                        }
+                    }
+                    MessageSource::Other { name } => {
+                        info!(
+                            "Sent status update failed, channel not supported : {}",
+                            name
+                        );
+                    }
+                    _ => {
+                        info!("send_status_update channel:{}",ch_name);
+                        let channel_info = sqlx::query!(
+                            "SELECT c.conversation_id, c.channel, c.external_group_id
+                            FROM channel_group c
+                            WHERE c.conversation_id = $1 AND c.channel = $2",
+                            conversation_id,
+                            ch_name
+                        )
+                        .fetch_all(&pool)
+                        .await
+                        .unwrap_or(Vec::new());
+
+                        for channel in channel_info {
+                            let outbound = OutboundMessage {
+                                is_group: false,
+                                sender_id: "".to_string(),
+                                conversation_id: channel.external_group_id.clone(),
+                                text: text.clone(),
+                                channel: channel.channel.clone(),
+                                video_url: None,
+                                image_url: None,
+                                audio_url: None,
+                                doc_url: None,
+                                sticker_url: None,
+                                metadata: None,
+                            };
+                            let _ = state.publish_outbond(&outbound).await;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+fn send_message_to_subscriber(
+    state: &AppState,
+    conversation_id: Uuid,
+    source: MessageSource,
+    sse_data:serde_json::Value,
+    data:MessageItem,
+) {
+    let state = state.clone();
+    let pool = state.pool.clone();
+    let outbound_message = data.clone();
+    tokio::spawn(async move {
+        let convo = sqlx::query!(
+            "SELECT conversation_type,id FROM conversations WHERE id = $1",
+            conversation_id
+        )
+            .fetch_one(&pool)
+            .await;
+
+        let ch_name = match source.clone() {
+            MessageSource::Web { name } => name,
+            MessageSource::Telegram { name } => name,
+            MessageSource::WhatsApp { name } => name,
+            MessageSource::Other { name } => name,
+        };
+
+        if let Err(err) = &convo {
+            info!("Sent status update failed: {}", err);
+        }
+
+        if let Ok(data) = convo {
+            let members = sqlx::query!(
+                "SELECT m.user_id FROM conversation_members as m WHERE m.conversation_id = $1",
+                data.id
+            )
+                .fetch_all(&pool)
+                .await
+                .unwrap_or(Vec::new());
+
+            if data.conversation_type.eq_ignore_ascii_case("private") {
+                match source {
+                    MessageSource::Web { .. } => {
+                        for member in members {
+                            let _ = state.send_sse_to_user(member.user_id.to_string().as_str(), "message", sse_data.clone()).await;
+                        }
+                    }
+                    MessageSource::Other { name } => {
+                        info!(
+                            "Sent status update failed, channel not supported : {}",
+                            name
+                        );
+                    }
+                    _ => {
+                        let channel_info = sqlx::query!(
+                            "SELECT c.channel_type, c.external_id, c.external_chat_id
+                                    FROM channels c
+                                    JOIN conversation_members cm ON c.user_id = cm.user_id
+                                    WHERE cm.conversation_id = $1 AND c.channel_type = $2",
+                            conversation_id,
+                            ch_name
+                        )
+                            .fetch_all(&pool)
+                            .await
+                            .unwrap_or(Vec::new());
+
+                        for channel in channel_info {
+                            let outbound = OutboundMessage {
+                                is_group: false,
+                                sender_id: channel.external_id.clone(),
+                                conversation_id: channel.external_chat_id.clone(),
+                                text: outbound_message.content.clone(),
+                                channel: channel.channel_type.clone(),
+                                video_url: None,
+                                image_url: None,
+                                audio_url: None,
+                                doc_url: None,
+                                sticker_url: None,
+                                metadata: None,
+                            };
+                            let _ = state.publish_outbond(&outbound).await;
+                        }
+                    }
+                }
+            } else {
+                match source {
+                    MessageSource::Web { .. } => {
+                        for member in members {
+                            let _ = state.send_sse_to_user(member.user_id.to_string().as_str(), "message", sse_data.clone()).await;
+                        }
+                    }
+                    MessageSource::Other { name } => {
+                        info!(
+                            "Sent status update failed, channel not supported : {}",
+                            name
+                        );
+                    }
+                    _ => {
+                        let channel_info = sqlx::query!(
+                            "SELECT c.conversation_id, c.channel, c.external_group_id
+                            FROM channel_group c
+                            WHERE c.conversation_id = $1 AND c.channel = $2",
+                            conversation_id,
+                            ch_name
+                        )
+                            .fetch_all(&pool)
+                            .await
+                            .unwrap_or(Vec::new());
+
+                        for channel in channel_info {
+                            let outbound = OutboundMessage {
+                                is_group: false,
+                                sender_id: "".to_string(),
+                                conversation_id: channel.external_group_id.clone(),
+                                text: outbound_message.content.clone(),
+                                channel: channel.channel,
+                                video_url: None,
+                                image_url: None,
+                                audio_url: None,
+                                doc_url: None,
+                                sticker_url: None,
+                                metadata: None,
+                            };
+                            let _ = state.publish_outbond(&outbound).await;
+                        }
                     }
                 }
             }
@@ -88,17 +315,43 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         "Processing unified message v2"
     );
 
-    // 0. Zero-Intent Guard: Image with EMPTY text
-    if msg.image_url.is_some() && text_content.trim().is_empty() {
-        let image_url = msg.image_url.as_ref().unwrap();
-        info!("Zero-intent media detected: {}", image_url);
+    // 0. Zero-Intent Guard: Media with EMPTY text
+    let has_media = msg.image_url.is_some()
+        || msg.video_url.is_some()
+        || msg.audio_url.is_some()
+        || msg.doc_url.is_some()
+        || msg.sticker_url.is_some();
+
+    if has_media && text_content.trim().is_empty() {
+        let media_url = msg
+            .image_url
+            .as_ref()
+            .or(msg.video_url.as_ref())
+            .or(msg.audio_url.as_ref())
+            .or(msg.doc_url.as_ref())
+            .or(msg.sticker_url.as_ref())
+            .unwrap();
+
+        let media_type = if msg.image_url.is_some() {
+            "image"
+        } else if msg.video_url.is_some() {
+            "video"
+        } else if msg.audio_url.is_some() {
+            "audio"
+        } else if msg.doc_url.is_some() {
+            "document"
+        } else {
+            "sticker"
+        };
+
+        info!("Zero-intent {} detected: {}", media_type, media_url);
 
         // Save to pending_media table for Media Checkpoint System
         let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
             &state.pool,
             conversation_id,
-            image_url,
-            "image",
+            media_url,
+            media_type,
             None,
         )
         .await;
@@ -111,7 +364,7 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         process_v2_message_with_intent(
             state.clone(),
             msg,
-            text_content,
+            format!("[User uploaded a {}]", media_type),
             Some(injected_system_prompt),
         )
         .await
@@ -204,12 +457,13 @@ async fn process_v2_message_with_intent(
     }
 
     let mut media_context = String::new();
-    if let Some(image_url) = msg.image_url {
+    if let Some(ref image_url) = msg.image_url {
         info!("Media detected, classifying: {}", image_url);
 
         send_status_update(
-            &state.pool,
+            &state,
             conversation_id,
+            msg.source.clone(),
             crate::prompts::PromptRegistry::status_analyzing_receipt().to_string(),
         );
 
@@ -230,8 +484,9 @@ async fn process_v2_message_with_intent(
                             )
                             .await;
                         send_status_update(
-                            &state.pool,
+                            &state,
                             conversation_id,
+                            msg.source.clone(),
                             crate::prompts::PromptRegistry::status_expense_logged(
                                 &expense.merchant,
                                 &expense.total.to_string(),
@@ -267,9 +522,12 @@ async fn process_v2_message_with_intent(
                         let _ = rag::save_to_knowledge_base(
                             &state.pool,
                             &memory_content,
-                            embedding,
+                            embedding.embedding.values,
                             Some(metadata),
                             Some(conversation_id),
+                            0,
+                            0,
+                            0,
                         )
                         .await;
                     }
@@ -303,9 +561,12 @@ async fn process_v2_message_with_intent(
                         let _ = rag::save_to_knowledge_base(
                             &state.pool,
                             &memory_content,
-                            embedding,
+                            embedding.embedding.values,
                             Some(metadata),
                             Some(conversation_id),
+                            0,
+                            0,
+                            0,
                         )
                         .await;
                     }
@@ -331,9 +592,12 @@ async fn process_v2_message_with_intent(
                         let _ = rag::save_to_knowledge_base(
                             &state.pool,
                             &content,
-                            embedding,
+                            embedding.embedding.values,
                             Some(metadata),
                             Some(conversation_id),
+                            0,
+                            0,
+                            0,
                         )
                         .await;
                     }
@@ -366,7 +630,11 @@ async fn process_v2_message_with_intent(
         .await;
     }
 
-    let mut augmented_text = format!("{}{}", text_content, media_context);
+    let mut augmented_text = if let Some(ref image_url) = msg.image_url {
+        format!("[Image: {}]\n{}{}", image_url, text_content, media_context)
+    } else {
+        format!("{}{}", text_content, media_context)
+    };
     if let Some(injected) = injected_system_prompt {
         augmented_text.push_str("\n\n");
         augmented_text.push_str(&injected);
@@ -395,11 +663,11 @@ async fn process_v2_message_with_intent(
         let soul = conversation.soul_content.unwrap_or_default();
         let mut combined = boot;
         if !soul.is_empty() {
-            combined.push_str("### Current Personality/Soul");
+            combined.push_str("\n### Current Personality/Soul\n");
             combined.push_str(&soul);
         }
 
-        combined.push_str("### Orchestrator Instructions");
+        combined.push_str("### Orchestrator Instructions \n");
         combined.push_str(crate::prompts::PromptRegistry::orchestrator_instructions());
         combined.push_str("");
         combined.push_str(crate::prompts::PromptRegistry::tool_usage_guidelines());
@@ -473,14 +741,12 @@ async fn process_v2_message_with_intent(
         ));
     }
 
-    let embedding = rag::get_embedding(&state.gemini_api_key, &augmented_text)
-        .await
-        .unwrap_or_default();
-    let memories_text = if !embedding.is_empty() {
+    let embedding = rag::get_embedding(&state.gemini_api_key, &augmented_text).await;
+    let memories_text = if !embedding.is_ok() {
         crate::utils::rag::hybrid_retrieve(
             &state.pool,
             &augmented_text,
-            embedding,
+            embedding.unwrap().embedding.values,
             Some(conversation_id),
         )
         .await
@@ -518,8 +784,9 @@ async fn process_v2_message_with_intent(
         // Status: Model is thinking
         if loop_count <= 1 {
             send_status_update(
-                &state.pool,
+                &state,
                 conversation_id,
+                msg.source.clone(),
                 crate::prompts::PromptRegistry::status_thinking().to_string(),
             );
         }
@@ -629,11 +896,13 @@ async fn process_v2_message_with_intent(
                         "get_inbox_summary" => "checking your inbox".to_string(),
                         "send_direct_message" => "sending".to_string(),
                         "make_sticker" => "creating sticker".to_string(),
+                        "analyze_media" => "analyzing the file".to_string(),
                         _ => format!("using {}", call.name),
                     };
                     send_status_update(
-                        &state.pool,
+                        &state,
                         conversation_id,
+                        msg.source.clone(),
                         format!("Nomi is {}...", action),
                     );
                 }
@@ -707,79 +976,14 @@ async fn process_v2_message_with_intent(
                         "created_at": record.created_at
             });
 
-            match msg.source {
-                MessageSource::Web { name } => {
-                    info!("Channel other:{}",name);
-                    let _ = match user_id {
-                        None => state.broadcast_sse("message", payload.clone()).await,
-                        Some(ref id) => {
-                            state
-                                .send_sse_to_user(
-                                    id.to_string().as_str(),
-                                    "message",
-                                    payload.clone(),
-                                )
-                                .await
-                        }
-                    };
-                }
-                MessageSource::Telegram { name } | MessageSource::WhatsApp { name } => {
-                    info!("send to channel :{}",name);
-                    let channel_info = sqlx::query!(
-                        "SELECT c.channel_type, c.external_id, c.external_chat_id,c.user_id
-                            FROM channels c
-                            JOIN conversation_members cm ON c.user_id = cm.user_id
-                            WHERE cm.conversation_id = $1 AND c.channel_type = $2",
-                        conversation_id,
-                        name
-                    )
-                    .fetch_all(&state.pool)
-                    .await
-                    .unwrap_or_default();
-                    for channel in channel_info {
-                        let outbound = OutboundMessage {
-                            is_group: false,
-                            sender_id: channel.external_id.clone(),
-                            conversation_id: channel.external_chat_id.clone(),
-                            text: record.content.clone(),
-                            channel: channel.channel_type.clone(),
-                            video_url: None,
-                            image_url: None,
-                            audio_url: None,
-                            doc_url: None,
-                            sticker_url: None,
-                            metadata: None,
-                        };
+            send_message_to_subscriber(
+                &state,
+                conversation_id,
+                msg.source.clone(),
+                payload,
+                record.clone(),
+            );
 
-                        if let Some(id) = channel.user_id {
-                            info!("sending to {}",id);
-                            let _ = state
-                                .send_to_user(
-                                    id.to_string().as_str(),
-                                    "message",
-                                    payload.clone(),
-                                    &outbound,
-                                )
-                                .await;
-                        }
-                    }
-                }
-                MessageSource::Other { name } => {
-                    info!("channel other :{}",name);
-                    let _ = match user_id {
-                        None => state.broadcast_sse("message", payload.clone()).await,
-                        Some(ref id) => {
-                            state
-                                .send_sse_to_user(
-                                    id.to_string().as_str(),
-                                    "message",
-                                    payload.clone(),
-                                )
-                                .await
-                        }
-                    };
-                }
-            }
         }
 
         let pool = state.pool.clone();

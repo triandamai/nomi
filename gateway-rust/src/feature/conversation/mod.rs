@@ -636,9 +636,7 @@ pub async fn handle_upload_file(
 }
 pub async fn handle_chat_stream(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<
-        crate::feature::conversation::auth::Claims,
-    >,
+    axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
     Json(payload): Json<ChatRequest>,
 ) -> ApiResponse<String> {
     info!(conversation_id = %payload.conversation_id, "Received chat stream request");

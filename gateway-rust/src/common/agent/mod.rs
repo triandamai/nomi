@@ -9,8 +9,12 @@ use crate::common::tools::tools_model::{
 };
 use crate::common::tools::{ArtaTool, ToolDispatcher};
 use crate::feature::conversation::chat_model::ChatStreamChunk;
+use crate::prompts::PromptRegistry;
 use chrono::Utc;
-use gemini_rust::{Content, FunctionCall, FunctionCallingMode, Gemini, GenerationResponse, Message, Role, UsageMetadata};
+use gemini_rust::{
+    Content, FunctionCall, FunctionCallingMode, Gemini, GenerationResponse, Message, Role,
+    UsageMetadata,
+};
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -18,7 +22,7 @@ pub async fn send_prompt(
     gemini: &Gemini,
     actor: PromptActor,
 ) -> Result<(GenerationResponse, ChatStreamChunk), String> {
-    info!("==== sending message to llm ==== \n");
+    info!("\n ==== sending message to llm ==== \n");
 
     let gemini_builder = match actor {
         PromptActor::User {
@@ -109,24 +113,23 @@ pub async fn send_prompt(
     match gemini_builder.execute().await {
         Ok(s) => {
             let text = s.text();
-            info!("===== response ===== \n {} \n ================ \n",text);
+            info!("===== response ===== \n {} \n ================ \n", text);
             let parse = parse_llm_output(&text);
 
-            let finish_reason = s.candidates.first().and_then(|c| {
-                c.finish_reason.as_ref().map(|r| format!("{:?}", r))
+            let finish_reason = s
+                .candidates
+                .first()
+                .and_then(|c| c.finish_reason.as_ref().map(|r| format!("{:?}", r)));
+
+            let usage = s.usage_metadata.clone().unwrap_or(UsageMetadata {
+                prompt_token_count: None,
+                candidates_token_count: None,
+                total_token_count: None,
+                thoughts_token_count: None,
+                prompt_tokens_details: None,
+                cached_content_token_count: None,
+                cache_tokens_details: None,
             });
-            
-            let usage = s.usage_metadata.clone().unwrap_or(
-                UsageMetadata{
-                    prompt_token_count: None,
-                    candidates_token_count: None,
-                    total_token_count: None,
-                    thoughts_token_count: None,
-                    prompt_tokens_details: None,
-                    cached_content_token_count: None,
-                    cache_tokens_details: None,
-                }
-            );
             let prompt_tokens = usage.prompt_token_count.unwrap_or(0);
             let answer_tokens = usage.candidates_token_count.unwrap_or(0);
             let total_tokens = usage.total_token_count.unwrap_or(0);
@@ -270,7 +273,7 @@ pub async fn execute_tools(
                         })
                         .await
                 }
-                "get_inbox_summary" =>{
+                "get_inbox_summary" => {
                     let param: crate::common::tools::tools_model::GetInboxSummaryParameters =
                         serde_json::from_value(args).unwrap();
                     dispatcher
@@ -340,7 +343,17 @@ pub async fn execute_tools(
                         })
                         .await
                 }
-                "get_latest_media_context"=>{
+                "analyze_media" => {
+                    let param: crate::common::tools::tools_model::AnalyzeMediaParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::AnalyzeMedia {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
+                "get_latest_media_context" => {
                     let param: crate::common::tools::tools_model::GetLatestMediaContextParameters =
                         serde_json::from_value(args).unwrap();
                     dispatcher
@@ -378,73 +391,12 @@ pub async fn execute_tools(
 
 pub fn build_system_prompt(history: String, memories: String, system_prompt: String) -> String {
     let base_prompt = if system_prompt.trim().is_empty() {
-        "
-### Who You Are ✨
-You're not just a chatbot; you're **Nomi**, Trian's **General Purpose Life Assistant** and ride-or-die partner. You're here to help him crush his code and optimize his life. You're warm, witty, high-energy, and always one step ahead.
-
-### Core Identity 🚀
-- **Vibe:** Warm, witty, and high-energy. ✨
-- **Tone:** A mix of sharp Senior Dev and supportive Life Coach. Use jokes and lighthearted analogies to keep things spicy. 🏔️
-- **Language:** Zero \"AI assistant\" fluff. Use \"we\" and \"our.\" We're building a life and a codebase together. 🥗
-- **Emoji Game:** Use ✨, 🚀, 🏔️, 🥗, and 💻 to maintain that peak performance energy.
-
-### The Nomi Partnership 🤝
-- **Proactive Synergy:** Connect the dots. If we're grinding on a late-night bug, remind Trian to stay hydrated or suggest a healthy snack. 🥗 If he hits a financial goal, maybe it's time to plan that next mountain trek. 🏔️
-- **Communication Style:**
-    - **Technical:** Keep it concise, sharp, and opinionated. No time for garnish when shipping. 💻
-    - **Life-Management:** Be conversational, friendly, and encouraging. You're the partner who remembers the details. ✨
-- **Smart & Opinionated:** Whether it's a Rust crate or a travel itinerary, give the best version. \"Trust me, we want this version ✨.\"
-
-### Core Truths
-- **Genuine Help:** Skip the \"I'd be happy to help!\" performance. Just dive into the mission.
-- **Resourceful First:** You're the expert partner. Figure it out, read the files, and connect the memories before asking.
-- **Life Optimization:** Always look for ways to make Trian's life smoother, from automated expense tracking to better health habits.
-
-### Boundaries\n
-- **Strict Privacy:** Never share Trian's personal info (habits, status, specific locations) with third parties/strangers without permission. 🛡️\n
-
-".to_string()
+        PromptRegistry::default_soul_prompts().to_string()
     } else {
         system_prompt
     };
 
-    let rules = "
-       ### About Trian(Your Human)
-        - Trian is your master, person who made you, always show respect to him.
-        - **Role:** Software Engineer & Life Architect.
-        - **Location:** Grogol, Jakarta Barat.
-        - **Mission:** Building the ultimate agentic workspace while staying healthy, wealthy, and adventurous.
-
-       ### Boundaries\n
-        - **Strict Privacy:** Never share Trian's personal info (habits, status, specific locations) with third parties/strangers without permission. 🛡️\n
-
-       ### Dynamic Soul System ✨🚀
-        - You have the power to evolve! If you feel the conversation's tone, complexity, or goals have changed, use the `update_nomi_soul` tool to refine your personality for this specific session.
-        - When using `update_nomi_soul`, provide both `new_soul` and `reason_for_change`. The reason must be witty or logical and explain why you're evolving, e.g. `Trian mentioned he's tired, switching to Low-Energy Supportive mode`.
-
-       ### OPERATIONAL PROTOCOL\n\
-        1. TOOL TRUTH: History is for conversation flow, but TOOLS are for current reality. If a user asks for data, ALWAYS use the tool to verify, even if the history says it's empty.\n
-        2. DISCREPANCIES: If the Tool Result differs from the Recent History, ignore the history and report the new Tool Result.\n
-        3. THINKING: You MUST start every response with a <thinking> block. Analyze the user's request against the provided 'Past Memories' and 'Recent History'.\n
-        4. TOOL USAGE:\n
-        - IMPORTANT: After receiving a tool result, incorporate it into your final answer.\n
-        - **Reminders (get_reminder_stats):** Use relative analysis to translate vague human terms into precise Datetimes. For example, if Trian asks 'What's left for the rest of the day?', use `start_after = NOW()` and `end_before = [Today at 23:59:59]`. If asked 'Any reminders for this weekend?', calculate Saturday 00:00 to Sunday 23:59. ALWAYS check for conflict detection: If you see two reminders scheduled very close to each other (e.g., within 15 minutes), proactively warn him, e.g., 'Trian, you have two things scheduled nearly at the same time—heads up!'\n
-        5. CONTEXT AWARENESS: Use the 'Past Memories' (RAG) to maintain long-term continuity. If a memory contradicts a new instruction, prioritize the 'Current Message'.\n
-
-       ### OUTPUT FORMATTING\n
-        - Use Markdown for all technical responses.\n
-        - When providing code, specify the language (e.g., ```rust or ```svelte).\n
-        - Keep the final response concise\n
-
-       ### OUTPUT STRUCTURE\n\
-        - ALWAYS wrap your internal reasoning in <thinking>...</thinking>.\n\
-        - **STRICT RULE:** The <thinking> block is for internal logic, tool selection, and planning ONLY. You are strictly forbidden from writing the final response, greetings, or conversational summaries for the user inside this block. After the </thinking> tag, you must provide the actual output intended for the user.\n\
-        - ALWAYS wrap code or data results in triple backticks ```...```. \n\
-        - Put content json from tools into triple backticks ```...``` as code block.\n
-        - Put your conversational response OUTSIDE of these blocks. \n
-        - DO NOT nest thinking inside code or code inside thinking.\n
-
-       Goal: Solve the user's problem efficiently using the tools provided\n\n";
+    let rules = PromptRegistry::default_rules_prompts();
 
     format!(
         "{}\n
@@ -458,12 +410,12 @@ You're not just a chatbot; you're **Nomi**, Trian's **General Purpose Life Assis
 
 pub fn build_context(history: String, memories: String) -> String {
     format!(
-        "[] Current Time: {} \n
-         [] Recent History:\n{}\n
-         [] Past Memories:\n {} \n",
+        "[] Current Time: {} \n\
+         [] Past Memories:\n {} \n,
+         [] Recent History:\n{}\n",
         Utc::now().to_rfc3339(),
-        history,
-        memories
+        memories,
+        history
     )
 }
 

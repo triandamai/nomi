@@ -56,7 +56,7 @@ pub struct SoulHistoryResponse {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug,Clone)]
 pub struct MessageItem {
     pub id: Uuid,
     pub conversation_id: Uuid,

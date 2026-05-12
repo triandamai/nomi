@@ -13,7 +13,7 @@ pub struct SearchResult {
     pub similarity: Option<f64>,
 }
 
-pub async fn get_embedding(api_key: &str, text: &str) -> anyhow::Result<Vec<f32>, String> {
+pub async fn get_embedding(api_key: &str, text: &str) -> anyhow::Result<EmbeddingResponse, String> {
     let client = ReqwestClient::new();
     // Ensure this is NOT set to 768, or explicitly set to 3072
     let res = client
@@ -39,7 +39,7 @@ pub async fn get_embedding(api_key: &str, text: &str) -> anyhow::Result<Vec<f32>
         return Err(format!("{:?}", err));
     }
 
-    Ok(data.unwrap().embedding.values)
+    Ok(data.unwrap())
 }
 
 pub async fn search_similar(
@@ -98,16 +98,22 @@ pub async fn save_to_knowledge_base(
     embedding: Vec<f32>,
     metadata: Option<serde_json::Value>,
     conversation_id: Option<uuid::Uuid>,
+    prompt_tokens: i32,
+    answer_tokens: i32,
+    total_tokens: i32,
 ) -> Result<PgQueryResult, Error> {
     sqlx::query!(
         r#"
-        INSERT INTO knowledge_base (content, embedding, metadata, conversation_id)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO knowledge_base (content, embedding, metadata, conversation_id, prompt_tokens, answer_tokens, total_tokens)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#,
         content,
         embedding as Vec<f32>,
         metadata.unwrap_or(json!({})),
-        conversation_id
+        conversation_id,
+        prompt_tokens,
+        answer_tokens,
+        total_tokens
     )
     .execute(pool)
     .await
