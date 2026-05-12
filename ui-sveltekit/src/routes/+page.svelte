@@ -149,6 +149,32 @@
                 </button>
             </div>
         </div>
+    {:else if chatStore.messages.length === 0 && !chatStore.loading}
+        <div class="h-full flex flex-col items-center justify-center max-w-lg mx-auto text-center space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div class="w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center shadow-2xl">
+                <MessageSquarePlus class="w-8 h-8 text-zinc-500" />
+            </div>
+            <div class="space-y-2">
+                <h3 class="text-xl font-bold text-zinc-200">New Conversation</h3>
+                <p class="text-sm text-zinc-500 leading-relaxed">
+                    This conversation is empty. Send a message to start interacting with your agent.
+                </p>
+            </div>
+            <div class="flex flex-wrap justify-center gap-2 max-w-sm">
+                <button 
+                    onclick={() => inputMessage = "Hello! How can you help me today?"}
+                    class="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-[11px] text-zinc-400 hover:text-zinc-200 transition-all"
+                >
+                    "How can you help me?"
+                </button>
+                <button 
+                    onclick={() => inputMessage = "What are your capabilities?"}
+                    class="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-[11px] text-zinc-400 hover:text-zinc-200 transition-all"
+                >
+                    "What are your capabilities?"
+                </button>
+            </div>
+        </div>
     {:else}
         <div class="max-w-4xl mx-auto space-y-10">
             {#if chatStore.hasMore}

@@ -798,18 +798,19 @@ pub fn send_message_to_subscriber(
             .await
             .unwrap_or(Vec::new());
 
+            for member in members {
+                let _ = state
+                    .send_sse_to_user(
+                        member.user_id.to_string().as_str(),
+                        "message",
+                        sse_data.clone(),
+                    )
+                    .await;
+            }
             if data.conversation_type.eq_ignore_ascii_case("private") {
                 match source {
                     MessageSource::Web { .. } => {
-                        for member in members {
-                            let _ = state
-                                .send_sse_to_user(
-                                    member.user_id.to_string().as_str(),
-                                    "message",
-                                    sse_data.clone(),
-                                )
-                                .await;
-                        }
+                        //since we always send sse to web no matter channel is come from
                     }
                     MessageSource::Other { name } => {
                         info!(
@@ -851,15 +852,7 @@ pub fn send_message_to_subscriber(
             } else {
                 match source {
                     MessageSource::Web { .. } => {
-                        for member in members {
-                            let _ = state
-                                .send_sse_to_user(
-                                    member.user_id.to_string().as_str(),
-                                    "message",
-                                    sse_data.clone(),
-                                )
-                                .await;
-                        }
+                        //since we always send sse to web no matter channel is come from
                     }
                     MessageSource::Other { name } => {
                         info!(

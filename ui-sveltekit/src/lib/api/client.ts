@@ -251,6 +251,35 @@ export const chatApi = {
         if (prefix) url.searchParams.append('prefix', prefix);
         return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
     },
+    deleteStorage: (path: string) => {
+        const url = new URL(`${BASE_URL}/v1/admin/storage/delete`);
+        url.searchParams.append('path', path);
+        return apiFetch<any>(url.pathname.replace("/api", "") + url.search, {
+            method: 'DELETE'
+        });
+    },
+    uploadToStorage: async (file: File, prefix?: string) => {
+        const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const url = new URL(`${BASE_URL}/v1/admin/storage/upload`);
+        if (prefix) url.searchParams.append('prefix', prefix);
+
+        const response = await fetch(url.toString(), {
+            method: 'POST',
+            headers: {
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            },
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error('Upload failed');
+        }
+
+        return response.json();
+    },
     logout: () => {
         return apiFetch<any>('/auth/logout', {
             method: 'POST'

@@ -1,5 +1,6 @@
 import {chatApi} from '$lib/api/client';
 import {chatStore} from "$lib/stores/chat.svelte";
+import {goto} from "$app/navigation";
 
 export type Conversation = {
     id: string;
@@ -55,7 +56,9 @@ function createConversationStore() {
                 ...c,
                 active: c.id === id
             }));
-            chatStore.fetchMessages(false).finally()
+            chatStore.fetchMessages(false).finally(()=>{
+                goto("/")
+            })
         },
         async addConversation(name: string) {
             try {

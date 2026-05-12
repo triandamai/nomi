@@ -15,6 +15,8 @@ use axum::extract::DefaultBodyLimit;
 pub fn create_router(state: AppState) -> Router {
     let admin_routes = Router::new()
         .route("/storage/explore", get(crate::feature::admin::handle_explore_storage))
+        .route("/storage/delete", delete(crate::feature::admin::handle_delete_storage))
+        .route("/storage/upload", post(crate::feature::admin::handle_upload_to_storage))
         .layer(middleware::from_fn_with_state(state.clone(), crate::feature::admin::admin_middleware))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 

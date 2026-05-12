@@ -87,6 +87,11 @@
                         src={image_url.startsWith("http") ? image_url : FILE_URL + image_url}
                         alt="Uploaded content"
                         class="max-w-full h-auto max-h-[400px] object-contain mx-auto"
+                        onerror={(e) => {
+                            const img = e.currentTarget as HTMLImageElement;
+                            img.src = 'https://placehold.co/600x400/18181b/a1a1aa?text=Image+Load+Failed';
+                            img.className = "max-w-full h-auto opacity-50 grayscale";
+                        }}
                 />
                 <a
                         href={image_url.startsWith("http") ? image_url : FILE_URL + image_url}

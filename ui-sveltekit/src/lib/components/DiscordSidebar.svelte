@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Plus, MoreVertical, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings, Bell } from 'lucide-svelte';
+    import { Plus, MoreVertical, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings, Bell, Database } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import { conversationStore, type Conversation } from '$lib/stores/conversation.svelte';
     import { profileStore } from '$lib/stores/profile.svelte';
@@ -7,6 +7,7 @@
     import { eventBus, useAvatar } from '$lib/utils';
     import { onMount } from 'svelte';
     import { chatApi } from '$lib/api/client';
+    import { goto } from '$app/navigation';
 
     let newConvName = $state('');
     let editingConv = $state<Conversation | null>(null);
@@ -432,6 +433,16 @@
                         <Bell size={14} />
                         <span>Reminders</span>
                     </button>
+
+                    {#if profileStore.currentUser?.role === 'admin'}
+                    <button 
+                        onclick={() => { showUserMenu = false; goto('/admin/storage'); }}
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+                    >
+                        <Database size={14} />
+                        <span>Storage</span>
+                    </button>
+                    {/if}
 
                     <div class="h-px bg-zinc-900 my-1"></div>
 
