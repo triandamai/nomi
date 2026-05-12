@@ -13,11 +13,8 @@ use crate::common::agent::classification::classification;
 use crate::common::repository::message_repo::save_message;
 use crate::feature::conversation::chat_model::MessageItem;
 use crate::feature::message_processor::MessageSource;
-use crate::feature::message_processor::processor::{
-     trigger_memory_consolidation,
-};
+use crate::feature::message_processor::processor::trigger_memory_consolidation;
 use tracing::{error, info};
-
 
 pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
     let conversation_id = msg.conversation_id;
@@ -71,7 +68,7 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
             media_type,
             None,
         )
-            .await;
+        .await;
 
         // Instead of hardcoded clarification, we inject a system prompt to the LLM to ask for clarification.
         // This will be passed to process_v2_message_with_intent but NOT saved as a message.
@@ -84,7 +81,7 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
             format!("[User uploaded a {}]", media_type),
             Some(injected_system_prompt),
         )
-            .await
+        .await
     } else if has_media && !is_skip {
         // Instead of hardcoded clarification, we inject a system prompt to the LLM to ask for clarification.
         // This will be passed to process_v2_message_with_intent but NOT saved as a message.
@@ -96,15 +93,9 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
             text_content,
             Some(injected_system_prompt),
         )
-            .await
+        .await
     } else {
-        process_v2_message_with_intent(
-            state.clone(),
-            msg,
-            text_content,
-            None,
-        )
-            .await
+        process_v2_message_with_intent(state.clone(), msg, text_content, None).await
     }
 }
 
@@ -140,11 +131,43 @@ async fn process_v2_message_with_intent(
         msg.doc_url.clone(),
         None,
     )
-        .await?;
+    .await?;
+
+    let members = sqlx::query!(
+        "SELECT m.user_id FROM conversation_members as m WHERE m.conversation_id = $1",
+        conversation_id
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or(Vec::new());
+
+    for member in members {
+        let _ = state
+            .send_sse_to_user(
+                member.user_id.to_string().as_str(),
+                "message",
+                json!({
+                        "id": m.id,
+                        "conversation_id":conversation_id,
+                        "role": m.role,
+                        "content": m.content.clone(),
+                        "thought": m.thought,
+                        "user_id": m.user_id,
+                        "total_tokens": 0,
+                        "image_url": m.image_url.as_ref().map(|path| state.storage.get_full_url( path)),
+                        "created_at": m.created_at
+            })
+            )
+            .await;
+    }
 
     if text_content.trim().eq_ignore_ascii_case("skip") {
         info!("Skip instruction received, marking last media as processed");
-        let _ = crate::common::repository::message_repo::mark_last_media_processed(&state.pool, conversation_id).await;
+        let _ = crate::common::repository::message_repo::mark_last_media_processed(
+            &state.pool,
+            conversation_id,
+        )
+        .await;
     }
 
     let payload = json!({
@@ -203,7 +226,7 @@ async fn process_v2_message_with_intent(
         text_content.clone(),
         injected_system_prompt,
     )
-        .await;
+    .await;
 
     let dispatcher = ToolDispatcher::new(
         state.pool.clone(),
@@ -220,8 +243,8 @@ async fn process_v2_message_with_intent(
         "SELECT bootstrap_content, soul_content, metadata FROM conversations WHERE id = $1",
         conversation_id
     )
-        .fetch_one(&state.pool)
-        .await?;
+    .fetch_one(&state.pool)
+    .await?;
 
     let system_prompt = {
         let boot = conversation.bootstrap_content.unwrap_or_default();
@@ -257,39 +280,52 @@ async fn process_v2_message_with_intent(
         DESC LIMIT 15",
         conversation_id
     )
-        .fetch_all(&state.pool)
-        .await?;
+    .fetch_all(&state.pool)
+    .await?;
 
     let mut history_text = String::new();
     for msg in history.into_iter().rev() {
         let is_processed = if let Some(meta) = msg.metadata {
             meta.get("is_processed")
                 .and_then(|v| v.as_bool())
-                .or_else(|| meta.get("is_processed").and_then(|v| v.as_str().map(|s| s == "true")))
+                .or_else(|| {
+                    meta.get("is_processed")
+                        .and_then(|v| v.as_str().map(|s| s == "true"))
+                })
                 .unwrap_or(false)
         } else {
             false
         };
 
         let image_url = match msg.image_url {
-            Some(path) if !is_processed => format!(" - Image: {} \n", state.storage.get_full_url(&path)),
+            Some(path) if !is_processed => {
+                format!(" - Image: {} \n", state.storage.get_full_url(&path))
+            }
             _ => "".to_string(),
         };
         let video_url = match msg.video_url {
-            Some(path) if !is_processed => format!("- Video: {} \n", state.storage.get_full_url(&path)),
+            Some(path) if !is_processed => {
+                format!("- Video: {} \n", state.storage.get_full_url(&path))
+            }
             _ => "".to_string(),
         };
         let audio_url = match msg.audio_url {
-            Some(path) if !is_processed => format!(" - Audio: {} \n", state.storage.get_full_url(&path)),
+            Some(path) if !is_processed => {
+                format!(" - Audio: {} \n", state.storage.get_full_url(&path))
+            }
             _ => "".to_string(),
         };
         let document_url = match msg.document_url {
-            Some(path) if !is_processed => format!("- Document: {} \n", state.storage.get_full_url(&path)),
+            Some(path) if !is_processed => {
+                format!("- Document: {} \n", state.storage.get_full_url(&path))
+            }
             _ => "".to_string(),
         };
 
         let sticker_url = match msg.sticker_url {
-            Some(path) if !is_processed => format!("- Sticker: {} \n", state.storage.get_full_url(&path)),
+            Some(path) if !is_processed => {
+                format!("- Sticker: {} \n", state.storage.get_full_url(&path))
+            }
             _ => "".to_string(),
         };
         let role_label = match msg.role.as_str() {
@@ -324,9 +360,9 @@ async fn process_v2_message_with_intent(
             embedding.unwrap().embedding.values,
             Some(conversation_id),
         )
-            .await
-            .unwrap_or_default()
-            .join("---")
+        .await
+        .unwrap_or_default()
+        .join("---")
     } else {
         String::new()
     };
@@ -482,7 +518,7 @@ async fn process_v2_message_with_intent(
                     &text_content, // use the v2-stripped one
                     Some(state.sse.clone()),
                 )
-                    .await;
+                .await;
 
                 // Append Tool Responses to history_text to enforce memory management persistence
                 for (name, result) in &tool_results {
@@ -531,7 +567,7 @@ async fn process_v2_message_with_intent(
             None,
             None,
         )
-            .await
+        .await
         {
             let payload = json!({
                         "id": record.id,

@@ -1,6 +1,6 @@
 use crate::AppState;
 use crate::common::identity;
-use crate::common::repository::{channel_repo, message_repo};
+use crate::common::repository::channel_repo;
 use crate::feature::message_processor::{
     get_help_command, process_generate_pairing, process_login, process_pairing, process_register,
 };
@@ -173,35 +173,6 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     }
 
     // ================================== REGULAR CONVO ============================//
-
-    // 4. Save User Message
-    let user_message = message_repo::save_message(
-        &state.pool,
-        external_conversation_id,
-        "user",
-        &msg.text,
-        None,
-        Some(user_id),
-        0,
-        0,
-        0,
-        msg.image_url.clone(),
-        msg.audio_url.clone(),
-        msg.video_url.clone(),
-        msg.doc_url.clone(),
-        msg.sticker_url.clone(),
-    )
-    .await?;
-
-    let mut sse_payload = serde_json::to_value(&user_message)?;
-    if let Some(path) = user_message.image_url {
-        sse_payload["image_url"] = json!(state.storage.get_full_url(&path));
-    }
-
-    let _ = state
-        .send_sse_to_user(user_id.to_string().as_str(), "message", sse_payload)
-        .await;
-
     // 5. Trigger Agentic Loop
     let state_clone = state.clone();
     let user_text = msg.text.clone();
