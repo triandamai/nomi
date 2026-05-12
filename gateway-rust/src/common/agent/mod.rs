@@ -372,6 +372,7 @@ pub async fn execute_tools(
             };
 
             // Send tool_end SSE event
+            
             if let Some(sse) = sse.as_ref() {
                 let _ = sse
                     .send(SseBuilder::new(

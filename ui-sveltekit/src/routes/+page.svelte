@@ -207,7 +207,7 @@
 
                     <div class="flex-1 flex flex-col min-w-0 space-y-4">
                         <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">Arta AI</span>
+                            <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">Nomi</span>
                             {#if chatStore.isTyping}
                                 <div class="flex gap-1 ml-2">
                                     <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce"></div>

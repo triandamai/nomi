@@ -1,3 +1,4 @@
+use crate::AppState;
 use crate::common::agent::agent_model::PromptActor;
 use crate::common::agent::execute_tools;
 use crate::common::tools::ToolDispatcher;
@@ -5,18 +6,17 @@ use crate::feature::message_processor::media::MediaClassification;
 use crate::feature::message_processor::model::UnifiedMessage;
 use crate::feature::{OutboundMessage, PresenceMessage};
 use crate::rag;
-use crate::AppState;
 use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::common::repository::message_repo::save_message;
 use crate::feature::conversation::chat_model::MessageItem;
+use crate::feature::message_processor::MessageSource;
 use crate::feature::message_processor::processor::{
     classify_media_context, extract_expense_data, extract_maintenance_data, extract_technical_doc,
     trigger_memory_consolidation,
 };
-use crate::feature::message_processor::MessageSource;
 use tracing::{error, info};
 
 fn strip_thinking_tags(text: &str) -> String {
@@ -34,15 +34,17 @@ fn strip_thinking_tags(text: &str) -> String {
     stripped
 }
 
-fn send_status_update(
+pub fn send_status_update(
     state: &AppState,
     conversation_id: Uuid,
     source: MessageSource,
+    event: String,
     text: String,
 ) {
     info!("send_status_update start");
     let state = state.clone();
     let pool = state.pool.clone();
+    let event = event.clone();
     tokio::spawn(async move {
         let convo = sqlx::query!(
             "SELECT conversation_type,id FROM conversations WHERE id = $1",
@@ -76,7 +78,13 @@ fn send_status_update(
                     MessageSource::Web { .. } => {
                         info!("send_status_update web");
                         for member in members {
-                            let _ = state.send_sse_to_user(member.user_id.to_string().as_str(), "", json!({})).await;
+                            let _ = state
+                                .send_sse_to_user(
+                                    member.user_id.to_string().as_str(),
+                                    event.to_string().as_str(),
+                                    json!({}),
+                                )
+                                .await;
                         }
                     }
                     MessageSource::Other { name } => {
@@ -86,7 +94,7 @@ fn send_status_update(
                         );
                     }
                     _ => {
-                        info!("send_status_update channel:{}",ch_name);
+                        info!("send_status_update channel:{}", ch_name);
                         let channel_info = sqlx::query!(
                             "SELECT c.channel_type, c.external_id, c.external_chat_id
                                     FROM channels c
@@ -122,7 +130,13 @@ fn send_status_update(
                     MessageSource::Web { .. } => {
                         info!("send_status_update web");
                         for member in members {
-                            let _ = state.send_sse_to_user(member.user_id.to_string().as_str(), "", json!({})).await;
+                            let _ = state
+                                .send_sse_to_user(
+                                    member.user_id.to_string().as_str(),
+                                    event.to_string().as_str(),
+                                    json!({}),
+                                )
+                                .await;
                         }
                     }
                     MessageSource::Other { name } => {
@@ -132,7 +146,7 @@ fn send_status_update(
                         );
                     }
                     _ => {
-                        info!("send_status_update channel:{}",ch_name);
+                        info!("send_status_update channel:{}", ch_name);
                         let channel_info = sqlx::query!(
                             "SELECT c.conversation_id, c.channel, c.external_group_id
                             FROM channel_group c
@@ -167,12 +181,12 @@ fn send_status_update(
     });
 }
 
-fn send_message_to_subscriber(
+pub fn send_message_to_subscriber(
     state: &AppState,
     conversation_id: Uuid,
     source: MessageSource,
-    sse_data:serde_json::Value,
-    data:MessageItem,
+    sse_data: serde_json::Value,
+    data: MessageItem,
 ) {
     let state = state.clone();
     let pool = state.pool.clone();
@@ -182,8 +196,8 @@ fn send_message_to_subscriber(
             "SELECT conversation_type,id FROM conversations WHERE id = $1",
             conversation_id
         )
-            .fetch_one(&pool)
-            .await;
+        .fetch_one(&pool)
+        .await;
 
         let ch_name = match source.clone() {
             MessageSource::Web { name } => name,
@@ -201,15 +215,21 @@ fn send_message_to_subscriber(
                 "SELECT m.user_id FROM conversation_members as m WHERE m.conversation_id = $1",
                 data.id
             )
-                .fetch_all(&pool)
-                .await
-                .unwrap_or(Vec::new());
+            .fetch_all(&pool)
+            .await
+            .unwrap_or(Vec::new());
 
             if data.conversation_type.eq_ignore_ascii_case("private") {
                 match source {
                     MessageSource::Web { .. } => {
                         for member in members {
-                            let _ = state.send_sse_to_user(member.user_id.to_string().as_str(), "message", sse_data.clone()).await;
+                            let _ = state
+                                .send_sse_to_user(
+                                    member.user_id.to_string().as_str(),
+                                    "message",
+                                    sse_data.clone(),
+                                )
+                                .await;
                         }
                     }
                     MessageSource::Other { name } => {
@@ -227,9 +247,9 @@ fn send_message_to_subscriber(
                             conversation_id,
                             ch_name
                         )
-                            .fetch_all(&pool)
-                            .await
-                            .unwrap_or(Vec::new());
+                        .fetch_all(&pool)
+                        .await
+                        .unwrap_or(Vec::new());
 
                         for channel in channel_info {
                             let outbound = OutboundMessage {
@@ -238,11 +258,11 @@ fn send_message_to_subscriber(
                                 conversation_id: channel.external_chat_id.clone(),
                                 text: outbound_message.content.clone(),
                                 channel: channel.channel_type.clone(),
-                                video_url: None,
-                                image_url: None,
-                                audio_url: None,
-                                doc_url: None,
-                                sticker_url: None,
+                                video_url: outbound_message.video_url.clone(),
+                                image_url: outbound_message.image_url.clone(),
+                                audio_url: outbound_message.audio_url.clone(),
+                                doc_url: outbound_message.document_url.clone(),
+                                sticker_url: outbound_message.sticker_url.clone(),
                                 metadata: None,
                             };
                             let _ = state.publish_outbond(&outbound).await;
@@ -253,7 +273,13 @@ fn send_message_to_subscriber(
                 match source {
                     MessageSource::Web { .. } => {
                         for member in members {
-                            let _ = state.send_sse_to_user(member.user_id.to_string().as_str(), "message", sse_data.clone()).await;
+                            let _ = state
+                                .send_sse_to_user(
+                                    member.user_id.to_string().as_str(),
+                                    "message",
+                                    sse_data.clone(),
+                                )
+                                .await;
                         }
                     }
                     MessageSource::Other { name } => {
@@ -270,9 +296,9 @@ fn send_message_to_subscriber(
                             conversation_id,
                             ch_name
                         )
-                            .fetch_all(&pool)
-                            .await
-                            .unwrap_or(Vec::new());
+                        .fetch_all(&pool)
+                        .await
+                        .unwrap_or(Vec::new());
 
                         for channel in channel_info {
                             let outbound = OutboundMessage {
@@ -281,11 +307,11 @@ fn send_message_to_subscriber(
                                 conversation_id: channel.external_group_id.clone(),
                                 text: outbound_message.content.clone(),
                                 channel: channel.channel,
-                                video_url: None,
-                                image_url: None,
-                                audio_url: None,
-                                doc_url: None,
-                                sticker_url: None,
+                                video_url: outbound_message.video_url.clone(),
+                                image_url: outbound_message.image_url.clone(),
+                                audio_url: outbound_message.audio_url.clone(),
+                                doc_url: outbound_message.document_url.clone(),
+                                sticker_url: outbound_message.sticker_url.clone(),
                                 metadata: None,
                             };
                             let _ = state.publish_outbond(&outbound).await;
@@ -369,7 +395,11 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         )
         .await
     } else {
-        process_v2_message_with_intent(state.clone(), msg, text_content, None).await
+        // Instead of hardcoded clarification, we inject a system prompt to the LLM to ask for clarification.
+        // This will be passed to process_v2_message_with_intent but NOT saved as a message.
+        let injected_system_prompt =
+            crate::prompts::PromptRegistry::media_intent_clarification().to_string();
+        process_v2_message_with_intent(state.clone(), msg, text_content, Some(injected_system_prompt)).await
     }
 }
 
@@ -464,6 +494,7 @@ async fn process_v2_message_with_intent(
             &state,
             conversation_id,
             msg.source.clone(),
+            "tool_start".to_string(),
             crate::prompts::PromptRegistry::status_analyzing_receipt().to_string(),
         );
 
@@ -474,25 +505,26 @@ async fn process_v2_message_with_intent(
             MediaClassification::ExpenseReceipt => {
                 if let Ok(expense) = extract_expense_data(&state, &image_url).await {
                     // Transactional Logging
-                    if let Some(uid) = user_id {
-                        let _ =
-                            crate::feature::message_processor::processor::log_expense_transaction(
-                                &state.pool,
-                                uid,
-                                Some(conversation_id),
-                                &expense,
-                            )
-                            .await;
-                        send_status_update(
-                            &state,
-                            conversation_id,
-                            msg.source.clone(),
-                            crate::prompts::PromptRegistry::status_expense_logged(
-                                &expense.merchant,
-                                &expense.total.to_string(),
-                            ),
-                        );
-                    }
+                    // if let Some(uid) = user_id {
+                    //     let _ =
+                    //         crate::feature::message_processor::processor::log_expense_transaction(
+                    //             &state.pool,
+                    //             uid,
+                    //             Some(conversation_id),
+                    //             &expense,
+                    //         )
+                    //         .await;
+                    //     send_status_update(
+                    //         &state,
+                    //         conversation_id,
+                    //         msg.source.clone(),
+                    //         "tool_start".to_string(),
+                    //         crate::prompts::PromptRegistry::status_expense_logged(
+                    //             &expense.merchant,
+                    //             &expense.total.to_string(),
+                    //         ),
+                    //     );
+                    // }
 
                     media_context = crate::prompts::PromptRegistry::media_context_expense(
                         &expense.merchant,
@@ -787,6 +819,7 @@ async fn process_v2_message_with_intent(
                 &state,
                 conversation_id,
                 msg.source.clone(),
+                "thought".to_string(),
                 crate::prompts::PromptRegistry::status_thinking().to_string(),
             );
         }
@@ -903,6 +936,7 @@ async fn process_v2_message_with_intent(
                         &state,
                         conversation_id,
                         msg.source.clone(),
+                        "thought".to_string(),
                         format!("Nomi is {}...", action),
                     );
                 }
@@ -983,7 +1017,6 @@ async fn process_v2_message_with_intent(
                 payload,
                 record.clone(),
             );
-
         }
 
         let pool = state.pool.clone();

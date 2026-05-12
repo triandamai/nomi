@@ -126,6 +126,10 @@ impl PromptRegistry {
         "[SYSTEM: User uploaded a file (image, video, audio, or document) without text. Please ask the user for clarification on what this file is for (e.g., log an expense, analyze the content, or make a sticker). Keep it witty and helpful. Remember, you have an `analyze_media` tool if they want you to describe or summarize it.]\n"
     }
 
+    pub fn media_intent_clarification() -> &'static str {
+        "[SYSTEM: User uploaded a file (image, video, audio, or document) with text. Please ask the user for clarification on what this file is for (e.g., log an expense, analyze the content, or make a sticker). Keep it witty and helpful. Remember, you have an `analyze_media` tool if they want you to describe or summarize it.]\n"
+    }
+
     pub fn pending_media_context(url: &str) -> String {
         format!(
             "### Pending Media Context\n
