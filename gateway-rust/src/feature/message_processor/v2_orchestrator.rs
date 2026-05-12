@@ -37,6 +37,8 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         || msg.doc_url.is_some()
         || msg.sticker_url.is_some();
 
+    let is_skip = text_content.trim().eq_ignore_ascii_case("skip");
+
     if has_media && text_content.trim().is_empty() {
         let media_url = msg
             .image_url
@@ -83,7 +85,7 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
             Some(injected_system_prompt),
         )
             .await
-    } else {
+    } else if has_media && !is_skip {
         // Instead of hardcoded clarification, we inject a system prompt to the LLM to ask for clarification.
         // This will be passed to process_v2_message_with_intent but NOT saved as a message.
         let injected_system_prompt =
@@ -93,6 +95,14 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
             msg,
             text_content,
             Some(injected_system_prompt),
+        )
+            .await
+    } else {
+        process_v2_message_with_intent(
+            state.clone(),
+            msg,
+            text_content,
+            None,
         )
             .await
     }
@@ -131,6 +141,11 @@ async fn process_v2_message_with_intent(
         None,
     )
         .await?;
+
+    if text_content.trim().eq_ignore_ascii_case("skip") {
+        info!("Skip instruction received, marking last media as processed");
+        let _ = crate::common::repository::message_repo::mark_last_media_processed(&state.pool, conversation_id).await;
+    }
 
     let payload = json!({
         "id": m.id,
@@ -234,7 +249,8 @@ async fn process_v2_message_with_intent(
                 messages.video_url,
                 messages.audio_url,
                 messages.document_url,
-                messages.sticker_url
+                messages.sticker_url,
+                messages.metadata
             FROM messages LEFT JOIN users ON users.id = messages.user_id
             WHERE conversation_id = $1
             ORDER BY created_at
@@ -246,26 +262,35 @@ async fn process_v2_message_with_intent(
 
     let mut history_text = String::new();
     for msg in history.into_iter().rev() {
+        let is_processed = if let Some(meta) = msg.metadata {
+            meta.get("is_processed")
+                .and_then(|v| v.as_bool())
+                .or_else(|| meta.get("is_processed").and_then(|v| v.as_str().map(|s| s == "true")))
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
         let image_url = match msg.image_url {
-            Some(path) => format!(" - Image: {} \n", state.storage.get_full_url(&path)),
-            None => "".to_string(),
+            Some(path) if !is_processed => format!(" - Image: {} \n", state.storage.get_full_url(&path)),
+            _ => "".to_string(),
         };
         let video_url = match msg.video_url {
-            Some(path) => format!("- Video: {} \n", state.storage.get_full_url(&path)),
-            None => "".to_string(),
+            Some(path) if !is_processed => format!("- Video: {} \n", state.storage.get_full_url(&path)),
+            _ => "".to_string(),
         };
         let audio_url = match msg.audio_url {
-            Some(path) => format!(" - Audio: {} \n", state.storage.get_full_url(&path)),
-            None => "".to_string(),
+            Some(path) if !is_processed => format!(" - Audio: {} \n", state.storage.get_full_url(&path)),
+            _ => "".to_string(),
         };
         let document_url = match msg.document_url {
-            Some(path) => format!("- Document: {} \n", state.storage.get_full_url(&path)),
-            None => "".to_string(),
+            Some(path) if !is_processed => format!("- Document: {} \n", state.storage.get_full_url(&path)),
+            _ => "".to_string(),
         };
 
         let sticker_url = match msg.sticker_url {
-            Some(path) => format!("- Sticker: {} \n", state.storage.get_full_url(&path)),
-            None => "".to_string(),
+            Some(path) if !is_processed => format!("- Sticker: {} \n", state.storage.get_full_url(&path)),
+            _ => "".to_string(),
         };
         let role_label = match msg.role.as_str() {
             "user" => match msg.display_name {

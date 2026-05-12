@@ -1908,6 +1908,9 @@ impl ToolDispatcher {
         .await
         {
             Ok(_) => {
+                if let Some(cid) = self.conversation_id {
+                    let _ = crate::common::repository::message_repo::mark_last_media_processed(&self.pool, cid).await;
+                }
                 let content = format!(
                     "Expense of {} at {} logged successfully under {}. Attached image linked and cleared from pending queue.",
                     expense_data.total, expense_data.merchant, expense_data.category

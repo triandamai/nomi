@@ -7,8 +7,10 @@ use regex::Regex;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use chrono::Utc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
+use uuid::Uuid;
 use wa_rs::Client;
 use wa_rs::Jid;
 use wa_rs::bot::Bot;
@@ -81,9 +83,13 @@ impl WhatsAppWorker {
                             let mut sticker_url: Option<String> = None;
                             let bucket = "conversations";
 
+
                             let mut is_mentioned = false;
                             if let Some(img) = &msg.image_message {
                                 info!("image detected");
+                                let uuid = Uuid::new_v4().to_string();
+                                let folder_name = conversation_id.split("@").next().unwrap_or(uuid.as_str());
+                                let file_name = format!("WA-{}",Utc::now().timestamp_millis());
                                 if let Ok(data) = client.download(img.as_ref()).await {
                                     let ext = mime_guess::get_mime_extensions_str(img.mimetype())
                                         .and_then(|exts| exts.first())
@@ -91,7 +97,7 @@ impl WhatsAppWorker {
                                     if let Ok(upload_image) = &storage
                                         .upload_byte(
                                             bucket.to_string(),
-                                            format!("{}/{}.{}", sender_id, conversation_id, ext),
+                                            format!("{}/{}.{}", folder_name, file_name, ext),
                                             data,
                                         )
                                         .await
@@ -104,6 +110,9 @@ impl WhatsAppWorker {
                             // Video
                             if let Some(video) = &msg.video_message {
                                 info!("video detected");
+                                let uuid = Uuid::new_v4().to_string();
+                                let folder_name = conversation_id.split("@").next().unwrap_or(uuid.as_str());
+                                let file_name = format!("WA-{}",Utc::now().timestamp_millis());
                                 if let Ok(data) = client.download(video.as_ref()).await {
                                     let ext = mime_guess::get_mime_extensions_str(video.mimetype())
                                         .and_then(|exts| exts.first())
@@ -111,7 +120,7 @@ impl WhatsAppWorker {
                                     if let Ok(upload_video) = &storage
                                         .upload_byte(
                                             bucket.to_string(),
-                                            format!("{}/{}.{}", sender_id, conversation_id, ext),
+                                            format!("{}/{}.{}", folder_name, file_name, ext),
                                             data,
                                         )
                                         .await
@@ -125,12 +134,15 @@ impl WhatsAppWorker {
                             // Audio
                             if let Some(audio) = &msg.audio_message {
                                 info!("audio detected");
+                                let uuid = Uuid::new_v4().to_string();
+                                let folder_name = conversation_id.split("@").next().unwrap_or(uuid.as_str());
+                                let file_name = format!("WA-{}",Utc::now().timestamp_millis());
                                 if let Ok(data) = client.download(audio.as_ref()).await {
                                     let ext = if audio.ptt() { "ogg" } else { "mp3" };
                                     if let Ok(upload_audio) = &storage
                                         .upload_byte(
                                             bucket.to_string(),
-                                            format!("{}/{}.{}", sender_id, conversation_id, ext),
+                                            format!("{}/{}.{}", folder_name, file_name, ext),
                                             data,
                                         )
                                         .await
@@ -144,15 +156,18 @@ impl WhatsAppWorker {
                             // Document
                             if let Some(doc) = &msg.document_message {
                                 info!("document detected");
+                                let uuid = Uuid::new_v4().to_string();
+                                let folder_name = conversation_id.split("@").next().unwrap_or(uuid.as_str());
+                                let file_name = format!("WA-{}",Utc::now().timestamp_millis());
                                 if let Ok(data) = client.download(doc.as_ref()).await {
-                                    let filename = doc.file_name.as_deref().unwrap_or("document");
+
+                                    let ext = mime_guess::get_mime_extensions_str(doc.mimetype())
+                                        .and_then(|exts| exts.first())
+                                        .unwrap_or(&".txt");
                                     if let Ok(upload_doc) = &storage
                                         .upload_byte(
                                             bucket.to_string(),
-                                            format!(
-                                                "{}/{}/{}",
-                                                sender_id, conversation_id, filename
-                                            ),
+                                            format!("{}/{}.{}", folder_name, file_name, ext),
                                             data,
                                         )
                                         .await
@@ -166,6 +181,9 @@ impl WhatsAppWorker {
                             // Sticker
                             if let Some(sticker) = &msg.sticker_message {
                                 info!("sticker detected");
+                                let uuid = Uuid::new_v4().to_string();
+                                let folder_name = conversation_id.split("@").next().unwrap_or(uuid.as_str());
+                                let file_name = format!("WA-{}",Utc::now().timestamp_millis());
                                 if let Ok(data) = client.download(sticker.as_ref()).await {
                                     let ext =
                                         mime_guess::get_mime_extensions_str(sticker.mimetype())
@@ -174,7 +192,7 @@ impl WhatsAppWorker {
                                     if let Ok(upload_sticker) = &storage
                                         .upload_byte(
                                             bucket.to_string(),
-                                            format!("{}/{}.{}", sender_id, conversation_id, ext),
+                                            format!("{}/{}.{}", folder_name, file_name, ext),
                                             data,
                                         )
                                         .await

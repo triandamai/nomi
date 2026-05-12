@@ -4,6 +4,36 @@ use sqlx::PgPool;
 use tracing::info;
 use uuid::Uuid;
 
+pub async fn mark_last_media_processed(pool: &PgPool, conversation_id: Uuid) -> anyhow::Result<()> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query!(
+        "UPDATE messages 
+         SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{is_processed}', 'true') 
+         WHERE id = (
+             SELECT id FROM messages 
+             WHERE conversation_id = $1 
+             AND (image_url IS NOT NULL OR video_url IS NOT NULL OR audio_url IS NOT NULL OR document_url IS NOT NULL OR sticker_url IS NOT NULL)
+             ORDER BY created_at DESC 
+             LIMIT 1
+         )",
+        conversation_id
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    // Also clear from pending_media table
+    sqlx::query!(
+        "DELETE FROM pending_media WHERE conversation_id = $1",
+        conversation_id
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
 pub async fn save_message(
     pool: &PgPool,
     conversation_id: Uuid,

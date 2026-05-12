@@ -4,11 +4,12 @@ use crate::feature::{InboundMessage, OutboundMessage};
 use anyhow::anyhow;
 use chrono::Utc;
 use regex::Regex;
+use std::io::SeekFrom;
 use teloxide::dispatching::{Dispatcher, UpdateFilterExt};
 use teloxide::net::Download;
 use teloxide::prelude::*;
 use teloxide::types::{ChatAction, FileId, InputFile, MessageEntityKind, Recipient};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tracing::{error, info};
 
 pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client: StorageClient) {
@@ -54,7 +55,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                         file_id.clone(),
                         format!("{}/{}", sender_id, message_id),
                     )
-                    .await;
+                        .await;
 
                     info!("result image upload {:?}", extract);
                     if let Ok(file) = extract {
@@ -74,7 +75,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                     file_id.clone(),
                     format!("{}/{}", sender_id, message_id),
                 )
-                .await;
+                    .await;
 
                 info!("result video upload {:?}", extract);
                 if let Ok(file) = extract {
@@ -92,7 +93,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                     file_id.clone(),
                     format!("{}/{}", sender_id, message_id),
                 )
-                .await;
+                    .await;
                 info!("result audio upload {:?}", extract);
                 if let Ok(file) = extract {
                     info!("audio uploaded");
@@ -109,7 +110,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                     file_id.clone(),
                     format!("{}/{}", sender_id, message_id),
                 )
-                .await;
+                    .await;
                 info!("result vn upload {:?}", extract);
                 if let Ok(file) = extract {
                     info!("vn uploaded");
@@ -126,7 +127,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                     file_id.clone(),
                     format!("{}/{}", sender_id, message_id),
                 )
-                .await;
+                    .await;
                 info!("result document upload {:?}", extract);
                 if let Ok(file) = extract {
                     info!("document uploaded");
@@ -143,7 +144,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                     file_id.clone(),
                     format!("{}/{}", sender_id, message_id),
                 )
-                .await;
+                    .await;
                 info!("result sticker upload {:?}", extract);
                 if let Ok(file) = extract {
                     info!("sticker uploaded");
@@ -151,8 +152,9 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 }
             }
 
-            let mut is_mentioned = Regex::new(r"(?i)@?(nomi|nom\s*nom|nomnom|nomiii|nom)\b").unwrap().is_match(&text);
-
+            let mut is_mentioned = Regex::new(r"(?i)@?(nomi|nom\s*nom|nomnom|nomiii|nom)\b")
+                .unwrap()
+                .is_match(&text);
 
             // Task 2: Handle Native Mentions
             let bot_mention_str = format!("@{}", bot_username_clone.to_lowercase());
@@ -209,7 +211,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 doc_url,
                 sticker_url,
                 metadata: Some(metadata),
-                original_meta:Some(original_meta)
+                original_meta: Some(original_meta),
             };
 
             info!("nomi:inbound => {:?}", inbound);
@@ -317,51 +319,59 @@ pub async fn extract_and_upload_file_telegram(
 ) -> Result<String, String> {
     let bucket = "conversations";
     let mut buff = Vec::new();
-    match bot.get_file(file_id).await {
-        Ok(bot_file) => {
-            let ext = mime_guess::from_path(bot_file.path.clone()).first_or_octet_stream();
-            let ext = mime_guess::get_mime_extensions(&ext)
-                .unwrap()
-                .first()
-                .unwrap()
-                .to_string();
-            let file_name = format!("{}.{}", bot_file.id, ext);
-            let temp_file = tokio::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create_new(true)
-                .open(file_name.clone())
-                .await;
-            match temp_file {
-                Ok(mut file_destination) => match bot
-                    .download_file(&bot_file.path, &mut file_destination)
-                    .await
-                {
-                    Ok(_) => match file_destination.read_to_end(&mut buff).await {
-                        Ok(_) => match storage
-                            .upload_byte(
-                                bucket.to_string(),
-                                format!("{}.{}", target_file_path, ext),
-                                buff,
-                            )
-                            .await
-                        {
-                            Ok(upload_file) => {
-                                info!("success uploaded");
-                                let _ = tokio::fs::remove_file(file_name).await;
-                                Ok(upload_file.clone())
-                            }
-                            Err(e) => Err(format!("Failed uploading file: {}", e)),
-                        },
+    let bot_file = bot.get_file(file_id).await;
+    if let Err(e) = bot_file {
+        return Err(format!("Failed to get file: {}", e));
+    }
+    let bot_file = bot_file.unwrap();
+    let ext = mime_guess::from_path(bot_file.path.clone()).first_or_octet_stream();
+    let ext = mime_guess::get_mime_extensions(&ext)
+        .unwrap()
+        .first()
+        .unwrap()
+        .to_string();
+    let file_name = format!("{}.{}", bot_file.id, ext);
+    let temp_file = tokio::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(file_name.clone())
+        .await;
+    if let Err(e) = temp_file {
+        return Err(format!("Failed download  file: {}", e));
+    }
+    let mut file_destination = temp_file.unwrap();
 
-                        Err(e) => Err(format!("Failed read final temp file: {}", e)),
-                    },
-                    Err(e) => Err(format!("Failed download  file: {}", e)),
-                },
-                Err(e) => Err(format!("Failed download  file: {}", e)),
-            }
+    let download = bot
+        .download_file(&bot_file.path, &mut file_destination)
+        .await;
+
+    if let Err(e) = download {
+        return Err(format!("Failed to download file: {}", e));
+    }
+
+    // CRITICAL FIX: Reset the cursor to the start of the file before reading
+    if let Err(error_seek_file) = file_destination.seek(SeekFrom::Start(0)).await {
+        return Err(format!("Failed to seek: {}", error_seek_file));
+    }
+    let read_file = file_destination.read_to_end(&mut buff).await;
+    if let Err(e) = read_file {
+        return Err(format!("Failed read final temp file: {}", e));
+    }
+    match storage
+        .upload_byte(
+            bucket.to_string(),
+            format!("{}.{}", target_file_path, ext),
+            buff,
+        )
+        .await
+    {
+        Ok(upload_file) => {
+            info!("success uploaded");
+            let _ = tokio::fs::remove_file(file_name).await;
+            Ok(upload_file.clone())
         }
-        Err(e) => Err(format!("Failed download  file: {}", e)),
+        Err(e) => Err(format!("Failed uploading file: {}", e)),
     }
 }
 
