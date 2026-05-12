@@ -12,6 +12,7 @@ use crate::common::repository::{channel_repo, pairing_repo};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use rand::RngExt;
 use tracing::{error, info};
+use crate::prompts::PromptRegistry;
 
 pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
     if msg.v2 {
@@ -517,7 +518,7 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
     if let Err(err) = channel_exists {
         info!("failed register because error getting information: {}", err);
         let _ = state
-            .publish_outbond(&crate::feature::OutboundMessage {
+            .publish_outbond(&OutboundMessage {
                 is_group: msg.is_group,
                 sender_id: msg.sender_id.clone(),
                 conversation_id: msg.conversation_id.clone(),
@@ -537,7 +538,7 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
     if let Some(value) = channel_result {
         info!("failed register because user exist: {}", value.user_id);
         let _ = state
-            .publish_outbond(&crate::feature::OutboundMessage {
+            .publish_outbond(&OutboundMessage {
                 is_group: msg.is_group,
                 sender_id: msg.sender_id.clone(),
                 conversation_id: msg.conversation_id.clone(),
@@ -620,9 +621,11 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
     let title = format!("{} via {}", msg.conversation_id, msg.channel);
 
     if let Err(e) = sqlx::query!(
-        "INSERT INTO conversations (id, title) VALUES ($1, $2)",
+        "INSERT INTO conversations (id, title,soul_content,bootstrap_content) VALUES ($1, $2,$3,$4)",
         conv_id,
-        title
+        title,
+        PromptRegistry::default_soul_prompts(),
+        PromptRegistry::default_bootstrap_content()
     )
     .execute(&mut *tx)
     .await

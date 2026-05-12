@@ -667,7 +667,7 @@ async fn process_v2_message_with_intent(
             combined.push_str(&soul);
         }
 
-        combined.push_str("### Orchestrator Instructions \n");
+        combined.push_str("\n### Orchestrator Instructions \n");
         combined.push_str(crate::prompts::PromptRegistry::orchestrator_instructions());
         combined.push_str("");
         combined.push_str(crate::prompts::PromptRegistry::tool_usage_guidelines());

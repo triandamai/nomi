@@ -396,14 +396,12 @@ pub fn build_system_prompt(history: String, memories: String, system_prompt: Str
         system_prompt
     };
 
-    let rules = PromptRegistry::default_rules_prompts();
-
     format!(
         "{}\n
          {}\n
         ### DATA CONTEXT\n{}",
         base_prompt,
-        rules,
+        PromptRegistry::default_rules_prompts(),
         build_context(history, memories)
     )
 }
