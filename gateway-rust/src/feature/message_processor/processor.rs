@@ -9,10 +9,10 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::common::repository::{channel_repo, pairing_repo};
+use crate::prompts::PromptRegistry;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use rand::RngExt;
 use tracing::{error, info};
-use crate::prompts::PromptRegistry;
 
 pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
     if msg.v2 {
@@ -111,7 +111,7 @@ pub(crate) async fn trigger_memory_consolidation(
                 }
             });
 
-            let usage = summary_res.usage_metadata.unwrap_or(UsageMetadata{
+            let usage = summary_res.usage_metadata.unwrap_or(UsageMetadata {
                 prompt_token_count: None,
                 candidates_token_count: None,
                 total_token_count: None,
@@ -443,6 +443,117 @@ async fn fetch_media_from_storage(
     Ok((mime_type, b64))
 }
 
+pub async fn process_generate_pairing(
+    state: &AppState,
+    msg: &InboundMessage,
+    user_id: Uuid,
+) -> anyhow::Result<()> {
+    let conv_id = if msg.is_group {
+        sqlx::query!(
+            "SELECT c.id
+            FROM channel_group as g
+            RIGHT JOIN conversations as c ON c.id = g.conversation_id
+            WHERE g.external_group_id = $1 AND g.channel = $2",
+            msg.conversation_id,
+            msg.channel
+        )
+        .fetch_one(&state.pool)
+        .await
+        .map_or_else(|_| Uuid::nil(), |result| result.id)
+    } else {
+        sqlx::query!(
+            "SELECT c.id
+            FROM channels as g
+            RIGHT JOIN conversations as c ON c.id = g.conversation_id
+            WHERE g.external_chat_id = $1 AND g.channel_type = $2",
+            msg.conversation_id,
+            msg.channel
+        )
+        .fetch_one(&state.pool)
+        .await
+        .map_or_else(|_| Uuid::nil(), |result| result.id)
+    };
+    if conv_id.is_nil() {
+        info!("Failed get conversation_id");
+        let _ = state
+            .publish_outbond(&OutboundMessage {
+                is_group: true,
+                sender_id: "nomi".to_string(),
+                conversation_id: msg.conversation_id.clone(),
+                text: "Whoops! 🏍️💨 Only a registered Nomi user can pair me with a group."
+                    .to_string(),
+                channel: msg.channel.clone(),
+                video_url: None,
+                image_url: None,
+                audio_url: None,
+                doc_url: None,
+                sticker_url: None,
+                metadata: msg.metadata.clone(),
+            })
+            .await;
+        return Ok(());
+    }
+    match pairing_repo::create_pairing_code(&state, conv_id, user_id).await {
+        Ok(code) => {
+            let _ = state
+                .publish_outbond(&OutboundMessage {
+                    is_group: true,
+                    sender_id: "nomi".to_string(),
+                    conversation_id: msg.conversation_id.clone(),
+                    text: format!("/pair {}", code.pairing_code),
+                    channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
+
+            let _ = state
+                .publish_outbond(&OutboundMessage {
+                    is_group: true,
+                    sender_id: "nomi".to_string(),
+                    conversation_id: msg.conversation_id.clone(),
+                    text: format!(
+                        "User the code to conversation you want pair with. \n Expired at:{}",
+                        code.expires_at.to_rfc3339()
+                    ),
+                    channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
+
+            Ok(())
+        }
+        Err(err) => {
+            info!("Failed create pairing code :{}", err);
+            let _ = state
+                .publish_outbond(&OutboundMessage {
+                    is_group: true,
+                    sender_id: "nomi".to_string(),
+                    conversation_id: msg.conversation_id.clone(),
+                    text: "Whoops! 🏍️💨 Only a registered Nomi user can pair me with a group."
+                        .to_string(),
+                    channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
+            Ok(())
+        }
+    }
+}
 pub async fn process_pairing(
     state: &AppState,
     msg: &InboundMessage,
@@ -831,9 +942,11 @@ pub async fn process_group_registration(
     let title = format!("Group: {} via {}", msg.conversation_id, msg.channel);
 
     let trx_convo = sqlx::query!(
-        "INSERT INTO conversations (id, title) VALUES ($1, $2) RETURNING id",
+        "INSERT INTO conversations (id, title,soul_content,bootstrap_content) VALUES ($1, $2,$3,$4) RETURNING id",
         conv_id,
-        title
+        title,
+        PromptRegistry::default_soul_prompts(),
+        PromptRegistry::default_bootstrap_content()
     )
     .fetch_one(&mut *tx)
     .await?;

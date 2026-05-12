@@ -327,12 +327,6 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
     let conversation_id = msg.conversation_id;
     let text_content = msg.text_content.clone();
 
-    // We should strip "v2 " from the beginning if it exists, otherwise use as is.
-    let text_content = if text_content.starts_with("v2 ") {
-        text_content.replacen("v2 ", "", 1)
-    } else {
-        text_content
-    };
 
     info!(
         conversation_id = %conversation_id,

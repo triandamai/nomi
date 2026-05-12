@@ -379,6 +379,7 @@
     <!-- Bottom Actions -->
     <div class="w-full flex flex-col items-center gap-3 mt-auto pt-3 border-t border-zinc-800">
         <!-- Add Button -->
+        {#if profileStore.currentUser?.role === 'admin'}
         <button
             onclick={handleAddConversation}
             class="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-zinc-800 hover:bg-emerald-600 text-emerald-500 hover:text-white flex items-center justify-center transition-all group relative"
@@ -388,6 +389,7 @@
                 Add Conversation
             </div>
         </button>
+        {/if}
 
         <!-- Current User -->
         <div class="relative w-full flex justify-center">

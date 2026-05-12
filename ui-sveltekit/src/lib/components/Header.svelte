@@ -5,6 +5,7 @@
     import SoulTimeline from './SoulTimeline.svelte';
     import QRCode from './QRCode.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
+    import {profileStore} from '$lib/stores/profile.svelte';
     import {popupStore} from '$lib/stores/popup.svelte';
     import {chatApi} from '$lib/api/client';
     import {eventBus} from '$lib/utils';
@@ -22,7 +23,12 @@
     let isGatewayOnline = $state(false);
     
     // Task 3: Dynamic Model Info
-    let modelInfo = $state({ model: 'N/A', version: '' });
+    let modelInfo = $state({ 
+        agent_model: 'Loading...', 
+        rag_embedding: '...',
+        media_classification: '...',
+        media_analyze: '...'
+    });
 
     // Task 1 & 4: Pairing Status
     let isPaired = $state(false);
@@ -48,7 +54,12 @@
     });
 
     eventBus.subscribe('sse-metadata', (data) => {
-        modelInfo = { model: data.model, version: data.version };
+        modelInfo = { 
+            agent_model: data.agent_model || 'Unknown', 
+            rag_embedding: data.rag_embedding || 'Unknown',
+            media_classification: data.media_classification || 'Unknown',
+            media_analyze: data.media_analyze || 'Unknown'
+        };
     });
 
     const tabs = [
@@ -157,12 +168,14 @@
     <div class="space-y-4 py-2">
         <div class="flex items-center justify-between px-1">
             <p class="text-xs text-zinc-500 font-medium">Manage your connected messaging platforms.</p>
+            {#if profileStore.currentUser?.role === 'admin'}
             <button 
                 onclick={openWhatsappBotManager}
                 class="text-[10px] font-black uppercase tracking-tighter text-emerald-500 hover:text-emerald-400 transition-colors bg-emerald-500/5 px-2 py-1 rounded border border-emerald-500/10"
             >
                 Bot Setup
             </button>
+            {/if}
         </div>
         <div class="grid gap-3">
             {#each channels as channel}
@@ -370,9 +383,34 @@
         </div>
 
         <!-- Model Badge -->
-        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800/50">
-            <Cpu class="w-3.5 h-3.5 text-zinc-500"/>
-            <span class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{modelInfo.model} {modelInfo.version}</span>
+        <div class="relative group">
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800/50 cursor-help">
+                <Cpu class="w-3.5 h-3.5 text-zinc-500"/>
+                <span class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{modelInfo.agent_model}</span>
+            </div>
+            
+            <!-- Tooltip -->
+            <div class="absolute right-0 top-full mt-2 w-64 p-3 bg-zinc-950 border border-zinc-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <p class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2 border-b border-zinc-800 pb-1">System Models</p>
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[11px] text-zinc-400">Agent:</span>
+                        <span class="text-[11px] font-mono text-emerald-400">{modelInfo.agent_model}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-[11px] text-zinc-400">RAG:</span>
+                        <span class="text-[11px] font-mono text-blue-400">{modelInfo.rag_embedding}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-[11px] text-zinc-400">Classification:</span>
+                        <span class="text-[11px] font-mono text-amber-400">{modelInfo.media_classification}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-[11px] text-zinc-400">Vision:</span>
+                        <span class="text-[11px] font-mono text-purple-400">{modelInfo.media_analyze}</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -443,21 +481,42 @@
 
         <!-- Status & Model info at bottom -->
         <div class="mt-auto pt-6 border-t border-zinc-900 space-y-4">
-            <div class="flex items-center justify-between p-4 rounded-xl bg-zinc-900/50 border border-zinc-800">
-                <div class="flex items-center gap-2">
-                    <div class="relative flex h-2.5 w-2.5">
-                        {#if isGatewayOnline}
-                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                        {:else}
-                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                        {/if}
+            <div class="flex flex-col p-4 rounded-xl bg-zinc-900/50 border border-zinc-800 gap-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div class="relative flex h-2.5 w-2.5">
+                            {#if isGatewayOnline}
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                            {:else}
+                                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                            {/if}
+                        </div>
+                        <span class="text-sm font-bold text-zinc-300">Gateway {isGatewayOnline ? 'Online' : 'Offline'}</span>
                     </div>
-                    <span class="text-sm font-bold text-zinc-300">Gateway {isGatewayOnline ? 'Online' : 'Offline'}</span>
+                    <div class="flex items-center gap-2 text-zinc-500">
+                        <Cpu class="w-4 h-4"/>
+                        <span class="text-xs font-bold uppercase tracking-tighter">System Models</span>
+                    </div>
                 </div>
-                <div class="flex items-center gap-2 text-zinc-500">
-                    <Cpu class="w-4 h-4"/>
-                    <span class="text-xs font-bold uppercase tracking-tighter">{modelInfo.model} {modelInfo.version}</span>
+                
+                <div class="space-y-2 border-t border-zinc-800/50 pt-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[11px] text-zinc-400">Agent:</span>
+                        <span class="text-[11px] font-mono text-emerald-400">{modelInfo.agent_model}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-[11px] text-zinc-400">RAG:</span>
+                        <span class="text-[11px] font-mono text-blue-400">{modelInfo.rag_embedding}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-[11px] text-zinc-400">Classification:</span>
+                        <span class="text-[11px] font-mono text-amber-400">{modelInfo.media_classification}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-[11px] text-zinc-400">Vision:</span>
+                        <span class="text-[11px] font-mono text-purple-400">{modelInfo.media_analyze}</span>
+                    </div>
                 </div>
             </div>
         </div>

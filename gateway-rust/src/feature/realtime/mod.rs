@@ -1,5 +1,3 @@
-pub mod presence;
-
 use crate::AppState;
 use axum::extract::{Query, State};
 use axum::response::Sse;
@@ -29,7 +27,7 @@ pub async fn register_public_sse(
 
     let sse = state
         .sse
-        .new_client(query.user_id.clone(), query.device_id.clone())
+        .new_client(query.user_id.clone(), query.device_id.clone(), state.model_info.clone())
         .await;
 
     (headers, sse)

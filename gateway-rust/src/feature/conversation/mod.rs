@@ -1,17 +1,15 @@
-use crate::AppState;
 use crate::common::api_response::ApiResponse;
 use crate::feature::conversation::chat_model::{
     ChannelStatus, ChatRequest, ConversationResponse, CreateConversationRequest, MessageItem,
     MessageListParams, MessageListResponse, PairingResponse, RestoreSoulRequest,
     RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest, UserChannelsResponse,
 };
+use crate::{AppState, common};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use chrono::Utc;
-
-use rand::distr::Alphanumeric;
-use rand::{ rng, RngExt};
+use rand::rng;
 use serde_json::Value;
 use sqlx::Row;
 use tracing::{error, info};
@@ -63,7 +61,7 @@ pub async fn handle_get_user_channels(
 
 pub async fn handle_create_pairing(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
+    axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResponse<PairingResponse> {
     let user_id = match Uuid::parse_str(&claims.sub) {
@@ -71,60 +69,17 @@ pub async fn handle_create_pairing(
         Err(_) => return ApiResponse::failed("Invalid user ID in token"),
     };
 
-    // Verify membership
-    let membership = sqlx::query!(
-        "SELECT 1 as one FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
-        conversation_id,
-        user_id
-    )
-    .fetch_optional(&state.pool)
-    .await;
-
-    match membership {
-        Ok(Some(_)) => (),
-        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
-        Err(e) => {
-            error!("Failed to verify membership: {}", e);
-            return ApiResponse::failed("Internal server error");
-        }
-    }
-
-    // Generate a random 6-character alphanumeric code
-    let pairing_code: String = rng()
-        .sample_iter(&Alphanumeric)
-        .take(6)
-        .map(char::from)
-        .collect::<String>()
-        .to_uppercase();
-
-    let expires_at = Utc::now() + chrono::Duration::minutes(10);
-
-    match sqlx::query!(
-        "INSERT INTO pairing_rooms (conversation_id, pairing_code, expires_at) VALUES ($1, $2, $3) RETURNING pairing_code, expires_at",
-        conversation_id,
-        pairing_code,
-        expires_at
-    )
-    .fetch_one(&state.pool)
-    .await
+    match common::repository::pairing_repo::create_pairing_code(&state, conversation_id, user_id)
+        .await
     {
-        Ok(row) => ApiResponse::ok(
-            PairingResponse {
-                pairing_code: row.pairing_code,
-                expires_at: row.expires_at.unwrap_or(expires_at),
-            },
-            "Pairing code generated",
-        ),
-        Err(e) => {
-            error!("Failed to create pairing room: {}", e);
-            ApiResponse::failed("Failed to create pairing room")
-        }
+        Ok(pairing) => ApiResponse::ok(pairing, "Created pairing code"),
+        Err(err) => ApiResponse::failed(err.to_string().as_str()),
     }
 }
 
 pub async fn handle_get_messages(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
+    axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
     Path(conversation_id): Path<Uuid>,
     axum::extract::Query(params): axum::extract::Query<MessageListParams>,
 ) -> ApiResponse<MessageListResponse> {
@@ -144,7 +99,9 @@ pub async fn handle_get_messages(
 
     match membership {
         Ok(Some(_)) => (),
-        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Ok(None) => {
+            return ApiResponse::failed("Forbidden: You are not a member of this conversation");
+        }
         Err(e) => {
             error!("Failed to verify membership: {}", e);
             return ApiResponse::failed("Internal server error");
@@ -215,16 +172,23 @@ pub async fn handle_get_file(
     Path(filename): Path<String>,
 ) -> impl axum::response::IntoResponse {
     let bucket = "conversations";
-    match state.storage.get_file(bucket.to_string(), filename.clone()).await {
+    match state
+        .storage
+        .get_file(bucket.to_string(), filename.clone())
+        .await
+    {
         Ok(data) => {
             let mime = mime_guess::from_path(&filename)
                 .first_or_octet_stream()
                 .to_string();
-            
+
             (
                 [
                     (axum::http::header::CONTENT_TYPE, mime),
-                    (axum::http::header::CACHE_CONTROL, "public, max-age=31536000".to_string()),
+                    (
+                        axum::http::header::CACHE_CONTROL,
+                        "public, max-age=31536000".to_string(),
+                    ),
                 ],
                 data.to_vec(),
             )
@@ -239,7 +203,9 @@ pub async fn handle_get_file(
 
 pub async fn handle_get_conversations(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
+    axum::extract::Extension(claims): axum::extract::Extension<
+        crate::feature::conversation::auth::Claims,
+    >,
 ) -> ApiResponse<Vec<ConversationResponse>> {
     let user_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => id,
@@ -267,7 +233,7 @@ pub async fn handle_get_conversations(
                 .into_iter()
                 .map(|row| ConversationResponse {
                     id: row.id,
-                    cumulative_tokens:row.cumulative_tokens,
+                    cumulative_tokens: row.cumulative_tokens,
                     name: row.title.unwrap_or_default(),
                     created_at: row.created_at.unwrap_or_else(Utc::now),
                     updated_at: row.updated_at.unwrap_or_else(Utc::now),
@@ -284,7 +250,9 @@ pub async fn handle_get_conversations(
 
 pub async fn handle_create_conversation(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
+    axum::extract::Extension(claims): axum::extract::Extension<
+        crate::feature::conversation::auth::Claims,
+    >,
     Json(payload): Json<CreateConversationRequest>,
 ) -> ApiResponse<ConversationResponse> {
     let user_id = match Uuid::parse_str(&claims.sub) {
@@ -347,7 +315,9 @@ pub async fn handle_create_conversation(
 
 pub async fn handle_update_conversation(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
+    axum::extract::Extension(claims): axum::extract::Extension<
+        crate::feature::conversation::auth::Claims,
+    >,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateConversationRequest>,
 ) -> ApiResponse<ConversationResponse> {
@@ -367,7 +337,9 @@ pub async fn handle_update_conversation(
 
     match membership {
         Ok(Some(_)) => (),
-        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Ok(None) => {
+            return ApiResponse::failed("Forbidden: You are not a member of this conversation");
+        }
         Err(e) => {
             error!("Failed to verify membership: {}", e);
             return ApiResponse::failed("Internal server error");
@@ -404,7 +376,9 @@ pub async fn handle_update_conversation(
 
 pub async fn handle_get_soul_history(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
+    axum::extract::Extension(claims): axum::extract::Extension<
+        crate::feature::conversation::auth::Claims,
+    >,
     Path(id): Path<Uuid>,
 ) -> ApiResponse<Vec<SoulHistoryResponse>> {
     let user_id = match Uuid::parse_str(&claims.sub) {
@@ -423,7 +397,9 @@ pub async fn handle_get_soul_history(
 
     match membership {
         Ok(Some(_)) => (),
-        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Ok(None) => {
+            return ApiResponse::failed("Forbidden: You are not a member of this conversation");
+        }
         Err(e) => {
             error!("Failed to verify membership: {}", e);
             return ApiResponse::failed("Internal server error");
@@ -462,7 +438,9 @@ pub async fn handle_get_soul_history(
 
 pub async fn handle_restore_conversation_soul(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
+    axum::extract::Extension(claims): axum::extract::Extension<
+        crate::feature::conversation::auth::Claims,
+    >,
     Path(id): Path<Uuid>,
     Json(payload): Json<RestoreSoulRequest>,
 ) -> ApiResponse<RestoreSoulResponse> {
@@ -482,7 +460,9 @@ pub async fn handle_restore_conversation_soul(
 
     match membership {
         Ok(Some(_)) => (),
-        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Ok(None) => {
+            return ApiResponse::failed("Forbidden: You are not a member of this conversation");
+        }
         Err(e) => {
             error!("Failed to verify membership: {}", e);
             return ApiResponse::failed("Internal server error");
@@ -547,7 +527,9 @@ pub async fn handle_restore_conversation_soul(
 
 pub async fn handle_delete_conversation(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<crate::feature::conversation::auth::Claims>,
+    axum::extract::Extension(claims): axum::extract::Extension<
+        crate::feature::conversation::auth::Claims,
+    >,
     Path(id): Path<Uuid>,
 ) -> ApiResponse<Value> {
     let user_id = match Uuid::parse_str(&claims.sub) {
@@ -566,7 +548,9 @@ pub async fn handle_delete_conversation(
 
     match membership {
         Ok(Some(_)) => (),
-        Ok(None) => return ApiResponse::failed("Forbidden: You are not a member of this conversation"),
+        Ok(None) => {
+            return ApiResponse::failed("Forbidden: You are not a member of this conversation");
+        }
         Err(e) => {
             error!("Failed to verify membership: {}", e);
             return ApiResponse::failed("Internal server error");
@@ -658,8 +642,8 @@ pub async fn handle_chat_stream(
             video_url: payload.video_url,
             sticker_url: None,
             doc_url: payload.doc_url,
-            source: crate::feature::message_processor::MessageSource::Web{
-                name:"web".to_string(),
+            source: crate::feature::message_processor::MessageSource::Web {
+                name: "web".to_string(),
             },
             v2: true,
         };

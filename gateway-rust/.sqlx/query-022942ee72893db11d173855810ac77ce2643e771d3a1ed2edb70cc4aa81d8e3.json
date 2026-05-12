@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id::text as \"id!\", external_id as \"external_id!\", COALESCE(display_name, external_id) as \"display_name!\", NULL as \"avatar_url\"\n        FROM users\n        WHERE id = $1\n        ",
+  "query": "\n        SELECT id::text as \"id!\", external_id as \"external_id!\", COALESCE(display_name, external_id) as \"display_name!\", NULL as \"avatar_url\", role as \"role\"\n        FROM users\n        WHERE id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -22,6 +22,11 @@
         "ordinal": 3,
         "name": "avatar_url",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "role",
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -33,8 +38,9 @@
       null,
       true,
       null,
-      null
+      null,
+      true
     ]
   },
-  "hash": "eb464ac3c2493b626c42176ed24cd9613f9fc3bb83155cec07fd49567818e300"
+  "hash": "022942ee72893db11d173855810ac77ce2643e771d3a1ed2edb70cc4aa81d8e3"
 }

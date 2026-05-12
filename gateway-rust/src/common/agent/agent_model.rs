@@ -27,3 +27,11 @@ pub struct ChatResponse {
     pub code: String,
     pub response: String,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ModelInfo {
+    pub agent_model: String,
+    pub rag_embedding: String,
+    pub media_classification: String,
+    pub media_analyze: String,
+}

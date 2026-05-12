@@ -27,6 +27,7 @@ pub struct AppState {
     // pub presence: Arc<PresenceManager>,
     pub redis: common::redis::RedisClient,
     pub storage: common::storage::StorageClient,
+    pub model_info: crate::common::agent::agent_model::ModelInfo,
 }
 
 impl AppState {
@@ -243,6 +244,12 @@ async fn main() -> anyhow::Result<()> {
         // presence,
         redis,
         storage,
+        model_info: crate::common::agent::agent_model::ModelInfo {
+            agent_model: "gemini-2.0-flash".to_string(),
+            rag_embedding: "gemini-embedding-2".to_string(),
+            media_classification: "gemini-2.0-flash".to_string(),
+            media_analyze: "gemini-2.0-flash".to_string(),
+        },
     };
 
     // Start Redis Listener

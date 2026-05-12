@@ -8,6 +8,7 @@ export type Profile = {
     display_name: string | null;
     avatar_url: string | null;
     status: 'online' | 'offline' | 'idle';
+    role?: string;
 };
 
 function createProfileStore() {
@@ -23,6 +24,7 @@ function createProfileStore() {
                 ...response.data,
                 status: 'online'
             };
+            console.log(currentUser)
         } catch (e) {
             console.error('Failed to fetch profile', e);
             // If unauthorized, redirect to login

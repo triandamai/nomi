@@ -1,7 +1,7 @@
 use crate::AppState;
 use crate::common::identity;
 use crate::common::repository::{channel_repo, message_repo};
-use crate::feature::message_processor::{process_login, process_pairing, process_register};
+use crate::feature::message_processor::{process_generate_pairing, process_login, process_pairing, process_register};
 use crate::feature::{FallBackPayload, InboundMessage, OutboundMessage};
 use serde_json::json;
 use tokio_stream::StreamExt;
@@ -127,6 +127,8 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
     // 3. Check for Pairing/Register/Login
     if text.to_uppercase().starts_with("PAIR ") || text.to_uppercase().starts_with("/PAIR ") {
         return process_pairing(&state, &msg, text, user_id.clone()).await;
+    } else if text.starts_with("/linkapp") {
+        return process_generate_pairing(&state,&msg,user_id.clone()).await;
     } else if text.starts_with("/register") {
         return process_register(&state, &msg).await;
     } else if text.starts_with("/login") {
@@ -236,12 +238,8 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             sticker_url,
             doc_url: document_url,
             source: match msg.channel.as_str() {
-                "telegram" => crate::feature::message_processor::MessageSource::Telegram{
-                    name:msg.channel
-                },
-                "whatsapp" => crate::feature::message_processor::MessageSource::WhatsApp{
-                    name:msg.channel
-                },
+                "telegram" => crate::feature::message_processor::MessageSource::Telegram{ name:msg.channel },
+                "whatsapp" => crate::feature::message_processor::MessageSource::WhatsApp{ name:msg.channel },
                 _ => crate::feature::message_processor::MessageSource::Other{
                     name:msg.channel
                 },

@@ -187,7 +187,7 @@ pub async fn handle_get_profile(
     let user = sqlx::query_as!(
         UserProfile,
         r#"
-        SELECT id::text as "id!", external_id as "external_id!", COALESCE(display_name, external_id) as "display_name!", NULL as "avatar_url"
+        SELECT id::text as "id!", external_id as "external_id!", COALESCE(display_name, external_id) as "display_name!", NULL as "avatar_url", role as "role"
         FROM users
         WHERE id = $1
         "#,

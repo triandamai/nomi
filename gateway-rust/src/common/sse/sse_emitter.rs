@@ -83,6 +83,7 @@ impl SseBroadcaster {
         &self,
         user_id: String,
         device_id: String,
+        model_info: crate::common::agent::agent_model::ModelInfo,
     ) -> Sse<impl Stream<Item = Result<Event, Infallible>> + use<'a>> {
         let (tx, rx) = mpsc::channel(10);
         
@@ -96,10 +97,7 @@ impl SseBroadcaster {
         // Task 3: Send initial metadata event
         let metadata = Event::default()
             .event(":metadata")
-            .json_data(serde_json::json!({
-                "model": "Gemini 1.5 Pro",
-                "version": "v2.1"
-            }))
+            .json_data(model_info)
             .unwrap();
         let _ = tx.send(metadata).await;
 
