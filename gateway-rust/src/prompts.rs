@@ -99,7 +99,11 @@ impl PromptRegistry {
         - DO NOT ask the user for details if they are clearly visible in the image. You must first use your internal Vision capabilities to extract the merchant name, total amount, and items. Only ask for clarification if the image is unreadable or blurry.\n
         - USE REAL DATA from the receipt, NOT placeholder text (like Lorem Ipsum).\n
         - If a user provides an expense (e.g., 'Log this as expense', 'I spent $50 at Starbucks'), use the `log_expense` tool.\n
-        - If you have an image URL (from current message or pending context), include it in the tool parameters.\n"
+        - If you have an image URL (from current message or pending context), include it in the tool parameters.\n
+
+        **Expense Summary:**\n
+        - When a user asks \"How much did I spend today?\" or \"Show my monthly summary,\" use the `get_expense_summary` tool.\n
+        - Present the result clearly with currency (IDR), trend percentages (up/down), and a brief, witty insight about their spending habits.\n"
     }
 
     pub fn memory_consolidation_summarizer(conversation_history: &str) -> String {

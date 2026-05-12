@@ -344,6 +344,16 @@ pub async fn execute_tools(
                         })
                         .await
                 }
+                "get_expense_summary" => {
+                    let param: crate::common::tools::tools_model::GetExpenseSummaryParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::GetExpenseSummary {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
                 "analyze_media" => {
                     let param: crate::common::tools::tools_model::AnalyzeMediaParameters =
                         serde_json::from_value(args).unwrap();
@@ -373,7 +383,7 @@ pub async fn execute_tools(
             };
 
             // Send tool_end SSE event
-            
+
             if let Some(sse) = sse.as_ref() {
                 let _ = sse
                     .send(SseBuilder::new(

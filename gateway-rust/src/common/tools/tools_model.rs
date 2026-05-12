@@ -233,3 +233,16 @@ pub struct AnalyzeMediaResponse {
 pub struct LogExpenseResponse {
     pub content: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetExpenseSummaryParameters {
+    pub period: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetExpenseSummaryResponse {
+    pub total_expenses: f64,
+    pub total_income: f64,
+    pub top_category: Option<String>,
+    pub trend_percentage: Option<f64>,
+}
