@@ -5,6 +5,8 @@ pub mod graph;
 pub mod message_processor;
 pub mod realtime;
 pub mod redis;
+pub mod admin;
+
 
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

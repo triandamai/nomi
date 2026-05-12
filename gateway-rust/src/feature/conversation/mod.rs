@@ -200,6 +200,42 @@ pub async fn handle_get_file(
     }
 }
 
+
+pub async fn handle_get_path_file(
+    State(state): State<AppState>,
+    Path((path,filename)): Path<(String,String)>,
+) -> impl axum::response::IntoResponse {
+    let bucket = "conversations";
+    match state
+        .storage
+        .get_file(bucket.to_string(), format!("{}/{}", path, filename))
+        .await
+    {
+        Ok(data) => {
+            let mime = mime_guess::from_path(&filename)
+                .first_or_octet_stream()
+                .to_string();
+
+            info!("mime : {}",mime);
+            (
+                [
+                    (axum::http::header::CONTENT_TYPE, mime),
+                    (
+                        axum::http::header::CACHE_CONTROL,
+                        "public, max-age=31536000".to_string(),
+                    ),
+                ],
+                data.to_vec(),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            error!("Failed to get file from storage: {}", e);
+            (axum::http::StatusCode::NOT_FOUND, "File not found").into_response()
+        }
+    }
+}
+
 pub async fn handle_get_conversations(
     State(state): State<AppState>,
     axum::extract::Extension(claims): axum::extract::Extension<
