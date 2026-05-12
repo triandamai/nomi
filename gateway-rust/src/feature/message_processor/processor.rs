@@ -16,10 +16,8 @@ use tracing::{error, info};
 
 pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
     if msg.v2 {
-        return crate::feature::message_processor::v2_orchestrator::process_v2_message(state, msg)
-            .await;
+        return crate::feature::message_processor::v2_orchestrator::process_v2_message(state, msg).await;
     }
-
     info!("Received v1 message: {:?}, deprecated, ignoring", msg);
     Ok(())
 }
@@ -158,7 +156,7 @@ pub(crate) async fn classify_media_context(
     state: &AppState,
     media_url: &str,
 ) -> anyhow::Result<MediaClassification> {
-    let prompt = crate::prompts::PromptRegistry::media_classification();
+    let prompt = PromptRegistry::media_classification();
 
     let (mime_type, base64_data) = fetch_media_from_storage(state, media_url).await?;
 
@@ -219,7 +217,7 @@ pub(crate) async fn extract_expense_data(
     state: &AppState,
     image_url: &str,
 ) -> anyhow::Result<ExpenseData> {
-    let prompt = crate::prompts::PromptRegistry::expense_extraction();
+    let prompt = PromptRegistry::expense_extraction();
 
     let (mime_type, base64_data) = fetch_media_from_storage(state, image_url).await?;
 
@@ -587,7 +585,7 @@ pub async fn process_pairing(
                 .send_to_user(
                     user_id.to_string().as_str(),
                     "pairing_success",
-                    serde_json::json!({
+                    json!({
                         "conversation_id": conv_id,
                         "platform": msg.channel,
                         "message": format!("Successfully paired with {}!", msg.channel)
@@ -1079,12 +1077,37 @@ pub async fn process_login(state: &AppState, msg: &InboundMessage) -> anyhow::Re
     let app_url = std::env::var("APP_URL").unwrap_or_else(|_| "http://localhost:5173".to_string());
     let login_url = format!("{}/login?id={}", app_url, user_id);
 
+    //hack: we need to sent message twice because it will sent as 2 bubble
     let outbound_text = format!(
-        "Your verification code is: {}\n\nClick here to login: {}",
-        otp_str, login_url
+        "Your verification code is: {}",
+        otp_str
     );
 
-    let outbound = crate::feature::OutboundMessage {
+    let outbound = OutboundMessage {
+        is_group: msg.is_group,
+        sender_id: "nomi_auth".to_string(),
+        conversation_id: msg.conversation_id.clone(),
+        text: outbound_text,
+        channel: msg.channel.clone(),
+        video_url: None,
+        image_url: None,
+        audio_url: None,
+        doc_url: None,
+        sticker_url: None,
+        metadata: msg.metadata.clone(),
+    };
+
+    let outbound_text = format!(
+        "Click here to login: {}",
+        login_url
+    );
+
+    if let Err(e) = state.redis.publish_event("nomi:outbound", &outbound).await {
+        error!("Failed to publish OTP to nomi:outbound: {}", e);
+        return Ok(());
+    }
+
+    let outbound = OutboundMessage {
         is_group: msg.is_group,
         sender_id: "nomi_auth".to_string(),
         conversation_id: msg.conversation_id.clone(),
@@ -1103,5 +1126,43 @@ pub async fn process_login(state: &AppState, msg: &InboundMessage) -> anyhow::Re
         return Ok(());
     }
 
+    Ok(())
+}
+
+pub async fn get_help_command(
+    state: &AppState, msg: &InboundMessage
+)->anyhow::Result<()>{
+    let message = format!(
+        "Hello there! 👋 \n
+            I'm **Nomi**, Trian's AI collaborator. I help him manage his projects, track his adventures on the road, and keep his digital ecosystem running smoothly. \n
+            If you're a friend of Trian's, I'd love to get to know you! To get started and secure your access to our chat, could you please use one of the commands below?\n
+                {} — If this is your first time chatting with me, use this to set up your profile. \n
+                {} — If we've spoken before, use this to jump right back into our conversation.\n\
+                {} - Ask for help\n
+                {} - If you want to connected another channel whatsapp,telegram,slack etc.\n
+                {} - Connect app with pairing code,The code are generated  from `/linkapp`.\n
+            It’s a pleasure to meet you, and I look forward to assisting you once you're signed in! ✨\n",
+        "**`/register`**",
+        "**`/login`**",
+        "**`/help`**",
+        "**`/linkapp`**",
+        "**`/pair <PAIRING CODE>`**",
+    );
+
+    let _ = state.publish_outbond(
+        &OutboundMessage{
+            is_group: msg.is_group,
+            sender_id: "nomi".to_string(),
+            conversation_id: msg.conversation_id.clone(),
+            text:message,
+            channel: msg.channel.clone(),
+            video_url: None,
+            image_url: None,
+            audio_url: None,
+            doc_url: None,
+            sticker_url: None,
+            metadata: msg.metadata.clone(),
+        }
+    ).await;
     Ok(())
 }

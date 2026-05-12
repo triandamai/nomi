@@ -1,4 +1,5 @@
 pub mod agent_model;
+pub mod classification;
 
 use crate::common::agent::agent_model::{ChatResponse, PromptActor};
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};

@@ -1,7 +1,9 @@
 use crate::AppState;
 use crate::common::identity;
 use crate::common::repository::{channel_repo, message_repo};
-use crate::feature::message_processor::{process_generate_pairing, process_login, process_pairing, process_register};
+use crate::feature::message_processor::{
+    get_help_command, process_generate_pairing, process_login, process_pairing, process_register,
+};
 use crate::feature::{FallBackPayload, InboundMessage, OutboundMessage};
 use serde_json::json;
 use tokio_stream::StreamExt;
@@ -74,7 +76,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         )
         .await;
 
-        info!("group registered status {}",registered);
+        info!("group registered status {}", registered);
         if !registered {
             // Only allow registration command in unregistered groups
             if text.starts_with("/register") {
@@ -107,7 +109,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             "SELECT conversation_id FROM channel_group WHERE external_group_id = $1 AND channel = $2",
             msg.conversation_id,
             msg.channel
-        ).fetch_optional(&state.pool).await?.map(|r| crate::common::repository::channel_repo::ChannelInfo {
+        ).fetch_optional(&state.pool).await?.map(|r| channel_repo::ChannelInfo {
             user_id: Uuid::nil(), // No single user for a group
             conversation_id: r.conversation_id,
         })
@@ -125,14 +127,16 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
 
     // ================================== BEGIN COMMAND ============================//
     // 3. Check for Pairing/Register/Login
-    if text.to_uppercase().starts_with("PAIR ") || text.to_uppercase().starts_with("/PAIR ") {
+    if text.to_uppercase().starts_with("/pair ") {
         return process_pairing(&state, &msg, text, user_id.clone()).await;
     } else if text.starts_with("/linkapp") {
-        return process_generate_pairing(&state,&msg,user_id.clone()).await;
+        return process_generate_pairing(&state, &msg, user_id.clone()).await;
     } else if text.starts_with("/register") {
         return process_register(&state, &msg).await;
     } else if text.starts_with("/login") {
         return process_login(&state, &msg).await;
+    } else if text.starts_with("/help") {
+        return get_help_command(&state, &msg).await;
     }
 
     // ================================== NOT REGISTERED STOP HERE ============================//
@@ -151,9 +155,11 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             If you're a friend of Trian's, I'd love to get to know you! To get started and secure your access to our chat, could you please use one of the commands below?\n
                 {} — If this is your first time chatting with me, use this to set up your profile. \n
                 {} — If we've spoken before, use this to jump right back into our conversation.\n
-            It’s a pleasure to meet you, and I look forward to assisting you once you're signed in! ✨",
+                {} — Get help?.\n
+            It’s a pleasure to meet you, and I look forward to assisting you once you're signed in! ✨\n",
                 "**`/register`**",
-                "**`/login`**"
+                "**`/login`**",
+                "**`/help`**",
             ),
             channel: msg.channel.clone(),
             video_url: None,
@@ -238,11 +244,13 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             sticker_url,
             doc_url: document_url,
             source: match msg.channel.as_str() {
-                "telegram" => crate::feature::message_processor::MessageSource::Telegram{ name:msg.channel },
-                "whatsapp" => crate::feature::message_processor::MessageSource::WhatsApp{ name:msg.channel },
-                _ => crate::feature::message_processor::MessageSource::Other{
-                    name:msg.channel
-                },
+                "telegram" => {
+                    crate::feature::message_processor::MessageSource::Telegram { name: msg.channel }
+                }
+                "whatsapp" => {
+                    crate::feature::message_processor::MessageSource::WhatsApp { name: msg.channel }
+                }
+                _ => crate::feature::message_processor::MessageSource::Other { name: msg.channel },
             },
             v2: true,
         };

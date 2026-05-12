@@ -9,7 +9,6 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use chrono::Utc;
-use rand::rng;
 use serde_json::Value;
 use sqlx::Row;
 use tracing::{error, info};

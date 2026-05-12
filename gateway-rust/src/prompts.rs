@@ -70,12 +70,13 @@ impl PromptRegistry {
     pub fn orchestrator_instructions() -> &'static str {
         "ALL internal reasoning, analysis, and strategy MUST be contained within <thinking>...</thinking> tags. NEVER leak your internal monologue outside these tags.\n
         INTERNAL REASONING (inside <thinking>) must be strictly atomic and technical. **STRICT RULE: Your <thinking> block must be under 200 characters. Use bullet points or short technical phrases. NO PROSE.**\n
-        Focus only on: [Intent] -> [Action] -> [Status].\n
+        Focus only on: [Intent] -> [Action] -> [Status]. [Status] should only be \"Ready\" if you have already incorporated the tool output into your planned response text.\n
         If a user gives an instruction (like log expense, make sticker, or summarize file) but no media is attached to the current message, use the `get_latest_media_context` tool to retrieve the pending file.\n
         If a user uploads a file (image, video, audio, or document) but doesn't provide clear instructions, ask them what they want to do with it (e.g., log an expense, analyze the content, or make a sticker). DO NOT guess or perform automated analysis unless requested.\n
         If the user asks you to analyze, describe, read, or summarize a file, use the `analyze_media` tool.\n
         If a tool fails, state the error and the fix, then immediately call the tool again.\n
-        You are operating in a multi-turn tool-use loop. You MUST wait to gather all necessary data from your tools before providing a final response to the user. Do not answer prematurely. Acknowledge and integrate all tool results into your final answer.\n"
+        You are operating in a multi-turn tool-use loop. You MUST wait to gather all necessary data from your tools before providing a final response to the user. Do not answer prematurely. Acknowledge and integrate all tool results into your final answer.\n
+        When a tool (like analyze_media or get_receipt_data) returns a result, you must incorporate that specific information into your final message. Do not simply state that you have analyzed it; you must provide the actual summary, data, or findings to the user.\n"
     }
 
     pub fn tool_usage_guidelines() -> &'static str {
@@ -208,5 +209,54 @@ impl PromptRegistry {
 
     pub fn error_account_exists() -> &'static str {
         "Account already exists. Use /login."
+    }
+}
+
+pub struct StatusRegistry;
+
+impl StatusRegistry {
+    pub fn random_thinking_phrase() -> String {
+        let phrases = vec![
+            "Hold a sec...",
+            "Starting the flight...",
+            "Revving the engine...",
+            "Calculating the trajectory...",
+            "Connecting the dots...",
+            "Sharpening the pencils...",
+            "Brewing some digital coffee...",
+            "Analyzing the matrix...",
+            "Consulting the archives...",
+            "Optimizing the flow...",
+        ];
+        let index = (chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as usize) % phrases.len();
+        phrases[index].to_string()
+    }
+
+    pub fn random_action_phrase(tool_name: &str) -> String {
+        let action = match tool_name {
+            "read_workspace_file" | "execute_read_query" | "parse_to_json" => "diving into the files",
+            "web_search" | "read_web_page" => "scouring the web",
+            "update_conversation_soul" | "update_nomi_soul" => "refining my essence",
+            "update_knowledge_base" => "committing to memory",
+            "evolve_bootstrap" => "leveling up",
+            "create_reminder" | "modify_reminder" | "get_reminder_stats" => "organizing our schedule",
+            "get_inbox_summary" => "checking the inbox",
+            "send_direct_message" => "dispatching a message",
+            "make_sticker" => "crafting a sticker",
+            "analyze_media" => "inspecting the media file",
+            _ => "working my magic",
+        };
+
+        let variants = vec![
+            format!("Hold tight, {}...", action),
+            format!("Just {}, give me a moment ✨", action),
+            format!("Currently {} for us 🚀", action),
+            format!("{}... almost there!", action),
+            format!("Quickly {} 🏔️", action),
+            format!("Focusing on {} 🥗", action),
+        ];
+
+        let index = (chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as usize) % variants.len();
+        variants[index].to_string()
     }
 }
