@@ -181,6 +181,15 @@ export const chatApi = {
             }
         })
 
+        sse.addEventListener(":stock_signal", (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                eventBus.emit('stock-signal', data);
+            } catch (e) {
+                console.error('Failed to parse SSE stock_signal', e);
+            }
+        })
+
 
         return () => sse.close();
     },

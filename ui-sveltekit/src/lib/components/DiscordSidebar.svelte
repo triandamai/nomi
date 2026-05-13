@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Plus, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings, Bell, Database, Settings2, RefreshCw, MessageSquare } from 'lucide-svelte';
+    import { Plus, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings, Bell, Database, Settings2, RefreshCw, MessageSquare, LineChart } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import SoulTimeline from './SoulTimeline.svelte';
     import QRCode from './QRCode.svelte';
@@ -102,6 +102,11 @@
             width: 'w-full md:w-1/2 lg:w-1/3 xl:w-1/3',
             contentSnippet: soulTimelineSnippet
         });
+    }
+
+    function openStockSignals() {
+        sidebarStore.showUserMenu = false;
+        goto('/admin/stock');
     }
 
     function openConnectionManager() {
@@ -553,6 +558,16 @@
                         <Settings2 size={14} />
                         <span>Soul Timeline</span>
                     </button>
+
+                    {#if profileStore.currentUser?.role === 'admin'}
+                    <button 
+                        onclick={openStockSignals}
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+                    >
+                        <LineChart size={14} />
+                        <span>Stock Signals</span>
+                    </button>
+                    {/if}
 
                     <div class="h-px bg-zinc-900 my-1"></div>
                     {/if}
