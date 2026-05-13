@@ -16,7 +16,8 @@ use tracing::{error, info};
 
 pub async fn process_incoming_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
     if msg.v2 {
-        return crate::feature::message_processor::v2_orchestrator::process_v2_message(state, msg).await;
+        return crate::feature::message_processor::v2_orchestrator::process_v2_message(state, msg)
+            .await;
     }
     info!("Received v1 message: {:?}, deprecated, ignoring", msg);
     Ok(())
@@ -49,7 +50,11 @@ pub(crate) async fn trigger_memory_consolidation(
     let start_timestamp = last_summary
         .as_ref()
         .map(|s| s.last_summary_at)
-        .unwrap_or_else(|| chrono::DateTime::from_timestamp(0, 0).unwrap().with_timezone(&chrono::Utc));
+        .unwrap_or_else(|| {
+            chrono::DateTime::from_timestamp(0, 0)
+                .unwrap()
+                .with_timezone(&chrono::Utc)
+        });
 
     // 2. Fetch new messages ordered by created_at ASC
     let new_messages = sqlx::query!(
@@ -64,9 +69,10 @@ pub(crate) async fn trigger_memory_consolidation(
         start_timestamp
     )
     .fetch_all(&pool)
-    .await.unwrap_or(Vec::new());
+    .await
+    .unwrap_or(Vec::new());
 
-    info!("Check memory consolidation: {}",new_messages.len());
+    info!("Check memory consolidation: {}", new_messages.len());
     // 3. Threshold check
     if new_messages.len() >= 10 {
         info!(conversation_id = %conversation_id, "Memory consolidation triggered ({} new messages)", new_messages.len());
@@ -866,81 +872,86 @@ pub async fn process_group_registration(
         msg.conversation_id, msg.channel
     );
 
+    let get_user = channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.sender_id).await;
+
+    if let Err(e) = get_user {
+        info!("Only registered user can pairing group :{}",e);
+        let _ = state
+            .publish_outbond(&OutboundMessage {
+                is_group: true,
+                sender_id: "nomi".to_string(),
+                conversation_id: msg.conversation_id.clone(),
+                text: "Only registered user can pairing group.".to_string(),
+                channel: msg.channel.clone(),
+                video_url: None,
+                image_url: None,
+                audio_url: None,
+                doc_url: None,
+                sticker_url: None,
+                metadata: msg.metadata.clone(),
+            })
+            .await;
+        return Ok(());
+    }
+
+    let existing_user = get_user.unwrap();
+    if let None = existing_user {
+        info!("Group already registered");
+        let _ = state
+            .publish_outbond(&OutboundMessage {
+                is_group: true,
+                sender_id: "nomi".to_string(),
+                conversation_id: msg.conversation_id.clone(),
+                text: "Only registered user can pairing group.".to_string(),
+                channel: msg.channel.clone(),
+                video_url: None,
+                image_url: None,
+                audio_url: None,
+                doc_url: None,
+                sticker_url: None,
+                metadata: msg.metadata.clone(),
+            })
+            .await;
+        return Ok(());
+    }
+    let existing_user = existing_user.unwrap();
     let mut tx = state.pool.begin().await?;
     let existing_channel =
         channel_repo::get_channel_group_info(&state.pool, &msg.channel, &msg.sender_id).await;
-    if let Err(err) = existing_channel {
-        info!("Only registered user can pair group:{}", err);
-        let _ = state
-            .publish_outbond(&OutboundMessage {
-                is_group: true,
-                sender_id: "nomi".to_string(),
-                conversation_id: msg.conversation_id.clone(),
-                text: "Whoops! 🏍️💨 Only a registered Nomi user can pair me with a group."
-                    .to_string(),
-                channel: msg.channel.clone(),
-                video_url: None,
-                image_url: None,
-                audio_url: None,
-                doc_url: None,
-                sticker_url: None,
-                metadata: msg.metadata.clone(),
-            })
-            .await;
-        return Ok(());
-    }
+    if let Ok(data) = existing_channel {
+        if data.is_some() {
+            info!("Group already registered");
+            let _ = state
+                .publish_outbond(&OutboundMessage {
+                    is_group: true,
+                    sender_id: "nomi".to_string(),
+                    conversation_id: msg.conversation_id.clone(),
+                    text: "This group is already registered! 🚀".to_string(),
+                    channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
+                    metadata: msg.metadata.clone(),
+                })
+                .await;
 
-    let existing_channel = existing_channel?;
-    if let None = existing_channel {
-        info!("Only registered user can pair group");
-        let _ = state
-            .publish_outbond(&OutboundMessage {
-                is_group: true,
-                sender_id: "nomi".to_string(),
-                conversation_id: msg.conversation_id.clone(),
-                text: "Whoops! 🏍️💨 Only a registered Nomi user can pair me with a group. 🚀"
-                    .to_string(),
-                channel: msg.channel.clone(),
-                video_url: None,
-                image_url: None,
-                audio_url: None,
-                doc_url: None,
-                sticker_url: None,
-                metadata: msg.metadata.clone(),
-            })
+            let existing_group_channel = data.unwrap();
+            let _ = channel_repo::link_channel_group(
+                &state.pool,
+                &msg.channel,
+                &msg.conversation_id,
+                existing_group_channel.conversation_id,
+            )
             .await;
-        return Ok(());
-    }
-
-    if existing_channel.is_some() {
-        let _ = state
-            .publish_outbond(&OutboundMessage {
-                is_group: true,
-                sender_id: "nomi".to_string(),
-                conversation_id: msg.conversation_id.clone(),
-                text: "This group is already registered! 🚀".to_string(),
-                channel: msg.channel.clone(),
-                video_url: None,
-                image_url: None,
-                audio_url: None,
-                doc_url: None,
-                sticker_url: None,
-                metadata: msg.metadata.clone(),
-            })
-            .await;
-
-        let existing_group_channel = existing_channel.unwrap();
-        let _ = channel_repo::link_channel_group(
-            &state.pool,
-            &msg.channel,
-            &msg.conversation_id,
-            existing_group_channel.conversation_id,
-        )
-        .await;
+            return Ok(());
+        }
         return Ok(());
     }
 
     // 2. Create new conversation for this group
+
     let conv_id = Uuid::new_v4();
     let title = format!("Group: {} via {}", msg.conversation_id, msg.channel);
 
@@ -952,7 +963,26 @@ pub async fn process_group_registration(
         PromptRegistry::default_bootstrap_content()
     )
     .fetch_one(&mut *tx)
-    .await?;
+    .await;
+
+    if let Err(e) = trx_convo {
+        info!("Group failed to register registered:{}",e);
+        let _ = tx.rollback().await;
+        return Ok(())
+    }
+
+    let trx_convo = trx_convo.unwrap();
+    let save_members = sqlx::query!(
+        "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) RETURNING conversation_id, user_id",
+        trx_convo.id,
+        existing_user.user_id,
+    ).fetch_one(&mut *tx).await;
+
+    if let Err(e) = save_members {
+        info!("Group failed to register registered:{}",e);
+        let _ = tx.rollback().await;
+        return Ok(())
+    }
 
     let trx = tx.commit().await;
     if let Ok(_) = trx {
@@ -1083,10 +1113,7 @@ pub async fn process_login(state: &AppState, msg: &InboundMessage) -> anyhow::Re
     let login_url = format!("{}/login?id={}", app_url, user_id);
 
     //hack: we need to sent message twice because it will sent as 2 bubble
-    let outbound_text = format!(
-        "Your verification code is: {}",
-        otp_str
-    );
+    let outbound_text = format!("Your verification code is: {}", otp_str);
 
     let outbound = OutboundMessage {
         is_group: msg.is_group,
@@ -1102,10 +1129,7 @@ pub async fn process_login(state: &AppState, msg: &InboundMessage) -> anyhow::Re
         metadata: msg.metadata.clone(),
     };
 
-    let outbound_text = format!(
-        "Click here to login: {}",
-        login_url
-    );
+    let outbound_text = format!("Click here to login: {}", login_url);
 
     if let Err(e) = state.redis.publish_event("nomi:outbound", &outbound).await {
         error!("Failed to publish OTP to nomi:outbound: {}", e);
@@ -1134,9 +1158,7 @@ pub async fn process_login(state: &AppState, msg: &InboundMessage) -> anyhow::Re
     Ok(())
 }
 
-pub async fn get_help_command(
-    state: &AppState, msg: &InboundMessage
-)->anyhow::Result<()>{
+pub async fn get_help_command(state: &AppState, msg: &InboundMessage) -> anyhow::Result<()> {
     let message = format!(
         "Hello there! 👋 \n
             I'm **Nomi**, Trian's AI collaborator. I help him manage his projects, track his adventures on the road, and keep his digital ecosystem running smoothly. \n
@@ -1154,12 +1176,12 @@ pub async fn get_help_command(
         "**`/pair <PAIRING CODE>`**",
     );
 
-    let _ = state.publish_outbond(
-        &OutboundMessage{
+    let _ = state
+        .publish_outbond(&OutboundMessage {
             is_group: msg.is_group,
             sender_id: "nomi".to_string(),
             conversation_id: msg.conversation_id.clone(),
-            text:message,
+            text: message,
             channel: msg.channel.clone(),
             video_url: None,
             image_url: None,
@@ -1167,7 +1189,7 @@ pub async fn get_help_command(
             doc_url: None,
             sticker_url: None,
             metadata: msg.metadata.clone(),
-        }
-    ).await;
+        })
+        .await;
     Ok(())
 }
