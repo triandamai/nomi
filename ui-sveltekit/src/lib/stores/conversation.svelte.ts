@@ -1,6 +1,7 @@
 import {chatApi} from '$lib/api/client';
 import {chatStore} from "$lib/stores/chat.svelte";
 import {goto} from "$app/navigation";
+import {eventBus} from '$lib/utils';
 
 export type Conversation = {
     id: string;
@@ -16,6 +17,23 @@ function createConversationStore() {
     
     let activeConversationId = $state<string>('');
     let activeConversation = $state<Conversation|null>(null)
+
+    // Subscribe to token updates
+    eventBus.subscribe('sse-token_update', (data) => {
+        if (data.conversation_id) {
+            conversations = conversations.map(c => {
+                if (c.id === data.conversation_id) {
+                    return { ...c, cumulative_tokens: data.cumulative_tokens };
+                }
+                return c;
+            });
+            
+            if (activeConversationId === data.conversation_id && activeConversation) {
+                activeConversation.cumulative_tokens = data.cumulative_tokens;
+            }
+        }
+    });
+
     return{
         get conversations() {
             return conversations;

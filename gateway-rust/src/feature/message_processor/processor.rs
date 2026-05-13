@@ -7,6 +7,9 @@ use chrono::{Datelike, Utc};
 use gemini_rust::{Blob, Content, Message, Part, Role, UsageMetadata};
 use serde_json::json;
 use uuid::Uuid;
+use std::sync::Arc;
+use crate::common::sse::sse_emitter::SseBroadcaster;
+use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 
 use crate::common::repository::{channel_repo, pairing_repo};
 use crate::prompts::PromptRegistry;
@@ -28,6 +31,7 @@ pub(crate) async fn trigger_memory_consolidation(
     gemini: std::sync::Arc<gemini_rust::Gemini>,
     gemini_api_key: String,
     conversation_id: Uuid,
+    sse: Arc<SseBroadcaster>,
 ) -> anyhow::Result<()> {
     // 1. Get the last summary's timestamp and last_message_id
     let last_summary = sqlx::query!(
@@ -147,16 +151,30 @@ pub(crate) async fn trigger_memory_consolidation(
             )
             .await?;
 
-            sqlx::query!(
-                "UPDATE conversations SET cumulative_tokens = cumulative_tokens + $1 WHERE id = $2",
+            let updated_row = sqlx::query!(
+                "UPDATE conversations SET cumulative_tokens = COALESCE(cumulative_tokens, 0) + $1 WHERE id = $2 RETURNING cumulative_tokens",
                 t_tokens,
                 conversation_id
             )
-            .execute(&mut *tx)
+            .fetch_one(&mut *tx)
             .await?;
 
             tx.commit().await?;
-            info!(conversation_id = %conversation_id, "Memory consolidation complete");
+            
+            // Broadcast SSE token_update
+            let _ = sse.send(SseBuilder::new(
+                SseTarget::broadcast("token_update".to_string()),
+                serde_json::json!({
+                    "conversation_id": conversation_id,
+                    "cumulative_tokens": updated_row.cumulative_tokens
+                }),
+            )).await;
+
+            info!(
+                conversation_id = %conversation_id,
+                total_tokens = %updated_row.cumulative_tokens.unwrap_or(0),
+                "Memory consolidation complete"
+            );
         }
     }
 

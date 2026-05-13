@@ -162,6 +162,15 @@ export const chatApi = {
             }
         })
 
+        sse.addEventListener(":token_update", (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                eventBus.emit('sse-token_update', data);
+            } catch (e) {
+                console.error('Failed to parse SSE token_update', e);
+            }
+        })
+
         sse.addEventListener(":presence", (event) => {
             try {
                 const data = JSON.parse(event.data);

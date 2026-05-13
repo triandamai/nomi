@@ -138,6 +138,20 @@ async fn process_v2_message_with_intent(
     )
     .await?;
 
+    // Fetch updated total tokens and broadcast
+    if let Ok(row) = sqlx::query!(
+        "SELECT cumulative_tokens FROM conversations WHERE id = $1",
+        conversation_id
+    ).fetch_one(&state.pool).await {
+        let _ = state.broadcast_sse(
+            "token_update",
+            json!({
+                "conversation_id": conversation_id,
+                "cumulative_tokens": row.cumulative_tokens
+            })
+        ).await;
+    }
+
     let members = sqlx::query!(
         "SELECT m.user_id FROM conversation_members as m WHERE m.conversation_id = $1",
         conversation_id
@@ -611,14 +625,29 @@ async fn process_v2_message_with_intent(
                 payload,
                 record.clone(),
             );
+
+            // Fetch updated total tokens and broadcast
+            if let Ok(row) = sqlx::query!(
+                "SELECT cumulative_tokens FROM conversations WHERE id = $1",
+                conversation_id
+            ).fetch_one(&state.pool).await {
+                let _ = state.broadcast_sse(
+                    "token_update",
+                    json!({
+                        "conversation_id": conversation_id,
+                        "cumulative_tokens": row.cumulative_tokens
+                    })
+                ).await;
+            }
         }
 
         let pool = state.pool.clone();
         let gemini = state.gemini.clone();
         let gemini_api_key = state.gemini_api_key.clone();
+        let sse = state.sse.clone();
         tokio::spawn(async move {
             let _ =
-                trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id).await;
+                trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id, sse).await;
         });
 
         let payload = json!({

@@ -17,7 +17,6 @@ use std::{env::var, sync::Arc};
 use tower_http::cors::CorsLayer;
 use tracing::{debug, error, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use crate::common::stock;
 
 #[derive(Clone)]
 pub struct AppState {

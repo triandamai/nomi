@@ -1305,13 +1305,29 @@ impl ToolDispatcher {
                 match save_result {
                     Ok(_) => {
                         if let Some(conv_id) = self.conversation_id {
-                            let _ = sqlx::query!(
-                                "UPDATE conversations SET cumulative_tokens = cumulative_tokens + $1 WHERE id = $2",
+                            let updated_convo = sqlx::query!(
+                                "UPDATE conversations SET cumulative_tokens = cumulative_tokens + $1 WHERE id = $2 RETURNING cumulative_tokens",
                                 t_tokens,
                                 conv_id
                             )
-                                .execute(&mut *tx)
+                                .fetch_one(&mut *tx)
                                 .await;
+
+                            if let Ok(row) = updated_convo {
+                                // Broadcast SSE update
+                                let _ = self
+                                    .sse
+                                    .send(crate::common::sse::sse_builder::SseBuilder::new(
+                                        crate::common::sse::sse_builder::SseTarget::broadcast(
+                                            "token_update".to_string(),
+                                        ),
+                                        serde_json::json!({
+                                            "conversation_id": conv_id,
+                                            "cumulative_tokens": row.cumulative_tokens
+                                        }),
+                                    ))
+                                    .await;
+                            }
 
                             // Cleanup: Clear pending media from table
                             let _ =
