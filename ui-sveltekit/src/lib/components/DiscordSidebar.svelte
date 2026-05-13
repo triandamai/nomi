@@ -1,45 +1,22 @@
 <script lang="ts">
-    import { Plus, MoreVertical, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings, Bell, Database } from 'lucide-svelte';
+    import { Plus, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings, Bell, Database, Settings2, RefreshCw, MessageSquare } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
-    import { conversationStore, type Conversation } from '$lib/stores/conversation.svelte';
+    import SoulTimeline from './SoulTimeline.svelte';
+    import QRCode from './QRCode.svelte';
+    import { conversationStore } from '$lib/stores/conversation.svelte';
     import { profileStore } from '$lib/stores/profile.svelte';
     import { popupStore } from '$lib/stores/popup.svelte';
-    import { eventBus, useAvatar } from '$lib/utils';
+    import { sidebarStore } from '$lib/stores/sidebar.svelte';
     import { onMount } from 'svelte';
-    import { chatApi } from '$lib/api/client';
     import { goto } from '$app/navigation';
-
-    let newConvName = $state('');
-    let editingConv = $state<Conversation | null>(null);
-    let pairingCode = $state('');
-    let copied = $state(false);
-    let showUserMenu = $state(false);
-    let reminders = $state<any[]>([]);
 
     onMount(() => {
         profileStore.fetchProfile();
-    });
-
-    async function fetchReminders() {
-        try {
-            const response = await chatApi.getReminders();
-            if (response.data) {
-                reminders = response.data;
-            }
-        } catch (e) {
-            console.error('Failed to fetch reminders', e);
-        }
-    }
-
-    eventBus.subscribe('sse-pairing-success', (data: any) => {
-
-        if (data.conversation_id === conversationStore.activeConversationId || (editingConv && data.conversation_id === editingConv.id)) {
-            popupStore.closeLast();
-        }
+        sidebarStore.init();
     });
 
     function handleAddConversation() {
-        newConvName = '';
+        sidebarStore.newConvName = '';
         popupStore.open({
             title: 'Create Conversation',
             width: 'max-w-md',
@@ -48,9 +25,8 @@
         });
     }
 
-    function handleEditConversation(conv: Conversation) {
-        editingConv = conv;
-        newConvName = conv.name;
+    function handleEditConversation(conv: any) {
+        sidebarStore.setEditingConv(conv);
         popupStore.open({
             title: 'Edit Conversation',
             width: 'max-w-md',
@@ -59,8 +35,8 @@
         });
     }
 
-    function handleDeleteConversation(conv: Conversation) {
-        editingConv = conv;
+    function handleDeleteConversation(conv: any) {
+        sidebarStore.setEditingConv(conv);
         popupStore.open({
             title: 'Delete Conversation',
             width: 'max-w-sm',
@@ -70,35 +46,33 @@
     }
 
     async function createConversation() {
-        if (newConvName.trim()) {
-            await conversationStore.addConversation(newConvName.trim());
-            newConvName = '';
+        if (sidebarStore.newConvName.trim()) {
+            await conversationStore.addConversation(sidebarStore.newConvName.trim());
+            sidebarStore.newConvName = '';
             popupStore.closeLast();
         }
     }
 
     async function updateConversation() {
-        if (editingConv && newConvName.trim()) {
-            await conversationStore.updateConversation(editingConv.id, newConvName.trim());
-            editingConv = null;
-            newConvName = '';
+        if (sidebarStore.editingConv && sidebarStore.newConvName.trim()) {
+            await conversationStore.updateConversation(sidebarStore.editingConv.id, sidebarStore.newConvName.trim());
+            sidebarStore.setEditingConv(null);
             popupStore.closeLast();
         }
     }
 
     async function deleteConversation() {
-        if (editingConv) {
-            await conversationStore.deleteConversation(editingConv.id);
-            editingConv = null;
+        if (sidebarStore.editingConv) {
+            await conversationStore.deleteConversation(sidebarStore.editingConv.id);
+            sidebarStore.setEditingConv(null);
             popupStore.closeLast();
         }
     }
 
-    async function handlePairing(conv: Conversation) {
-        editingConv = conv;
+    async function handlePairing(conv: any) {
+        sidebarStore.setEditingConv(conv);
         try {
-            const data = await conversationStore.getPairingCode(conv.id);
-            pairingCode = data.pairing_code;
+            await sidebarStore.getPairingCode(conv.id);
             popupStore.open({
                 title: 'Link Telegram',
                 width: 'max-w-md',
@@ -111,8 +85,8 @@
     }
 
     async function handleShowReminders() {
-        showUserMenu = false;
-        await fetchReminders();
+        sidebarStore.showUserMenu = false;
+        await sidebarStore.fetchReminders();
         popupStore.open({
             title: 'Your Reminders',
             width: 'max-w-md',
@@ -121,22 +95,27 @@
         });
     }
 
-    function copyToClipboard() {
-        navigator.clipboard.writeText(pairingCode);
-        copied = true;
-        setTimeout(() => copied = false, 2000);
+    function openTimeline() {
+        sidebarStore.showUserMenu = false;
+        popupStore.open({
+            title: 'Soul Timeline',
+            width: 'w-full md:w-1/2 lg:w-1/3 xl:w-1/3',
+            contentSnippet: soulTimelineSnippet
+        });
     }
 
-    function toggleUserMenu() {
-        showUserMenu = !showUserMenu;
-        if (showUserMenu) {
-            fetchReminders();
-        }
+    function openConnectionManager() {
+        sidebarStore.showUserMenu = false;
+        popupStore.open({
+            title: 'App Connections',
+            width: 'max-w-md',
+            contentSnippet: connectionManagementSnippet
+        });
     }
 
-    async function handleLogout() {
-        showUserMenu = false;
-        await profileStore.logout();
+    function handleLogout() {
+        sidebarStore.showUserMenu = false;
+        profileStore.logout();
     }
 </script>
 
@@ -145,7 +124,7 @@
         <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Conversation Name</p>
         <input
             type="text"
-            bind:value={newConvName}
+            bind:value={sidebarStore.newConvName}
             placeholder="e.g. general-chat"
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
             onkeydown={(e) => e.key === 'Enter' && createConversation()}
@@ -167,7 +146,7 @@
         </button>
         <button
             onclick={createConversation}
-            disabled={!newConvName.trim()}
+            disabled={!sidebarStore.newConvName.trim()}
             class="px-6 py-2 text-xs font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:hover:bg-emerald-600 rounded-lg text-white transition-all shadow-lg shadow-emerald-900/20"
         >
             Create
@@ -180,7 +159,7 @@
         <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Edit Name</p>
         <input
             type="text"
-            bind:value={newConvName}
+            bind:value={sidebarStore.newConvName}
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
             onkeydown={(e) => e.key === 'Enter' && updateConversation()}
             autofocus
@@ -198,7 +177,7 @@
         </button>
         <button
             onclick={updateConversation}
-            disabled={!newConvName.trim()}
+            disabled={!sidebarStore.newConvName.trim()}
             class="px-6 py-2 text-xs font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white transition-all"
         >
             Save Changes
@@ -209,7 +188,7 @@
 {#snippet deleteConvContent()}
     <div class="space-y-4">
         <p class="text-sm text-zinc-300">
-            Are you sure you want to delete <span class="font-bold text-zinc-100">{editingConv?.name}</span>? This action cannot be undone.
+            Are you sure you want to delete <span class="font-bold text-zinc-100">{sidebarStore.editingConv?.name}</span>? This action cannot be undone.
         </p>
     </div>
 {/snippet}
@@ -233,7 +212,7 @@
 
 {#snippet remindersContent()}
     <div class="space-y-4">
-        {#if reminders.length === 0}
+        {#if sidebarStore.reminders.length === 0}
             <div class="text-center py-8">
                 <Bell class="w-12 h-12 text-zinc-800 mx-auto mb-3" />
                 <p class="text-sm text-zinc-400">You have no upcoming reminders.</p>
@@ -241,7 +220,7 @@
             </div>
         {:else}
             <div class="space-y-3">
-                {#each reminders as reminder}
+                {#each sidebarStore.reminders as reminder}
                     <div class="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-4 transition-all hover:bg-zinc-900">
                         <div class="flex justify-between items-start gap-4">
                             <p class="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{reminder.content}</p>
@@ -288,15 +267,15 @@
 {#snippet pairingContent()}
     <div class="space-y-6 py-2">
         <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col items-center gap-4">
-            <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Your Pairing Code</p>
+            <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Internal Pairing Code</p>
             <div class="text-5xl font-black text-emerald-400 tracking-[0.2em] font-mono">
-                {pairingCode}
+                {sidebarStore.pairingCode}
             </div>
             <button 
-                onclick={copyToClipboard}
+                onclick={() => sidebarStore.copyToClipboard()}
                 class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all"
             >
-                {#if copied}
+                {#if sidebarStore.copied}
                     <Check size={14} class="text-emerald-400" />
                     <span class="text-emerald-400">Copied!</span>
                 {:else}
@@ -309,8 +288,12 @@
         <div class="space-y-3">
             <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Instructions</p>
             <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside">
-                <li>Open <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-emerald-400 hover:underline">@ArtaOpenAgentBot</a> on Telegram</li>
-                <li>Send the command: <code class="bg-zinc-900 px-1.5 py-0.5 rounded text-emerald-400 font-mono">/pair {pairingCode}</code></li>
+                {#if sidebarStore.currentPlatform === 'telegram'}
+                    <li>Open <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-emerald-400 hover:underline">@ArtaOpenAgentBot</a></li>
+                {:else}
+                    <li>Open our bot on WhatsApp</li>
+                {/if}
+                <li>Send the command: <code class="bg-zinc-900 px-1.5 py-0.5 rounded text-emerald-400 font-mono">/pair {sidebarStore.pairingCode}</code></li>
                 <li>Wait for confirmation here</li>
             </ol>
         </div>
@@ -325,6 +308,114 @@
         >
             Cancel
         </button>
+    </div>
+{/snippet}
+
+{#snippet soulTimelineSnippet()}
+    {#if conversationStore.activeConversationId}
+        <SoulTimeline conversationId={conversationStore.activeConversationId} />
+    {/if}
+{/snippet}
+
+{#snippet connectionManagementSnippet()}
+    <div class="space-y-4 py-2">
+        <div class="flex items-center justify-between px-1">
+            <p class="text-xs text-zinc-500 font-medium">Manage your connected messaging platforms.</p>
+            {#if profileStore.currentUser?.role === 'admin'}
+            <button 
+                onclick={() => sidebarStore.openWhatsappBotManager(whatsappBotSetupSnippet, pairingFooter)}
+                class="text-[10px] font-black uppercase tracking-tighter text-emerald-500 hover:text-emerald-400 transition-colors bg-emerald-500/5 px-2 py-1 rounded border border-emerald-500/10"
+            >
+                Bot Setup
+            </button>
+            {/if}
+        </div>
+        <div class="grid gap-3">
+            {#each sidebarStore.channels as channel}
+                <div class="flex items-center justify-between p-4 bg-zinc-950 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-colors">
+                    <div class="flex items-center gap-4">
+                        <div class="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
+                            {#if channel.platform === 'telegram'}
+                                <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>
+                            {:else if channel.platform === 'whatsapp'}
+                                <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.817 9.817 0 0012.04 2m.01 1.67c2.2 0 4.26.86 5.82 2.42 1.56 1.56 2.41 3.63 2.41 5.83 0 4.54-3.7 8.23-8.24 8.23-1.48 0-2.93-.39-4.19-1.15l-.3-.17-3.12.82.83-3.04-.19-.3a8.132 8.132 0 01-1.26-4.38c.01-4.54 3.7-8.24 8.24-8.24m-3.53 4.75c-.19 0-.52.07-.79.37-.27.3-.87.85-.87 2.08s.89 2.42 1.01 2.58c.12.16 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.06-.1-.23-.16-.48-.27-.25-.12-1.47-.73-1.69-.82-.23-.09-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.39.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.16.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.5-.4-.43-.56-.44l-.48-.01z"/></svg>
+                            {:else}
+                                <MessageSquare size={20} />
+                            {/if}
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-zinc-100 capitalize">{channel.platform}</p>
+                            <p class="text-[11px] text-zinc-500 font-medium">
+                                {channel.paired ? 'Currently linked' : 'Not connected yet'}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    {#if channel.paired}
+                        <div class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <Check size={12} strokeWidth={3} />
+                            <span class="text-[10px] font-black uppercase tracking-widest">Linked</span>
+                        </div>
+                    {:else}
+                        <button 
+                            onclick={() => sidebarStore.handlePairing(channel.platform, pairingContent, pairingFooter)}
+                            class="px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-bold transition-all active:scale-95"
+                        >
+                            Connect
+                        </button>
+                    {/if}
+                </div>
+            {/each}
+        </div>
+    </div>
+{/snippet}
+
+{#snippet whatsappBotSetupSnippet()}
+    <div class="space-y-6 py-2">
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-8 flex flex-col items-center gap-6">
+            <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Scan to Connect Bot</p>
+            
+            <div class="relative group">
+                <QRCode data={sidebarStore.whatsappQr} size={220} />
+                {#if sidebarStore.isLoadingQr}
+                    <div class="absolute inset-0 bg-zinc-950/80 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                        <div class="w-8 h-8 border-4 border-zinc-800 border-t-emerald-500 rounded-full animate-spin"></div>
+                    </div>
+                {/if}
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button 
+                    onclick={() => sidebarStore.fetchWhatsappQr()}
+                    disabled={sidebarStore.isLoadingQr}
+                    class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all disabled:opacity-50"
+                >
+                    <RefreshCw size={14} class={sidebarStore.isLoadingQr ? 'animate-spin' : ''} />
+                    <span>Refresh QR</span>
+                </button>
+
+                <button 
+                    onclick={() => sidebarStore.handleWhatsappLogout()}
+                    disabled={sidebarStore.isLoadingQr}
+                    class="flex items-center gap-2 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg text-xs text-rose-400 transition-all disabled:opacity-50"
+                >
+                    <RefreshCw size={14} />
+                    <span>Logout & Reset</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="space-y-3 px-1">
+            <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Bot Instructions</p>
+            <p class="text-sm text-zinc-500 leading-relaxed">
+                Scanning this QR code links your WhatsApp account to our backend service. This allows Arta to send and receive messages as you.
+            </p>
+            <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside mt-2">
+                <li>Open WhatsApp on your phone</li>
+                <li>Go to <span class="text-zinc-200">Linked Devices</span></li>
+                <li>Scan this QR code</li>
+            </ol>
+        </div>
     </div>
 {/snippet}
 
@@ -396,12 +487,12 @@
         <div class="relative w-full flex justify-center">
             <Avatar
                 name={profileStore.currentUser?.display_name || profileStore.currentUser?.external_id || 'User'}
-                active={showUserMenu}
+                active={sidebarStore.showUserMenu}
                 online={profileStore.currentUser?.status === 'online'}
-                onClick={toggleUserMenu}
+                onClick={() => sidebarStore.toggleUserMenu()}
             />
 
-            {#if showUserMenu}
+            {#if sidebarStore.showUserMenu}
                 <div 
                     class="absolute bottom-0 left-16 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-[100] py-2 overflow-hidden animate-in fade-in slide-in-from-left-2 duration-200"
                 >
@@ -436,7 +527,7 @@
 
                     {#if profileStore.currentUser?.role === 'admin'}
                     <button 
-                        onclick={() => { showUserMenu = false; goto('/admin/storage'); }}
+                        onclick={() => { sidebarStore.showUserMenu = false; goto('/admin/storage'); }}
                         class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
                     >
                         <Database size={14} />
@@ -445,6 +536,26 @@
                     {/if}
 
                     <div class="h-px bg-zinc-900 my-1"></div>
+
+                    {#if conversationStore.activeConversationId}
+                    <button 
+                        onclick={openConnectionManager}
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs transition-colors {sidebarStore.isPaired ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/10' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}"
+                    >
+                        <Link size={14} />
+                        <span>Linked App</span>
+                    </button>
+
+                    <button 
+                        onclick={openTimeline}
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+                    >
+                        <Settings2 size={14} />
+                        <span>Soul Timeline</span>
+                    </button>
+
+                    <div class="h-px bg-zinc-900 my-1"></div>
+                    {/if}
 
                     <button 
                         onclick={handleLogout}
@@ -458,8 +569,8 @@
                 <!-- Backdrop to close menu -->
                 <div 
                     class="fixed inset-0 z-[90]" 
-                    onclick={() => showUserMenu = false}
-                    onkeydown={(e) => e.key === 'Escape' && (showUserMenu = false)}
+                    onclick={() => sidebarStore.showUserMenu = false}
+                    onkeydown={(e) => e.key === 'Escape' && (sidebarStore.showUserMenu = false)}
                     role="button"
                     tabindex="0"
                 ></div>
