@@ -1,398 +1,348 @@
 <script lang="ts">
-    import {Send, Bot, User, Sparkles, MessageSquarePlus, Share2, Paperclip, X, Image as ImageIcon, FileAudio, FileText, Loader2, Wrench} from 'lucide-svelte';
-    import {chatStore} from '$lib/stores/chat.svelte';
-    import {conversationStore} from '$lib/stores/conversation.svelte';
-    import {chatApi} from '$lib/api/client';
-    import {formatTokenCount} from '$lib/utils';
-    import ToolResult from '$lib/components/ToolResult.svelte';
-    import ChatBubble from '$lib/components/ChatBubble.svelte';
-    import {onMount, tick} from 'svelte';
-    import {eventBus} from "$lib/utils";
-    import {goto} from '$app/navigation';
+    import {
+        Zap,
+        Shield,
+        Cpu,
+        Database,
+        ArrowRight,
+        CheckCircle2,
+        CreditCard,
+        Activity,
+        Brain,
+        Smartphone,
+        Lock,
+        MessageSquare,
+        Camera,
+        Mic
+    } from 'lucide-svelte';
+    import { onMount } from 'svelte';
+    import { fade, fly, slide } from 'svelte/transition';
+    import { chatApi } from '$lib/api/client';
 
-    let inputMessage = $state('');
-    let scrollContainer = $state<HTMLElement | null>(null);
-    let isNearBottom = true;
-    let fileInput = $state<HTMLInputElement | null>(null);
-    let selectedFile = $state<File | null>(null);
-    let isUploading = $state(false);
+    let email = $state('');
+    let status = $state<'idle' | 'loading' | 'success' | 'error'>('idle');
+    let message = $state('');
 
-    function handleScroll() {
-        if (!scrollContainer) return;
-        const threshold = 150; // pixels from bottom to be considered "near bottom"
-        const position = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
-        isNearBottom = position < threshold;
+    async function handleJoinWaitlist() {
+        if (!email) return;
+        status = 'loading';
+        try {
+            const response = await chatApi.joinWaitlist(email);
+            status = 'success';
+            message = "You're on the list! We'll reach out soon.";
+            email = '';
+        } catch (err: any) {
+            status = 'error';
+            message = err.message || "Something went wrong. Try again.";
+        }
     }
+
+    // Mock Chat Sequence
+    let chatStep = $state(0);
+    const chatSequence = [
+        { type: 'user', content: 'Logged 150k at Kopi Kenangan! ☕', icon: Camera },
+        { type: 'nomi', content: 'Got it! Logged 150,000 IDR to Finance. 📉', icon: MessageSquare },
+        { type: 'user', content: 'Remind me to service the CB150R at 5.', icon: Mic },
+        { type: 'nomi', content: 'Got it! Reminder set for 5:00 PM WIB. 🏍️💨', icon: MessageSquare }
+    ];
 
     onMount(() => {
-        chatStore.fetchMessages();
+        const interval = setInterval(() => {
+            chatStep = (chatStep + 1) % (chatSequence.length + 1);
+        }, 3000);
+        return () => clearInterval(interval);
     });
-
-    // Auto-scroll to bottom on new messages, thoughts, or typing
-    $effect(() => {
-        // Track dependencies
-        chatStore.messages.length;
-        chatStore.currentThought;
-        chatStore.isTyping;
-        chatStore.activeTool;
-
-        tick().then(() => {
-            if (scrollContainer && isNearBottom) {
-                scrollContainer.scrollTo({
-                    top: scrollContainer.scrollHeight,
-                    behavior: 'auto'
-                });
-            }
-        });
-    });
-
-    async function handleSubmit() {
-        if ((!inputMessage.trim() && !selectedFile) || chatStore.loading || !conversationStore.activeConversationId) return;
-        
-        let media = undefined;
-        if (selectedFile) {
-            isUploading = true;
-            try {
-                const res = await chatApi.uploadFile(selectedFile);
-                const fileUrl = res.data; // This is the unique_name from backend
-                
-                const type = selectedFile.type;
-                if (type.startsWith('image/')) media = { image_url: fileUrl };
-                else if (type.startsWith('audio/')) media = { audio_url: fileUrl };
-                else if (type.startsWith('video/')) media = { video_url: fileUrl };
-                else media = { doc_url: fileUrl };
-            } catch (err) {
-                console.error("Upload failed", err);
-                return;
-            } finally {
-                isUploading = false;
-            }
-        }
-
-        const msg = inputMessage;
-        inputMessage = '';
-        selectedFile = null;
-        
-        // Force scroll to bottom when user sends a message
-        isNearBottom = true;
-        
-        await chatStore.sendMessage(msg, media);
-    }
-
-    function handleFileSelect(e: Event) {
-        const target = e.target as HTMLInputElement;
-        if (target.files && target.files.length > 0) {
-            selectedFile = target.files[0];
-        }
-    }
-
-    function removeFile() {
-        selectedFile = null;
-        if (fileInput) fileInput.value = '';
-    }
-
-    function handleKeydown(e: KeyboardEvent) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSubmit();
-        }
-    }
-
-    function startFirstConversation() {
-        conversationStore.addConversation("My First Soul").then(conv => {
-            if (conv) conversationStore.setActive(conv.id);
-        });
-    }
-
-    onMount(()=>{
-        eventBus.emit("load",{})
-    })
 </script>
 
-<!-- Messages -->
-<main 
-    bind:this={scrollContainer} 
-    onscroll={handleScroll}
-    class="flex-1 overflow-y-auto px-6 py-8 space-y-10 scroll-smooth"
->
-    {#if conversationStore.conversations.length === 0}
-        <div class="h-full flex flex-col items-center justify-center max-w-lg mx-auto text-center space-y-8 animate-in fade-in zoom-in duration-700">
-            <div class="relative">
-                <div class="absolute -inset-4 bg-emerald-500/10 blur-3xl rounded-full"></div>
-                <div class="w-20 h-20 bg-zinc-900 border border-zinc-800 rounded-[28px] flex items-center justify-center relative">
-                    <Sparkles class="w-10 h-10 text-emerald-500" />
+<div class="min-h-screen bg-[#0f172a] text-slate-200 font-sans selection:bg-blue-500/30">
+    <!-- Sticky Header -->
+    <header class="fixed top-0 w-full z-50 border-b border-slate-800/50 bg-[#0f172a]/80 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <Zap class="w-5 h-5 text-white fill-white" />
                 </div>
+                <span class="text-xl font-black tracking-tighter text-white">NOMI</span>
             </div>
-            
-            <div class="space-y-3">
-                <h2 class="text-2xl font-black text-zinc-100 tracking-tight">Your Agentic Workspace</h2>
-                <p class="text-sm text-zinc-400 leading-relaxed">
-                    Arta is ready to help you orchestrate your AI agents. Start a conversation to begin your journey.
-                </p>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
-                <button 
-                    onclick={startFirstConversation}
-                    class="group p-6 bg-zinc-900/50 hover:bg-emerald-900/20 border border-zinc-800 hover:border-emerald-500/50 rounded-2xl text-left transition-all"
-                >
-                    <MessageSquarePlus class="w-6 h-6 text-zinc-500 group-hover:text-emerald-400 mb-4 transition-colors" />
-                    <h3 class="text-sm font-bold text-zinc-200 group-hover:text-emerald-300 transition-colors">Start your first Soul</h3>
-                    <p class="text-[11px] text-zinc-500 group-hover:text-emerald-400/70 mt-1 transition-colors leading-snug">Create a new sandbox for your AI interactions.</p>
-                </button>
-
-                <button 
-                    onclick={() => goto('/rag')}
-                    class="group p-6 bg-zinc-900/50 hover:bg-blue-900/20 border border-zinc-800 hover:border-blue-500/50 rounded-2xl text-left transition-all"
-                >
-                    <Share2 class="w-6 h-6 text-zinc-500 group-hover:text-blue-400 mb-4 transition-colors" />
-                    <h3 class="text-sm font-bold text-zinc-200 group-hover:text-blue-300 transition-colors">Knowledge Base</h3>
-                    <p class="text-[11px] text-zinc-500 group-hover:text-blue-400/70 mt-1 transition-colors leading-snug">Upload documents to make Arta even smarter.</p>
-                </button>
-            </div>
+            <nav class="hidden md:flex items-center gap-8">
+                <a href="#features" class="text-sm font-medium text-slate-400 hover:text-white transition-colors">Features</a>
+                <a href="#stack" class="text-sm font-medium text-slate-400 hover:text-white transition-colors">Stack</a>
+                <a href="/login" class="px-4 py-2 rounded-lg bg-slate-800 text-sm font-bold text-white hover:bg-slate-700 transition-all border border-slate-700">
+                    Login
+                </a>
+            </nav>
         </div>
-    {:else if chatStore.messages.length === 0 && !chatStore.loading}
-        <div class="h-full flex flex-col items-center justify-center max-w-lg mx-auto text-center space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div class="w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center shadow-2xl">
-                <MessageSquarePlus class="w-8 h-8 text-zinc-500" />
-            </div>
-            <div class="space-y-2">
-                <h3 class="text-xl font-bold text-zinc-200">New Conversation</h3>
-                <p class="text-sm text-zinc-500 leading-relaxed">
-                    This conversation is empty. Send a message to start interacting with your agent.
-                </p>
-            </div>
-            <div class="flex flex-wrap justify-center gap-2 max-w-sm">
-                <button 
-                    onclick={() => inputMessage = "Hello! How can you help me today?"}
-                    class="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-[11px] text-zinc-400 hover:text-zinc-200 transition-all"
-                >
-                    "How can you help me?"
-                </button>
-                <button 
-                    onclick={() => inputMessage = "What are your capabilities?"}
-                    class="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-[11px] text-zinc-400 hover:text-zinc-200 transition-all"
-                >
-                    "What are your capabilities?"
-                </button>
-            </div>
-        </div>
-    {:else}
-        <div class="max-w-4xl mx-auto space-y-10">
-            {#if chatStore.hasMore}
-                <div class="flex justify-center">
-                    <button 
-                        onclick={() => chatStore.fetchMessages(true)}
-                        disabled={chatStore.loading}
-                        class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50"
-                    >
-                        {chatStore.loading ? 'Loading...' : 'Load Previous Messages'}
-                    </button>
-                </div>
-            {/if}
+    </header>
 
-            {#each chatStore.messages as msg (msg.id)}
-                <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div class="flex-shrink-0 pt-1">
-                        {#if msg.role === 'user'}
-                            <div class="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center">
-                                <User class="w-4 h-4 text-zinc-950"/>
-                            </div>
-                        {:else}
-                            <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-                                <Bot class="w-4 h-4 text-zinc-400"/>
-                            </div>
-                        {/if}
-                    </div>
-
-                    <div class="flex-1 flex flex-col min-w-0 space-y-4">
-                        <div class="flex items-center gap-2">
-                        <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                            {msg.role === 'user' ? 'Human' : 'Nomi'}  {msg.role === 'user' ? '' : `- ${formatTokenCount(msg.total_tokens)} Token`} 
+    <main>
+        <!-- Hero Section -->
+        <section class="pt-32 pb-20 px-6 overflow-hidden">
+            <div class="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+                <div class="space-y-8" in:fly={{ y: 20, duration: 800 }}>
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                         </span>
-                        </div>
-
-                        {#if msg.toolCalls && msg.toolCalls.length > 0}
-                        <div class="space-y-3">
-                            {#each msg.toolCalls as tc}
-                                <ToolResult args="" tool={tc.tool} result={tc.result} />
-                            {/each}
-                        </div>
-                        {/if}
-
-                        <ChatBubble content={msg.content} thought={msg.thought} image_url={msg.image_url} />
-                    </div>
-                </div>
-            {/each}
-
-            {#if chatStore.currentThought || chatStore.isTyping}
-                <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div class="flex-shrink-0 pt-1">
-                        <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-                            <Bot class="w-4 h-4 text-zinc-400"/>
-                        </div>
+                        <span class="text-[10px] font-black uppercase tracking-widest text-blue-400">v2.0 Beta Now Open</span>
                     </div>
 
-                    <div class="flex-1 flex flex-col min-w-0 space-y-4">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">Nomi</span>
-                            {#if chatStore.isTyping}
-                                <div class="flex gap-1 ml-2">
-                                    <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce"></div>
-                                    <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-                                    <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
-                                </div>
-                            {/if}
-                            {#if chatStore.activeTool}
-                                <div class="flex items-center gap-1.5 ml-3 px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full animate-in fade-in zoom-in duration-300">
-                                    <Wrench class="w-2.5 h-2.5 text-amber-500 animate-pulse" />
-                                    <span class="text-[9px] font-black uppercase tracking-widest text-amber-500/90">Using {chatStore.activeTool.replace(/_/g, ' ')}</span>
-                                </div>
-                            {/if}
-                        </div>
+                    <h1 class="text-5xl md:text-7xl font-black text-white leading-[1.1] tracking-tight">
+                        Your Life, <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Decoded.</span>
+                    </h1>
 
-                        {#if chatStore.currentThought}
-                            <div class="p-4 rounded-2xl bg-zinc-900/30 border border-zinc-800/50">
-                                <div class="flex items-center gap-2 mb-2">
-                                    <Sparkles class="w-3 h-3 text-zinc-500" />
-                                    <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Thinking...</span>
-                                </div>
-                                <p class="text-xs text-zinc-400 italic leading-relaxed">
-                                    {chatStore.currentThought}
-                                </p>
-                            </div>
-                        {/if}
-                    </div>
-                </div>
-            {/if}
+                    <p class="text-lg md:text-xl text-slate-400 leading-relaxed max-w-xl">
+                        The multimodal life infrastructure that lives where you do. Finance, vitality, and memories—all synced through a single, intelligent interface.
+                    </p>
 
-            {#if chatStore.loading}
-                <div class="flex gap-6 animate-pulse opacity-50">
-                    <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800"></div>
-                    <div class="flex-1 space-y-4 pt-1">
-                        <div class="h-2.5 w-24 bg-zinc-800 rounded"></div>
-                        <div class="space-y-2">
-                            <div class="h-2 w-full bg-zinc-800 rounded"></div>
-                            <div class="h-2 w-[90%] bg-zinc-800 rounded"></div>
-                        </div>
-                    </div>
-                </div>
-            {/if}
-
-            {#if chatStore.error}
-                <div class="p-4 rounded-xl bg-red-500/5 border border-red-500/10 flex items-center gap-3">
-                    <div class="w-2 h-2 rounded-full bg-red-500"></div>
-                    <p class="text-xs font-medium text-red-400">{chatStore.error}</p>
-                </div>
-            {/if}
-        </div>
-    {/if}
-</main>
-
-<!-- Input -->
-<footer class="p-8 bg-gradient-to-t from-[#09090b] via-[#09090b] to-transparent">
-    <div class="max-w-4xl mx-auto">
-        <div class="relative transition-all duration-500 rounded-2xl {chatStore.isTyping ? 'ring-2 ring-emerald-500/20 shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)]' : ''}">
-            <div class="relative bg-zinc-900/50 border border-zinc-800 rounded-2xl p-1 shadow-2xl focus-within:border-zinc-700 transition-colors">
-                
-                {#if selectedFile}
-                    <div class="px-5 pt-4">
-                        <div class="inline-flex items-center gap-3 p-2 bg-zinc-800/50 border border-zinc-700 rounded-xl animate-in fade-in slide-in-from-left-2">
-                            <div class="w-10 h-10 bg-zinc-900 rounded-lg flex items-center justify-center border border-zinc-700">
-                                {#if selectedFile.type.startsWith('image/')}
-                                    <ImageIcon class="w-5 h-5 text-emerald-500" />
-                                {:else if selectedFile.type.startsWith('audio/')}
-                                    <FileAudio class="w-5 h-5 text-blue-500" />
-                                {:else}
-                                    <FileText class="w-5 h-5 text-zinc-400" />
-                                {/if}
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[11px] font-bold text-zinc-200 truncate max-w-[150px]">{selectedFile.name}</span>
-                                <span class="text-[9px] text-zinc-500 uppercase">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
-                            </div>
-                            <button 
-                                onclick={removeFile}
-                                class="p-1 hover:bg-zinc-700 rounded-lg transition-colors ml-1"
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <div class="relative flex-1 max-w-md">
+                            <input
+                                bind:value={email}
+                                type="email"
+                                placeholder="Enter your email"
+                                class="w-full h-14 bg-slate-900 border border-slate-800 rounded-2xl px-6 text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
+                            />
+                            <button
+                                onclick={handleJoinWaitlist}
+                                disabled={status === 'loading'}
+                                class="absolute right-2 top-2 h-10 px-6 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
                             >
-                                <X class="w-4 h-4 text-zinc-500" />
+                                {#if status === 'loading'}
+                                    <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                {:else}
+                                    Join Beta <ArrowRight class="w-4 h-4" />
+                                {/if}
                             </button>
                         </div>
                     </div>
-                {/if}
 
-                <textarea
-                        bind:value={inputMessage}
-                        onkeydown={handleKeydown}
-                        placeholder="Message Arta..."
-                        class="w-full bg-transparent border-none focus:ring-0 text-sm py-4 px-5 min-h-[60px] max-h-48 resize-none placeholder:text-zinc-600 text-zinc-200 focus-within:border-zinc-700 focus:border-0 focus:outline-0"
-                ></textarea>
+                    {#if message}
+                        <p class="text-sm font-medium {status === 'success' ? 'text-emerald-400' : 'text-red-400'}" transition:slide>
+                            {message}
+                        </p>
+                    {/if}
+                </div>
 
-                <div class="flex items-center justify-between px-3 pb-2 pt-1">
-                    <div class="flex items-center gap-1">
-                        <input 
-                            type="file" 
-                            bind:this={fileInput} 
-                            onchange={handleFileSelect} 
-                            class="hidden" 
-                            accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt"
-                        />
-                        <button 
-                            onclick={() => fileInput?.click()}
-                            class="p-2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                        >
-                            <Paperclip class="w-4 h-4"/>
-                        </button>
-                        <button class="p-2 text-zinc-500 hover:text-zinc-300 transition-colors">
-                            <Sparkles class="w-4 h-4"/>
-                        </button>
+                <!-- Floating Chat Mockup -->
+                <div class="relative lg:h-[600px] flex items-center justify-center">
+                    <div class="absolute inset-0 bg-gradient-to-tr from-blue-500/10 to-emerald-500/10 blur-3xl rounded-full"></div>
+
+                    <div class="relative w-full max-w-[400px] space-y-4">
+                        {#each chatSequence as item, i}
+                            {#if i < chatStep}
+                                <div
+                                    in:fly={{ y: 20, duration: 500 }}
+                                    class="flex {item.type === 'user' ? 'justify-end' : 'justify-start'}"
+                                >
+                                    <div class="max-w-[85%] p-4 rounded-2xl border transition-all {item.type === 'user' ? 'bg-blue-600 border-blue-500 text-white shadow-xl shadow-blue-900/20' : 'bg-slate-900 border-slate-800 text-slate-200'}">
+                                        <div class="flex items-center gap-3 mb-1">
+                                            <item.icon class="w-3.5 h-3.5 opacity-60" />
+                                            <span class="text-[10px] font-bold uppercase tracking-widest opacity-60">
+                                                {item.type === 'user' ? 'You' : 'Nomi'}
+                                            </span>
+                                        </div>
+                                        <p class="text-sm font-medium leading-relaxed">{item.content}</p>
+                                    </div>
+                                </div>
+                            {/if}
+                        {/each}
                     </div>
-
-                    <button
-                            onclick={handleSubmit}
-                            disabled={(!inputMessage.trim() && !selectedFile) || chatStore.loading || isUploading}
-                            class="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-950 text-xs font-bold hover:bg-zinc-200 disabled:opacity-20 transition-all shadow-lg"
-                    >
-                        {#if isUploading}
-                            <Loader2 class="w-3.5 h-3.5 animate-spin"/>
-                            Uploading...
-                        {:else}
-                            Send
-                            <Send class="w-3.5 h-3.5"/>
-                        {/if}
-                    </button>
                 </div>
             </div>
+        </section>
+
+        <!-- Feature Matrix -->
+        <section id="features" class="py-24 px-6 bg-slate-900/50">
+            <div class="max-w-7xl mx-auto">
+                <div class="text-center mb-20 space-y-4">
+                    <h2 class="text-3xl md:text-5xl font-black text-white tracking-tight">One brain. Multiple domains.</h2>
+                    <p class="text-slate-400 max-w-2xl mx-auto">Nomi integrates deeply with your existing digital life, transforming raw data into actionable insights.</p>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-8">
+                    <!-- Finance -->
+                    <div class="group p-8 bg-slate-900 border border-slate-800 rounded-3xl hover:border-blue-500/50 transition-all">
+                        <div class="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                            <CreditCard class="w-6 h-6 text-blue-400" />
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-4">Finance: Snap & Log</h3>
+                        <p class="text-slate-400 leading-relaxed mb-6">Send, Voice, or Snap. Instant SQL logging with S3 document backup. Your expenses, organized automatically.</p>
+                        <ul class="space-y-3">
+                            <li class="flex items-center gap-2 text-sm text-slate-500">
+                                <CheckCircle2 class="w-4 h-4 text-blue-500" /> Multi-currency support
+                            </li>
+                            <li class="flex items-center gap-2 text-sm text-slate-500">
+                                <CheckCircle2 class="w-4 h-4 text-blue-500" /> Visual receipt parsing
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Vitality -->
+                    <div class="group p-8 bg-slate-900 border border-slate-800 rounded-3xl hover:border-emerald-500/50 transition-all">
+                        <div class="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                            <Activity class="w-6 h-6 text-emerald-400" />
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-4">Vitality: Live Sync</h3>
+                        <p class="text-slate-400 leading-relaxed mb-6">Synced with your pulse via Samsung Health and Health Connect. Real-time biofeedback and habit tracking.</p>
+                        <ul class="space-y-3">
+                            <li class="flex items-center gap-2 text-sm text-slate-500">
+                                <CheckCircle2 class="w-4 h-4 text-emerald-500" /> Sleep quality analysis
+                            </li>
+                            <li class="flex items-center gap-2 text-sm text-slate-500">
+                                <CheckCircle2 class="w-4 h-4 text-emerald-500" /> Activity goal nudges
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Memories -->
+                    <div class="group p-8 bg-slate-900 border border-slate-800 rounded-3xl hover:border-purple-500/50 transition-all">
+                        <div class="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                            <Brain class="w-6 h-6 text-purple-400" />
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-4">Memories: Time-Travel</h3>
+                        <p class="text-slate-400 leading-relaxed mb-6">Leveraging pgvector and RAG. Recall any conversation, document, or event by context or date.</p>
+                        <ul class="space-y-3">
+                            <li class="flex items-center gap-2 text-sm text-slate-500">
+                                <CheckCircle2 class="w-4 h-4 text-purple-500" /> Semantic search
+                            </li>
+                            <li class="flex items-center gap-2 text-sm text-slate-500">
+                                <CheckCircle2 class="w-4 h-4 text-purple-500" /> Multi-modal recall
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tech Stack -->
+        <section id="stack" class="py-24 px-6 overflow-hidden">
+            <div class="max-w-7xl mx-auto">
+                <div class="grid lg:grid-cols-2 gap-16 items-center">
+                    <div class="space-y-8">
+                        <h2 class="text-3xl md:text-5xl font-black text-white tracking-tight">Engineered for Trust.</h2>
+                        <p class="text-lg text-slate-400 leading-relaxed">
+                            Built with the most reliable technologies to ensure your data is safe, accessible, and processed at lightning speeds.
+                        </p>
+
+                        <div class="grid grid-cols-2 gap-6">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                                    <Cpu class="w-5 h-5 text-orange-400" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-white">Rust</p>
+                                    <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Safety & Speed</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                                    <MessageSquare class="w-5 h-5 text-blue-400" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-white">Gemini</p>
+                                    <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Intelligence</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-xl bg-orange-400/10 flex items-center justify-center border border-orange-400/20">
+                                    <Zap class="w-5 h-5 text-orange-300" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-white">SvelteKit</p>
+                                    <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Responsive UI</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center border border-blue-600/20">
+                                    <Database class="w-5 h-5 text-blue-500" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-white">PostgreSQL</p>
+                                    <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Reliable Storage</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="relative">
+                        <div class="absolute -inset-10 bg-blue-500/10 blur-3xl rounded-full"></div>
+                        <div class="relative p-8 bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl">
+                            <div class="flex items-center gap-3 mb-8 pb-8 border-b border-slate-800">
+                                <Lock class="w-5 h-5 text-blue-400" />
+                                <span class="text-sm font-bold text-white uppercase tracking-widest">End-to-End Security</span>
+                            </div>
+                            <div class="space-y-6">
+                                <div class="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                                    <div class="h-full w-3/4 bg-blue-500 rounded-full animate-pulse"></div>
+                                </div>
+                                <div class="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                                    <div class="h-full w-1/2 bg-emerald-500 rounded-full animate-pulse"></div>
+                                </div>
+                                <div class="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                                    <div class="h-full w-[90%] bg-blue-500 rounded-full animate-pulse"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Final CTA -->
+        <section class="py-32 px-6">
+            <div class="max-w-4xl mx-auto text-center p-12 md:p-20 bg-gradient-to-br from-blue-600 to-blue-800 rounded-[3rem] shadow-2xl shadow-blue-900/40 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-10 opacity-10">
+                    <Zap class="w-64 h-64 text-white fill-white" />
+                </div>
+                <div class="relative z-10 space-y-8">
+                    <h2 class="text-4xl md:text-6xl font-black text-white tracking-tight">Ready to Decode?</h2>
+                    <p class="text-blue-100 text-lg max-w-xl mx-auto">Join the early beta and start building your multimodal life infrastructure today.</p>
+                    <div class="flex flex-col sm:flex-row justify-center gap-4">
+                        <div class="relative flex-1 max-w-md mx-auto sm:mx-0">
+                            <input
+                                bind:value={email}
+                                type="email"
+                                placeholder="Your email address"
+                                class="w-full h-16 bg-white/10 border border-white/20 rounded-2xl px-6 text-white placeholder:text-white/60 focus:ring-2 focus:ring-white/50 outline-none transition-all"
+                            />
+                            <button
+                                onclick={handleJoinWaitlist}
+                                disabled={status === 'loading'}
+                                class="absolute right-2 top-2 h-12 px-8 bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-50 font-black rounded-xl transition-all shadow-xl"
+                            >
+                                Get Started
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="py-12 px-6 border-t border-slate-800/50">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+            <div class="flex items-center gap-2 grayscale opacity-50">
+                <Zap class="w-5 h-5 text-white fill-white" />
+                <span class="text-lg font-black tracking-tighter text-white uppercase">NOMI</span>
+            </div>
+            <p class="text-slate-500 text-sm font-medium">© 2026 Arta AI Orchestrator. All rights reserved.</p>
+            <div class="flex gap-6">
+                <Smartphone class="w-5 h-5 text-slate-600" />
+                <MessageSquare class="w-5 h-5 text-slate-600" />
+                <Shield class="w-5 h-5 text-slate-600" />
+            </div>
         </div>
-        <p class="text-[9px] text-zinc-700 text-center mt-4 uppercase tracking-[0.2em] font-bold">
-            Experimental AI System — Powered by Axum & SvelteKit
-        </p>
-    </div>
-</footer>
+    </footer>
+</div>
 
 <style>
-    :global(body) {
-        background-color: #09090b;
-        margin: 0;
-        height: 100vh;
-        width: 100vw;
-        overflow: hidden;
+    :global(html) {
+        scroll-behavior: smooth;
     }
 
-    ::-webkit-scrollbar {
-        width: 6px;
-    }
-
-    ::-webkit-scrollbar-track {
-        background: transparent;
-    }
-
-    ::-webkit-scrollbar-thumb {
-        background: #18181b;
-        border-radius: 10px;
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-        background: #27272a;
+    @keyframes pulse-subtle {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.8; }
     }
 </style>

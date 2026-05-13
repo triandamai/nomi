@@ -336,5 +336,11 @@ export const chatApi = {
         return fetch(`${CHANNEL_URL}/whatsapp/logout`, {
             method: 'POST'
         }).then(res => res.json());
+    },
+    joinWaitlist: (email: string) => {
+        return apiFetch<any>('/waitlist', {
+            method: 'POST',
+            body: JSON.stringify({email})
+        });
     }
 };

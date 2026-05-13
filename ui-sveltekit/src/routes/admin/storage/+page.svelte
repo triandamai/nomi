@@ -37,7 +37,7 @@
     $effect(() => {
         if (!profileStore.loading && profileStore.currentUser) {
             if (profileStore.currentUser.role !== 'admin') {
-                goto('/');
+                goto('/chat');
             }
         }
     });

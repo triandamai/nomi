@@ -75,7 +75,7 @@ function createConversationStore() {
                 active: c.id === id
             }));
             chatStore.fetchMessages(false).finally(()=>{
-                goto("/")
+                goto("/chat")
             })
         },
         async addConversation(name: string) {

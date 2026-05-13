@@ -15,7 +15,7 @@
     });
 
     const tabs = [
-        { name: 'Chat', href: '/', icon: MessageSquare },
+        { name: 'Chat', href: '/chat', icon: MessageSquare },
         { name: 'RAG', href: '/rag', icon: Network }
     ];
 </script>

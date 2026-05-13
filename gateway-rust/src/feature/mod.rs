@@ -6,6 +6,7 @@ pub mod message_processor;
 pub mod realtime;
 pub mod redis;
 pub mod admin;
+pub mod waitlist;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InboundMessage {

@@ -17,7 +17,9 @@
 
 	onMount(() => {
 		const token = sessionStorage.getItem('auth_token');
-		if (!token && page.url.pathname !== '/login') {
+		const isPublicRoute = page.url.pathname === '/' || page.url.pathname === '/login';
+		
+		if (!token && !isPublicRoute) {
 			goto('/login');
 			return;
 		}
@@ -45,14 +47,14 @@
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
 <div class="dark flex h-screen bg-[--bg-main] text-[--text-main] font-sans selection:bg-zinc-800">
-	{#if page.url.pathname !== '/login'}
+	{#if page.url.pathname !== '/login' && page.url.pathname !== '/'}
 		<DiscordSidebar />
 		<div class="flex-1 flex flex-col relative overflow-hidden">
 			<Header />
 			{@render children()}
 		</div>
 	{:else}
-		<div class="flex-1">
+		<div class="flex-1 overflow-y-auto">
 			{@render children()}
 		</div>
 	{/if}

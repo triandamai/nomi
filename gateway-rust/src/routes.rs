@@ -13,6 +13,8 @@ use crate::feature::realtime::register_public_sse;
 use axum::extract::DefaultBodyLimit;
 use crate::common::reminder::handle_get_reminders;
 
+use crate::feature::waitlist::handle_waitlist;
+
 pub fn create_router(state: AppState) -> Router {
     let admin_routes = Router::new()
         .route("/storage/explore", get(crate::feature::admin::handle_explore_storage))
@@ -50,6 +52,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/auth/request-otp", post(handle_request_otp))
         .route("/auth/verify-otp", post(handle_verify_otp))
+        .route("/waitlist", post(handle_waitlist))
         .route("/realtime", get(register_public_sse))
         .route("/files/{filename}", get(handle_get_file))
         .route("/files/{path}/{filename}", get(handle_get_path_file))
