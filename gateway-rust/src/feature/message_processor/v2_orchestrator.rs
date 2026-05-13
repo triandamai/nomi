@@ -446,8 +446,7 @@ async fn process_v2_message_with_intent(
                 // Append model's output to history_text to ensure context persists across the loop turns
                 if !turn_text.is_empty() {
                     history_text.push_str(&format!(
-                        "-[{}] Nomi: {}.
-",
+                        "-[{}] Nomi: {}.",
                         Utc::now().format("%Y-%m-%d %H:%M").to_string(),
                         turn_text
                     ));
@@ -843,6 +842,10 @@ pub fn send_message_to_subscriber(
                     )
                     .await;
             }
+
+            // --- Multi-bubble Sequential Burst Strategy ---
+            let bubbles = crate::feature::message_processor::splitter::split_into_bubbles(&outbound_message.content);
+
             if data.conversation_type.eq_ignore_ascii_case("private") {
                 match source {
                     MessageSource::Web { .. } => {
@@ -868,20 +871,27 @@ pub fn send_message_to_subscriber(
                         .unwrap_or(Vec::new());
 
                         for channel in channel_info {
-                            let outbound = OutboundMessage {
-                                is_group: false,
-                                sender_id: channel.external_id.clone(),
-                                conversation_id: channel.external_chat_id.clone(),
-                                text: outbound_message.content.clone(),
-                                channel: channel.channel_type.clone(),
-                                video_url: outbound_message.video_url.clone(),
-                                image_url: outbound_message.image_url.clone(),
-                                audio_url: outbound_message.audio_url.clone(),
-                                doc_url: outbound_message.document_url.clone(),
-                                sticker_url: outbound_message.sticker_url.clone(),
-                                metadata: None,
-                            };
-                            let _ = state.publish_outbond(&outbound).await;
+                            for (i, bubble_text) in bubbles.iter().enumerate() {
+                                let outbound = OutboundMessage {
+                                    is_group: false,
+                                    sender_id: channel.external_id.clone(),
+                                    conversation_id: channel.external_chat_id.clone(),
+                                    text: bubble_text.clone(),
+                                    channel: channel.channel_type.clone(),
+                                    // Attach media only to the first bubble
+                                    video_url: if i == 0 { outbound_message.video_url.clone() } else { None },
+                                    image_url: if i == 0 { outbound_message.image_url.clone() } else { None },
+                                    audio_url: if i == 0 { outbound_message.audio_url.clone() } else { None },
+                                    doc_url: if i == 0 { outbound_message.document_url.clone() } else { None },
+                                    sticker_url: if i == 0 { outbound_message.sticker_url.clone() } else { None },
+                                    metadata: None,
+                                };
+                                let _ = state.publish_outbond(&outbound).await;
+                                
+                                if i < bubbles.len() - 1 {
+                                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                                }
+                            }
                         }
                     }
                 }
@@ -909,20 +919,27 @@ pub fn send_message_to_subscriber(
                         .unwrap_or(Vec::new());
 
                         for channel in channel_info {
-                            let outbound = OutboundMessage {
-                                is_group: false,
-                                sender_id: "".to_string(),
-                                conversation_id: channel.external_group_id.clone(),
-                                text: outbound_message.content.clone(),
-                                channel: channel.channel,
-                                video_url: outbound_message.video_url.clone(),
-                                image_url: outbound_message.image_url.clone(),
-                                audio_url: outbound_message.audio_url.clone(),
-                                doc_url: outbound_message.document_url.clone(),
-                                sticker_url: outbound_message.sticker_url.clone(),
-                                metadata: None,
-                            };
-                            let _ = state.publish_outbond(&outbound).await;
+                            for (i, bubble_text) in bubbles.iter().enumerate() {
+                                let outbound = OutboundMessage {
+                                    is_group: false,
+                                    sender_id: "".to_string(),
+                                    conversation_id: channel.external_group_id.clone(),
+                                    text: bubble_text.clone(),
+                                    channel: channel.channel.clone(),
+                                    // Attach media only to the first bubble
+                                    video_url: if i == 0 { outbound_message.video_url.clone() } else { None },
+                                    image_url: if i == 0 { outbound_message.image_url.clone() } else { None },
+                                    audio_url: if i == 0 { outbound_message.audio_url.clone() } else { None },
+                                    doc_url: if i == 0 { outbound_message.document_url.clone() } else { None },
+                                    sticker_url: if i == 0 { outbound_message.sticker_url.clone() } else { None },
+                                    metadata: None,
+                                };
+                                let _ = state.publish_outbond(&outbound).await;
+
+                                if i < bubbles.len() - 1 {
+                                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                                }
+                            }
                         }
                     }
                 }

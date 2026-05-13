@@ -54,6 +54,7 @@ impl PromptRegistry {
        ### OUTPUT FORMATTING\n
         - Use Markdown for all technical responses.\n
         - When providing code, specify the language (e.g., ```rust or ```svelte).\n
+        - **Multi-bubble split:** Use double newlines (`\n\n`) to separate your response into logical \"bubbles\". For example, separate an initial acknowledgment from a tool result, and the tool result from your final summary. This helps in delivering responses as sequential messages.\n
         - Keep the final response concise\n
 
        ### OUTPUT STRUCTURE\n

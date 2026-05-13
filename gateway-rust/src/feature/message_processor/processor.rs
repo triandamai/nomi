@@ -28,10 +28,12 @@ pub(crate) async fn trigger_memory_consolidation(
     gemini_api_key: String,
     conversation_id: Uuid,
 ) -> anyhow::Result<()> {
-    // 1. Get the last summarized message ID
+    // 1. Get the last summary's timestamp and last_message_id
     let last_summary = sqlx::query!(
         r#"
-        SELECT metadata->>'last_message_id' as last_message_id
+        SELECT 
+            created_at as "last_summary_at!",
+            metadata->>'last_message_id' as last_message_id
         FROM knowledge_base
         WHERE metadata->>'type' = 'summary' 
         AND metadata->>'conversation_id' = $1
@@ -43,25 +45,28 @@ pub(crate) async fn trigger_memory_consolidation(
     .fetch_optional(&pool)
     .await?;
 
-    let last_msg_id = last_summary
-        .and_then(|r| r.last_message_id)
-        .and_then(|id| Uuid::parse_str(&id).ok());
+    // Default to Unix Epoch (1970-01-01) if no previous summary exists
+    let start_timestamp = last_summary
+        .as_ref()
+        .map(|s| s.last_summary_at)
+        .unwrap_or_else(|| chrono::DateTime::from_timestamp(0, 0).unwrap().with_timezone(&chrono::Utc));
 
-    // 2. Fetch new messages
+    // 2. Fetch new messages ordered by created_at ASC
     let new_messages = sqlx::query!(
         r#"
         SELECT id, role, content 
         FROM messages 
         WHERE conversation_id = $1 
-        AND ($2::uuid IS NULL OR created_at > (SELECT created_at FROM messages WHERE id = $2))
+        AND created_at > $2
         ORDER BY created_at ASC
         "#,
         conversation_id,
-        last_msg_id
+        start_timestamp
     )
     .fetch_all(&pool)
-    .await?;
+    .await.unwrap_or(Vec::new());
 
+    info!("Check memory consolidation: {}",new_messages.len());
     // 3. Threshold check
     if new_messages.len() >= 10 {
         info!(conversation_id = %conversation_id, "Memory consolidation triggered ({} new messages)", new_messages.len());

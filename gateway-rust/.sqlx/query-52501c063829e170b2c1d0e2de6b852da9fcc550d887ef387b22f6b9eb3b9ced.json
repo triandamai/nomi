@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, role, content \n        FROM messages \n        WHERE conversation_id = $1 \n        AND ($2::uuid IS NULL OR created_at > (SELECT created_at FROM messages WHERE id = $2))\n        ORDER BY created_at ASC\n        ",
+  "query": "\n        SELECT id, role, content \n        FROM messages \n        WHERE conversation_id = $1 \n        AND created_at > $2\n        ORDER BY created_at ASC\n        ",
   "describe": {
     "columns": [
       {
@@ -22,7 +22,7 @@
     "parameters": {
       "Left": [
         "Uuid",
-        "Uuid"
+        "Timestamptz"
       ]
     },
     "nullable": [
@@ -31,5 +31,5 @@
       false
     ]
   },
-  "hash": "631b8f2bfacbcfbed13ef4174c5931196a0c41ffe1c12dc65c2260c546978072"
+  "hash": "52501c063829e170b2c1d0e2de6b852da9fcc550d887ef387b22f6b9eb3b9ced"
 }
