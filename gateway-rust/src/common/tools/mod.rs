@@ -63,6 +63,11 @@ pub enum ArtaTool {
         params: UpdateKnowledgeBaseParameters,
         user_message: String,
     },
+    #[serde(rename = "retrieve_knowledge")]
+    RetrieveKnowledge {
+        params: tools_model::RetrieveKnowledgeParameters,
+        user_message: String,
+    },
     #[serde(rename = "evolve_bootstrap_content")]
     EvolveBootstrap {
         params: EvolveBootstrapParameters,
@@ -197,6 +202,10 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.update_knowledge_base(params, user_message).await,
+            ArtaTool::RetrieveKnowledge {
+                params,
+                user_message,
+            } => self.retrieve_knowledge(params, user_message).await,
             ArtaTool::EvolveBootstrap {
                 params,
                 user_message,
@@ -296,6 +305,15 @@ impl ToolDispatcher {
             )
                 .with_parameters::<UpdateKnowledgeBaseParameters>()
                 .with_response::<UpdateKnowledgeBaseResponse>();
+
+        let retrieve_knowledge =
+            FunctionDeclaration::new(
+                "retrieve_knowledge",
+                "Search your long-term memory for specific facts, preferences, and project details. Use start_date and end_date (ISO 8601) if the query implies a timeframe (e.g., 'last week', 'yesterday', 'in March'). If general, leave them null.",
+                None,
+            )
+                .with_parameters::<tools_model::RetrieveKnowledgeParameters>()
+                .with_response::<tools_model::RetrieveKnowledgeResponse>();
 
         let evolve_bootstrap_content = FunctionDeclaration::new(
             "evolve_bootstrap_content",
@@ -408,6 +426,7 @@ impl ToolDispatcher {
             read_web_page,
             update_nomi_soul,
             update_knowledge_base,
+            retrieve_knowledge,
             evolve_bootstrap_content,
             create_reminder,
             modify_reminder,
@@ -1087,6 +1106,70 @@ impl ToolDispatcher {
                     ),
                 }
             }
+        }
+    }
+
+    async fn retrieve_knowledge(
+        &self,
+        params: tools_model::RetrieveKnowledgeParameters,
+        user_message: String,
+    ) -> ToolResult {
+        info!("Retrieving knowledge for query: {}", params.query);
+
+        let start_date = params.start_date.and_then(|s| {
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        });
+        let end_date = params.end_date.and_then(|s| {
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        });
+
+        info!("Search from :{:?} => {:?}",start_date,end_date);
+        let embedding_res = crate::rag::get_embedding(&self.gemini_api_key, &params.query).await;
+
+        match embedding_res {
+            Ok(embedding) => {
+                let results = crate::utils::rag::hybrid_retrieve(
+                    &self.pool,
+                    &params.query,
+                    embedding.embedding.values,
+                    self.conversation_id,
+                    start_date,
+                    end_date,
+                )
+                .await;
+
+                match results {
+                    Ok(memories) => {
+                        let content = memories.join("\n---\n");
+                        ToolResult {
+                            error: "".to_string(),
+                            success: true,
+                            content: content.clone(),
+                            follow_up_prompt: build_follow_up_prompt(
+                                user_message,
+                                content,
+                                "retrieve_knowledge".to_string(),
+                            ),
+                        }
+                    }
+                    Err(e) => ToolResult {
+                        error: format!("Error retrieving knowledge: {}", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                    },
+                }
+            }
+            Err(e) => ToolResult {
+                error: format!("Error generating embedding: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
         }
     }
 

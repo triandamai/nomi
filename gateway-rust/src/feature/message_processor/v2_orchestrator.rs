@@ -255,6 +255,11 @@ async fn process_v2_message_with_intent(
             combined.push_str(&soul);
         }
 
+        combined.push_str(&format!(
+            "\n### Current Contextual Time (UTC)\n{}\n",
+            Utc::now().to_rfc3339()
+        ));
+
         combined.push_str("\n### Orchestrator Instructions \n");
         combined.push_str(crate::prompts::PromptRegistry::orchestrator_instructions());
         combined.push_str("");
@@ -353,12 +358,14 @@ async fn process_v2_message_with_intent(
     }
 
     let embedding = rag::get_embedding(&state.gemini_api_key, &augmented_text).await;
-    let memories_text = if !embedding.is_ok() {
+    let memories_text = if embedding.is_ok() {
         crate::utils::rag::hybrid_retrieve(
             &state.pool,
             &augmented_text,
             embedding.unwrap().embedding.values,
             Some(conversation_id),
+            None,
+            None,
         )
         .await
         .unwrap_or_default()

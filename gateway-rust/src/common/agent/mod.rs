@@ -374,6 +374,16 @@ pub async fn execute_tools(
                         })
                         .await
                 }
+                "retrieve_knowledge" => {
+                    let param: crate::common::tools::tools_model::RetrieveKnowledgeParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::RetrieveKnowledge {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
                 _ => ToolResult {
                     error: format!("Unknown tool: {}", call_name),
                     success: false,

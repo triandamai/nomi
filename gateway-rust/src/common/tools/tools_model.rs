@@ -32,6 +32,18 @@ pub struct ParseToJsonResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RetrieveKnowledgeParameters {
+    pub query: String,
+    pub start_date: Option<String>, // ISO 8601 string
+    pub end_date: Option<String>,   // ISO 8601 string
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RetrieveKnowledgeResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ToolResult {
     pub error: String,
     pub success: bool,

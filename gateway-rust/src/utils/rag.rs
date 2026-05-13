@@ -1,9 +1,10 @@
 use sqlx::{Pool, Postgres};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::info;
 use chrono::{DateTime, Utc, Duration};
 use std::collections::HashSet;
+use anyhow::anyhow;
+use tracing::info;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HybridSearchResult {
@@ -20,17 +21,31 @@ pub async fn hybrid_retrieve(
     query_text: &str,
     embedding: Vec<f32>,
     conversation_id: Option<uuid::Uuid>,
+    start_date: Option<DateTime<Utc>>,
+    end_date: Option<DateTime<Utc>>,
 ) -> anyhow::Result<Vec<String>> {
     // Task 1: Hybrid Vector + Keyword Search
     // Fetch candidates using both vector similarity and keyword search
     // Using a FULL OUTER JOIN to combine results and scores
-    let rows = sqlx::query!(
+    #[derive(sqlx::FromRow)]
+    struct HybridRow {
+        id: uuid::Uuid,
+        content: String,
+        metadata: Value,
+        created_at: DateTime<Utc>,
+        vector_score: f64,
+        keyword_score: f64,
+    }
+
+    let rows = sqlx::query_as::<_, HybridRow>(
         r#"
         WITH vector_candidates AS (
             SELECT id, content, metadata, created_at, 
                    (1.0 - (embedding <=> $1::vector))::float8 as score
             FROM knowledge_base
             WHERE ($3::uuid IS NULL OR conversation_id IS NULL OR conversation_id = $3)
+              AND ($4::TIMESTAMPTZ IS NULL OR created_at >= $4)
+              AND ($5::TIMESTAMPTZ IS NULL OR created_at <= $5)
             ORDER BY embedding <=> $1::vector
             LIMIT 15
         ),
@@ -40,24 +55,33 @@ pub async fn hybrid_retrieve(
             FROM knowledge_base
             WHERE to_tsvector('english', content) @@ plainto_tsquery('english', $2)
               AND ($3::uuid IS NULL OR conversation_id IS NULL OR conversation_id = $3)
+              AND ($4::TIMESTAMPTZ IS NULL OR created_at >= $4)
+              AND ($5::TIMESTAMPTZ IS NULL OR created_at <= $5)
             LIMIT 15
         )
         SELECT 
-            COALESCE(v.id, k.id) as "id!",
-            COALESCE(v.content, k.content) as "content!",
-            COALESCE(v.metadata, k.metadata) as "metadata!",
-            COALESCE(v.created_at, k.created_at) as "created_at!",
-            COALESCE(v.score, 0.0)::float8 as "vector_score!",
-            COALESCE(k.score, 0.0)::float8 as "keyword_score!"
+            COALESCE(v.id, k.id) as id,
+            COALESCE(v.content, k.content, '')::TEXT as content,
+            COALESCE(v.metadata, k.metadata, '{}'::jsonb)::JSONB as metadata,
+            COALESCE(v.created_at, k.created_at, NOW())::TIMESTAMPTZ as created_at,
+            COALESCE(v.score, 0.0)::FLOAT8 as vector_score,
+            COALESCE(k.score, 0.0)::FLOAT8 as keyword_score
         FROM vector_candidates v
         FULL OUTER JOIN keyword_candidates k ON v.id = k.id
-        "#,
-        embedding as Vec<f32>,
-        query_text,
-        conversation_id
+        "#
     )
+    .bind(embedding as Vec<f32>)
+    .bind(query_text)
+    .bind(conversation_id)
+    .bind(start_date)
+    .bind(end_date)
     .fetch_all(pool)
-    .await?;
+    .await;
+    if let Err(err) = rows {
+        info!("Error when retrieve knowledge {}",err);
+        return Err(anyhow!("Could not retrieve vector candidates"));
+    }
+    let rows = rows?;
 
     let now = Utc::now();
     let seven_days_ago = now - Duration::days(7);
