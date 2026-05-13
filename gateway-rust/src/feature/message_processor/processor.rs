@@ -893,7 +893,6 @@ pub async fn process_group_registration(
             .await;
         return Ok(());
     }
-
     let existing_user = get_user.unwrap();
     if let None = existing_user {
         info!("Group already registered");
@@ -947,9 +946,8 @@ pub async fn process_group_registration(
             .await;
             return Ok(());
         }
-        return Ok(());
     }
-
+    info!("Group no egistered, try to registering");
     // 2. Create new conversation for this group
 
     let conv_id = Uuid::new_v4();

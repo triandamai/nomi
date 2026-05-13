@@ -21,8 +21,8 @@ pub async fn classification(
             &state,
             conversation_id,
             msg.source.clone(),
+            "tool_start".to_string(),
             StatusRegistry::random_action_phrase("analyze_media"),
-            crate::prompts::PromptRegistry::status_analyzing_receipt().to_string(),
         );
 
         let classification = classify_media_context(&state, &image_url)

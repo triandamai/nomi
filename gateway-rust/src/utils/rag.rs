@@ -29,7 +29,6 @@ pub async fn hybrid_retrieve(
     // Using a FULL OUTER JOIN to combine results and scores
     #[derive(sqlx::FromRow)]
     struct HybridRow {
-        id: uuid::Uuid,
         content: String,
         metadata: Value,
         created_at: DateTime<Utc>,

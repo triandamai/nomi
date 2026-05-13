@@ -303,34 +303,24 @@ async fn process_v2_message_with_intent(
         };
 
         let image_url = match msg.image_url {
-            Some(path) if !is_processed => {
-                format!(" - Image: {} \n", state.storage.get_full_url(&path))
-            }
+            Some(path) if !is_processed => format!(" - Image: {} \n", state.storage.get_full_url(&path)),
             _ => "".to_string(),
         };
         let video_url = match msg.video_url {
-            Some(path) if !is_processed => {
-                format!("- Video: {} \n", state.storage.get_full_url(&path))
-            }
+            Some(path) if !is_processed => format!("- Video: {} \n", state.storage.get_full_url(&path)),
             _ => "".to_string(),
         };
         let audio_url = match msg.audio_url {
-            Some(path) if !is_processed => {
-                format!(" - Audio: {} \n", state.storage.get_full_url(&path))
-            }
+            Some(path) if !is_processed =>  format!(" - Audio: {} \n", state.storage.get_full_url(&path)),
             _ => "".to_string(),
         };
         let document_url = match msg.document_url {
-            Some(path) if !is_processed => {
-                format!("- Document: {} \n", state.storage.get_full_url(&path))
-            }
+            Some(path) if !is_processed => format!("- Document: {} \n", state.storage.get_full_url(&path)),
             _ => "".to_string(),
         };
 
         let sticker_url = match msg.sticker_url {
-            Some(path) if !is_processed => {
-                format!("- Sticker: {} \n", state.storage.get_full_url(&path))
-            }
+            Some(path) if !is_processed => format!("- Sticker: {} \n", state.storage.get_full_url(&path)),
             _ => "".to_string(),
         };
         let role_label = match msg.role.as_str() {
@@ -513,7 +503,7 @@ async fn process_v2_message_with_intent(
                         &state,
                         conversation_id,
                         msg.source.clone(),
-                        "thought".to_string(),
+                        "tool_start".to_string(),
                         crate::prompts::StatusRegistry::random_action_phrase(&call.name),
                     );
                 }
@@ -659,7 +649,7 @@ pub fn send_status_update(
     state: &AppState,
     conversation_id: Uuid,
     source: MessageSource,
-    event: String,
+    event:String,
     text: String,
 ) {
     info!("send_status_update start");
@@ -695,18 +685,22 @@ pub fn send_status_update(
             .unwrap_or(Vec::new());
 
             if data.conversation_type.eq_ignore_ascii_case("private") {
+                info!("send_status_update web");
+                for member in members {
+                    let _ = state
+                        .send_sse_to_user(
+                            member.user_id.to_string().as_str(),
+                            event.to_string().as_str(),
+                            json!({
+                                "conversation_id": conversation_id,
+                                "text":text
+                            }),
+                        )
+                        .await;
+                }
                 match source {
                     MessageSource::Web { .. } => {
-                        info!("send_status_update web");
-                        for member in members {
-                            let _ = state
-                                .send_sse_to_user(
-                                    member.user_id.to_string().as_str(),
-                                    event.to_string().as_str(),
-                                    json!({}),
-                                )
-                                .await;
-                        }
+                        //keep update we event thought the channel isnt from we
                     }
                     MessageSource::Other { name } => {
                         info!(
@@ -747,18 +741,22 @@ pub fn send_status_update(
                     }
                 }
             } else {
+                for member in members {
+                    let _ = state
+                        .send_sse_to_user(
+                            member.user_id.to_string().as_str(),
+                            event.to_string().as_str(),
+                            json!({
+                                "conversation_id": conversation_id,
+                                "text":text
+                            }),
+                        )
+                        .await;
+                }
                 match source {
                     MessageSource::Web { .. } => {
+                        //keep update we event thought the channel isnt from we
                         info!("send_status_update web");
-                        for member in members {
-                            let _ = state
-                                .send_sse_to_user(
-                                    member.user_id.to_string().as_str(),
-                                    event.to_string().as_str(),
-                                    json!({}),
-                                )
-                                .await;
-                        }
                     }
                     MessageSource::Other { name } => {
                         info!(
