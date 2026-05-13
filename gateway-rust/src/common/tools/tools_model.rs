@@ -111,6 +111,7 @@ pub struct CreateReminderParameters {
     pub due_at: String, // ISO 8601 string
     pub frequency: Option<String>, // 'once', 'daily', 'weekly', 'monthly'
     pub max_repeats: Option<i32>,
+    pub timezone: Option<String>, // Optional timezone (e.g., 'Asia/Jakarta')
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -124,6 +125,7 @@ pub struct ModifyReminderParameters {
     pub reminder_id: String,
     pub action: String, // 'snooze', 'cancel', 'done'
     pub snooze_until: Option<String>, // ISO 8601 string if action is 'snooze'
+    pub timezone: Option<String>, // Optional timezone
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -257,4 +259,33 @@ pub struct GetExpenseSummaryResponse {
     pub total_income: f64,
     pub top_category: Option<String>,
     pub trend_percentage: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetTransactionDetailsParameters {
+    pub date: Option<String>,     // ISO 8601 string, defaults to today
+    pub category: Option<String>, // Optional category filter
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetTransactionDetailsResponse {
+    pub transactions: Vec<TransactionDetail>,
+    pub total_amount: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TransactionDetail {
+    pub merchant_name: Option<String>,
+    pub total_amount: f64,
+    pub category: Option<String>,
+    pub description: Option<String>,
+    pub items: Vec<TransactionItem>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct TransactionItem {
+    pub name: String,
+    pub quantity: i32,
+    pub total_amount: f64,
 }

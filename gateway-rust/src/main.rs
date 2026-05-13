@@ -17,6 +17,7 @@ use std::{env::var, sync::Arc};
 use tower_http::cors::CorsLayer;
 use tracing::{debug, error, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use crate::common::stock;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -263,7 +264,25 @@ async fn main() -> anyhow::Result<()> {
     // Start Reminder Worker
     let reminder_state = state.clone();
     tokio::spawn(async move {
-        crate::feature::conversation::reminder::start_reminder_worker(reminder_state).await;
+        feature::conversation::reminder::start_reminder_worker(reminder_state).await;
+    });
+
+    // Start Stock Worker
+    // let stock_state = state.clone();
+    // tokio::spawn(async move {
+    //     stock::start_stock_worker(stock_state).await;
+    // });
+
+    // Start Cleanup Worker for pending_media
+    let cleanup_state = state.clone();
+    tokio::spawn(async move {
+        loop {
+            info!("Running pending_media cleanup...");
+            if let Err(e) = crate::common::repository::pending_media_repo::cleanup_old_pending_media(&cleanup_state.pool).await {
+                error!("Failed to cleanup pending_media: {}", e);
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
+        }
     });
 
     // Configure CORS

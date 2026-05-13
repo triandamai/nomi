@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT \n                id,\n                content,\n                due_at,\n                status,\n                frequency,\n                current_runs\n            FROM reminders\n            WHERE user_id = $1\n              AND ($2::TIMESTAMPTZ IS NULL OR due_at >= $2)\n              AND ($3::TIMESTAMPTZ IS NULL OR due_at <= $3)\n              AND ($4::TEXT IS NULL OR status = $4)\n            ORDER BY due_at ASC\n            LIMIT $5;\n            ",
+  "query": "\n            SELECT \n                id,\n                content,\n                (due_at AT TIME ZONE 'Asia/Jakarta') as due_at,\n                status,\n                frequency,\n                current_runs\n            FROM reminders\n            WHERE user_id = $1\n              AND ($2::TIMESTAMPTZ IS NULL OR due_at >= $2)\n              AND ($3::TIMESTAMPTZ IS NULL OR due_at <= $3)\n              AND ($4::TEXT IS NULL OR status = $4)\n            ORDER BY due_at ASC\n            LIMIT $5;\n            ",
   "describe": {
     "columns": [
       {
@@ -16,7 +16,7 @@
       {
         "ordinal": 2,
         "name": "due_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamp"
       },
       {
         "ordinal": 3,
@@ -46,11 +46,11 @@
     "nullable": [
       false,
       false,
-      false,
+      null,
       true,
       true,
       true
     ]
   },
-  "hash": "3913f26675b302bf4da1c59d204bb7d40221523395933f37b3d9942aa096e3f1"
+  "hash": "8645e39449f8fbda3d7b8b356dcf8d528acdbf52b8c42a460e6112eae89ac510"
 }

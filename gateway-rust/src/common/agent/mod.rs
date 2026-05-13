@@ -31,16 +31,37 @@ pub async fn send_prompt(
             memories,
             message,
             system_prompt,
+            media,
         } => {
             info!("\n ==== sending user prompt ===== \n");
-            // info!("history text user:\n {} \n", history);
-            // info!("memories:\n {} \n", memories);
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-            // info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
+
+            let mut user_parts = vec![gemini_rust::Part::Text {
+                text: message,
+                thought: None,
+                thought_signature: None,
+            }];
+
+            if let Some((mime_type, data)) = media {
+                user_parts.push(gemini_rust::Part::InlineData {
+                    inline_data: gemini_rust::Blob {
+                        mime_type,
+                        data,
+                    },
+                    media_resolution: None,
+                });
+            }
+
             gemini
                 .generate_content()
                 .with_system_prompt(build_prompt)
-                .with_user_message(message)
+                .with_message(Message {
+                    role: Role::User,
+                    content: Content {
+                        parts: Some(user_parts),
+                        role: Some(Role::User),
+                    },
+                })
                 .with_tool(ToolDispatcher::generate_tool_for_prompt())
                 .with_function_calling_mode(FunctionCallingMode::Auto)
                 .with_max_output_tokens(4096)
@@ -51,17 +72,37 @@ pub async fn send_prompt(
             message,
             system_prompt,
             tool_turns,
+            media,
         } => {
             info!("\n ==== sending tool prompt ===== \n");
-            // info!("history text user:\n {} \n", history);
-            // info!("memories:\n {} \n", memories);
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-            // info!("system :\n {} \n\n ====== end ==== \n", build_prompt);
+
+            let mut user_parts = vec![gemini_rust::Part::Text {
+                text: message,
+                thought: None,
+                thought_signature: None,
+            }];
+
+            if let Some((mime_type, data)) = media {
+                user_parts.push(gemini_rust::Part::InlineData {
+                    inline_data: gemini_rust::Blob {
+                        mime_type,
+                        data,
+                    },
+                    media_resolution: None,
+                });
+            }
 
             let mut builder = gemini
                 .generate_content()
                 .with_system_prompt(build_prompt)
-                .with_user_message(message);
+                .with_message(Message {
+                    role: Role::User,
+                    content: Content {
+                        parts: Some(user_parts),
+                        role: Some(Role::User),
+                    },
+                });
 
             // Add turns of interactions
             for (calls, results) in tool_turns {
@@ -379,6 +420,16 @@ pub async fn execute_tools(
                         serde_json::from_value(args).unwrap();
                     dispatcher
                         .dispatch(ArtaTool::RetrieveKnowledge {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
+                "get_transaction_details"=>{
+                    let param: crate::common::tools::tools_model::GetTransactionDetailsParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::GetTransactionDetails {
                             params: param,
                             user_message: user_message.clone(),
                         })

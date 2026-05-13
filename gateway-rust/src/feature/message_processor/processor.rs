@@ -430,7 +430,7 @@ pub(crate) async fn extract_technical_doc(
     Ok(res.text())
 }
 
-async fn fetch_media_from_storage(
+pub(crate) async fn fetch_media_from_storage(
     state: &AppState,
     image_url: &str,
 ) -> anyhow::Result<(String, String)> {

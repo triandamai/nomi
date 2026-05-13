@@ -4,6 +4,7 @@
     import { page } from '$app/state';
     import { conversationStore } from '$lib/stores/conversation.svelte';
     import { headerStore } from '$lib/stores/header.svelte.ts';
+    import { formatTokenCount } from '$lib/utils';
     import { onMount } from "svelte";
 
     let activeTab = $derived(page.url.pathname === '/rag' ? 'RAG' : 'Chat');
@@ -26,7 +27,7 @@
             <span class="text-xs font-medium hover:text-zinc-300 cursor-pointer transition-colors hidden sm:inline">Workspace</span>
             <ChevronRight class="w-3.5 h-3.5 text-zinc-700 hidden sm:block" />
             <span class="text-xs font-semibold text-zinc-200 truncate max-w-[120px] sm:max-w-none">
-                {conversationStore.activeConversation?.name || 'No Session'} - {Number(conversationStore.activeConversation?.cumulative_tokens) > 0 ? `${conversationStore.activeConversation?.cumulative_tokens}`:'0'} Token
+                {conversationStore.activeConversation?.name || 'No Session'} - {formatTokenCount(conversationStore.activeConversation?.cumulative_tokens)} Token
             </span>
         </div>
 

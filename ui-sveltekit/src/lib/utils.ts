@@ -25,6 +25,23 @@ class EventBus {
 
 export const eventBus = new EventBus();
 
+export function formatTokenCount(tokens: number | string | undefined): string {
+    const num = typeof tokens === 'string' ? parseInt(tokens) : (tokens ?? 0);
+    if (isNaN(num)) return '0';
+    
+    if (num >= 10000000) {
+        const suffixes = ['', 'K', 'M', 'B', 'T'];
+        const suffixNum = Math.floor(("" + num).length / 3);
+        let shortValue: number | string = parseFloat((suffixNum != 0 ? (num / Math.pow(1000, suffixNum)) : num).toPrecision(3));
+        if (shortValue % 1 != 0) {
+            shortValue = shortValue.toFixed(1);
+        }
+        return shortValue + suffixes[suffixNum];
+    }
+    
+    return num.toLocaleString('de-DE'); // Use German locale for dot separator
+}
+
 export function useAvatar(name: string) {
     return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
 }

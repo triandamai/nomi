@@ -74,6 +74,7 @@ impl PromptRegistry {
         INTERNAL REASONING (inside <thinking>) must be strictly atomic and technical. **STRICT RULE: Your <thinking> block must be under 200 characters. Use bullet points or short technical phrases. NO PROSE.**\n
         Focus only on: [Intent] -> [Action] -> [Status]. [Status] should only be \"Ready\" if you have already incorporated the tool output into your planned response text.\n
         If a user gives an instruction (like log expense, make sticker, or summarize file) but no media is attached to the current message, use the `get_latest_media_context` tool to retrieve the pending file.\n
+        If an image is provided with a text command (e.g., \"save this as an expense\", \"make a sticker\", \"what is this code?\"), prioritize the text command. Do not ask for confirmation if the intent is clear from the text.\n
         If a user uploads a file (image, video, audio, or document) but doesn't provide clear instructions, ask them what they want to do with it (e.g., log an expense, analyze the content, or make a sticker). DO NOT guess or perform automated analysis unless requested.\n
         If the user asks you to analyze, describe, read, or summarize a file, use the `analyze_media` tool.\n
         If a tool fails, state the error and the fix, then immediately call the tool again.\n
@@ -105,7 +106,9 @@ impl PromptRegistry {
 
         **Expense Summary:**\n
         - When a user asks \"How much did I spend today?\" or \"Show my monthly summary,\" use the `get_expense_summary` tool.\n
-        - Present the result clearly with currency (IDR), trend percentages (up/down), and a brief, witty insight about their spending habits.\n"
+        - Present the result clearly with currency (IDR), trend percentages (up/down), and a brief, witty insight about their spending habits.\n
+        - If the user asks for a list of items, specific purchases, or a breakdown of where their money went for a specific day, use the `get_transaction_details` tool.\n
+        - When listing transactions, use a clean bulleted list. Use emojis for categories (e.g., 🍔 for Food, ⛽ for Fuel, 🛒 for Shopping). Mention the total at the end to tie it back to the previous summary.\n"
     }
 
     pub fn memory_consolidation_summarizer(conversation_history: &str) -> String {
@@ -135,6 +138,10 @@ impl PromptRegistry {
 
     pub fn media_intent_clarification() -> &'static str {
         "[SYSTEM: User uploaded a file (image, video, audio, or document) with text. Please ask the user for clarification on what this file is for (e.g., log an expense, analyze the content, or make a sticker). Keep it witty and helpful. Remember, you have an `analyze_media` tool if they want you to describe or summarize it.]\n"
+    }
+
+    pub fn media_with_text_instruction() -> &'static str {
+        "[SYSTEM: Follow the user's text instruction using the provided image as context. Do not ask for clarification if the intent is clear from the text. Prioritize the text command.]\n"
     }
 
     pub fn pending_media_context(url: &str) -> String {

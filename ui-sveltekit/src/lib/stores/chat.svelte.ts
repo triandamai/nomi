@@ -22,12 +22,12 @@ function createChatStore() {
     let hasMore = $state(true);
     let isTyping = $state(false);
     let currentThought = $state<string>("");
+    let activeTool = $state<string | null>(null);
 
     // Subscribe to SSE events via EventBus
     eventBus.subscribe('sse-message', (data) => {
         if (data.id) {
             const find = messages.findIndex(v=>v.id == data.id)
-            console.log("find",find)
             if(find > 0){
                 messages[find] = ({
                     id: data.id || crypto.randomUUID(),
@@ -52,6 +52,7 @@ function createChatStore() {
             }
 
             currentThought = ""; // Clear thought when message arrives
+            activeTool = null; // Clear tool when message arrives
             isTyping = false;
         }
     });
@@ -60,6 +61,16 @@ function createChatStore() {
         if (data.thought) {
             currentThought = data.thought;
         }
+    });
+
+    eventBus.subscribe('sse-tool_start', (data) => {
+        if (data.name) {
+            activeTool = data.name;
+        }
+    });
+
+    eventBus.subscribe('sse-tool_end', (data) => {
+        activeTool = null;
     });
 
     eventBus.subscribe('sse-presence', (data) => {
@@ -91,6 +102,9 @@ function createChatStore() {
         },
         get currentThought() {
             return currentThought;
+        },
+        get activeTool() {
+            return activeTool;
         },
         get isTyping() {
             return isTyping;

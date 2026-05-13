@@ -15,37 +15,73 @@ pub async fn classification(
 )->(String,String){
     let mut media_context = String::new();
     if let Some(ref image_url) = msg.image_url {
-        info!("Media detected, classifying: {}", image_url);
+        let is_empty = text_content.trim().is_empty();
+        let is_vague = text_content.trim().len() < 10; // Basic heuristic for "vague"
 
-        send_status_update(
-            &state,
-            conversation_id,
-            msg.source.clone(),
-            "tool_start".to_string(),
-            StatusRegistry::random_action_phrase("analyze_media"),
-        );
+        // Task 1 & 3: Only trigger classify_media_context if text is empty or vague.
+        if is_empty || is_vague {
+            info!("Media detected (vague/empty text), classifying: {}", image_url);
 
-        let classification = classify_media_context(&state, &image_url)
-            .await
-            .unwrap_or(MediaClassification::Other);
+            send_status_update(
+                &state,
+                conversation_id,
+                msg.source.clone(),
+                "tool_start".to_string(),
+                StatusRegistry::random_action_phrase("analyze_media"),
+            );
 
-        media_context = proceed_classification(&classification, &state, image_url, conversation_id).await;
-        let classification_str = match classification {
-            MediaClassification::ExpenseReceipt => Some("EXPENSE_RECEIPT"),
-            MediaClassification::MotorcycleMaintenance => Some("MOTORCYCLE_MAINTENANCE"),
-            MediaClassification::TechnicalDoc => Some("TECHNICAL_DOC"),
-            MediaClassification::Nature => Some("NATURE"),
-            MediaClassification::Other => Some("OTHER"),
-        };
+            let classification = classify_media_context(&state, &image_url)
+                .await
+                .unwrap_or(MediaClassification::Other);
 
-        // Save to pending_media table for Media Checkpoint System
-        let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
-            &state.pool,
-            conversation_id,
-            &image_url,
-            "image",
-            classification_str,
-        ).await;
+            // Task 1: If text is empty, we do the full proceeding (extraction/KB saving)
+            // If it's vague, we might still want basic context for proactive suggestion.
+            if is_empty {
+                media_context = proceed_classification(&classification, &state, image_url, conversation_id).await;
+            } else {
+                media_context = match classification {
+                    MediaClassification::ExpenseReceipt => "[SYSTEM: This image appears to be an expense receipt. You might want to suggest logging it.]".to_string(),
+                    MediaClassification::MotorcycleMaintenance => "[SYSTEM: This image appears to be a motorcycle maintenance record.]".to_string(),
+                    MediaClassification::TechnicalDoc => "[SYSTEM: This image appears to be a technical document.]".to_string(),
+                    MediaClassification::Nature => "[SYSTEM: This is a nature photo.]".to_string(),
+                    MediaClassification::Other => "[SYSTEM: Uncategorized image.]".to_string(),
+                };
+            }
+
+            let classification_str = match classification {
+                MediaClassification::ExpenseReceipt => Some("EXPENSE_RECEIPT"),
+                MediaClassification::MotorcycleMaintenance => Some("MOTORCYCLE_MAINTENANCE"),
+                MediaClassification::TechnicalDoc => Some("TECHNICAL_DOC"),
+                MediaClassification::Nature => Some("NATURE"),
+                MediaClassification::Other => Some("OTHER"),
+            };
+
+            // Save to pending_media table for Media Checkpoint System
+            let pool = state.pool.clone();
+            let i_url = image_url.to_string();
+            tokio::spawn(async move {
+                let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
+                    &pool,
+                    conversation_id,
+                    &i_url,
+                    "image",
+                    classification_str,
+                ).await;
+            });
+        } else {
+            // Specific text provided: Just ensure it's in pending_media for tools to find.
+            let pool = state.pool.clone();
+            let i_url = image_url.to_string();
+            tokio::spawn(async move {
+                let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
+                    &pool,
+                    conversation_id,
+                    &i_url,
+                    "image",
+                    None,
+                ).await;
+            });
+        }
     }
 
     let mut augmented_text = if let Some(ref image_url) = msg.image_url {

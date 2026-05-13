@@ -6,3 +6,4 @@ pub mod redis;
 pub mod repository;
 pub mod identity;
 pub mod storage;
+pub mod stock;

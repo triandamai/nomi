@@ -118,7 +118,6 @@ export const chatApi = {
             eventBus.emit('gateway-status', { online: false });
         };
         sse.addEventListener("message", (event) => {
-            console.log("incoming message", event)
             try {
                 const data = JSON.parse(event.data);
                 eventBus.emit('sse-message', data);
@@ -151,6 +150,15 @@ export const chatApi = {
                 eventBus.emit('sse-tool_start', data);
             } catch (e) {
                 console.error('Failed to parse SSE tool_start', e);
+            }
+        })
+
+        sse.addEventListener(":tool_end", (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                eventBus.emit('sse-tool_end', data);
+            } catch (e) {
+                console.error('Failed to parse SSE tool_end', e);
             }
         })
 

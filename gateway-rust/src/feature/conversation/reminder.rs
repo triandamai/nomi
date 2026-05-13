@@ -1,7 +1,8 @@
 use crate::AppState;
+use chrono::{DateTime, Duration, Months, Utc, TimeZone};
+use chrono_tz::Tz;
 use crate::common::repository::message_repo::save_message;
 use crate::feature::OutboundMessage;
-use chrono::{DateTime, Duration, Months, Utc};
 use serde_json::json;
 use tracing::{error, info};
 
@@ -59,8 +60,15 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
         match reminder.conversation_id {
             Some(conversation_id) => {
                 info!("saving reminder message");
+                let tz: Tz = "Asia/Jakarta".parse().unwrap_or(chrono_tz::UTC);
+                let due_local = reminder.due_at.with_timezone(&tz);
                 let outbound_text = format!(
-                    "⏰ *REMINDER:*\n{}\n\n_Reply 'done' to complete or 'snooze' to delay._\n(Ref: {})",
+                    "⏰ *REMINDER ({})*
+{}
+
+_Reply 'done' to complete or 'snooze' to delay._
+(Ref: {})",
+                    due_local.format("%H:%M"),
                     reminder.content, reminder.id
                 );
 
@@ -100,41 +108,34 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
                 }
 
                 for channel in channels {
-                    let state = state.clone();
-                    let content = outbound_text.clone();
-                    tokio::spawn(async move {
-                        // 3. Construct and publish outbound message
-                        let outbound = OutboundMessage {
-                            is_group: channel.external_chat_id.contains("-")
-                                || channel.external_chat_id.contains("@g.us"),
-                            sender_id: channel.external_id.clone(),
-                            conversation_id: channel.external_chat_id.clone(),
-                            text: content,
-                            channel: channel.channel_type.clone(),
-                            video_url: None,
-                            image_url: None,
-                            audio_url: None,
-                            doc_url: None,
-                            sticker_url: None,
-                            metadata: Some(json!({
+                    let outbound = OutboundMessage {
+                        is_group: false,
+                        sender_id: channel.external_id.clone(),
+                        conversation_id: channel.external_chat_id.clone(),
+                        text: outbound_text.clone(),
+                        channel: channel.channel_type.clone(),
+                        video_url: None,
+                        image_url: None,
+                        audio_url: None,
+                        doc_url: None,
+                        sticker_url: None,
+                        metadata: Some(json!({
                                 "reminder_id": reminder.id,
                                 "type": "reminder"
-                            })),
-                        };
-                        let _ = state.publish_outbond(&outbound).await;
-                        info!("Sending reminder: {:?}", outbound);
-                    });
+                        })),
+                    };
+                    info!("Sending reminder: {:?}", outbound);
+                    let _ = state.publish_outbond(&outbound).await;
                 }
             }
             None => {
-                info!(
+                error!(
                     "No conversation found for user {} to send reminder",
                     reminder.user_id
                 );
             }
         }
 
-        // 4. Update recurrence or mark as completed
         let next_run = reminder.current_runs.unwrap_or(0) + 1;
         let freq = reminder.frequency.as_deref().unwrap_or("once");
 
@@ -150,8 +151,8 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
                 next_run,
                 reminder.id
             )
-                .execute(&state.pool)
-                .await?;
+            .execute(&state.pool)
+            .await?;
         } else {
             let next_due = calculate_next_due(reminder.due_at, freq);
             sqlx::query!(
@@ -160,8 +161,8 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
                 next_run,
                 reminder.id
             )
-                .execute(&state.pool)
-                .await?;
+            .execute(&state.pool)
+            .await?;
         }
     }
 
@@ -173,7 +174,7 @@ fn calculate_next_due(current: DateTime<Utc>, frequency: &str) -> DateTime<Utc> 
         "daily" => current + Duration::days(1),
         "weekly" => current + Duration::weeks(1),
         "monthly" => current + Months::new(1),
-        _ => current + Duration::days(1),
+        _ => current, // Should not happen for recurring
     }
 }
 
@@ -194,7 +195,7 @@ pub async fn handle_get_reminders(
 
     let result = sqlx::query!(
         r#"
-        SELECT id, content, due_at, frequency, status, created_at
+        SELECT id, content, (due_at AT TIME ZONE 'Asia/Jakarta') as due_at, frequency, status, created_at
         FROM reminders
         WHERE user_id = $1
         ORDER BY due_at ASC
@@ -206,13 +207,16 @@ pub async fn handle_get_reminders(
 
     match result {
         Ok(rows) => {
+            let tz: Tz = "Asia/Jakarta".parse().unwrap_or(chrono_tz::UTC);
             let reminders = rows
                 .into_iter()
                 .map(
                     |r| crate::feature::conversation::chat_model::ReminderResponse {
                         id: r.id,
                         content: r.content,
-                        due_at: r.due_at,
+                        // Convert NaiveDateTime (from AT TIME ZONE) back to DateTime<Utc>
+                        // We use the timezone to correctly interpret the naive datetime as Jakarta time, then convert to UTC
+                        due_at: tz.from_local_datetime(&r.due_at.unwrap()).single().unwrap().with_timezone(&Utc),
                         frequency: r.frequency,
                         status: r.status.unwrap_or_default(),
                         created_at: r.created_at.unwrap_or_else(Utc::now),

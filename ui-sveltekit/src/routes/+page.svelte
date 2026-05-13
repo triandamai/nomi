@@ -1,8 +1,9 @@
 <script lang="ts">
-    import {Send, Bot, User, Sparkles, MessageSquarePlus, Share2, Paperclip, X, Image as ImageIcon, FileAudio, FileText, Loader2} from 'lucide-svelte';
+    import {Send, Bot, User, Sparkles, MessageSquarePlus, Share2, Paperclip, X, Image as ImageIcon, FileAudio, FileText, Loader2, Wrench} from 'lucide-svelte';
     import {chatStore} from '$lib/stores/chat.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
     import {chatApi} from '$lib/api/client';
+    import {formatTokenCount} from '$lib/utils';
     import ToolResult from '$lib/components/ToolResult.svelte';
     import ChatBubble from '$lib/components/ChatBubble.svelte';
     import {onMount, tick} from 'svelte';
@@ -33,7 +34,8 @@
         chatStore.messages.length;
         chatStore.currentThought;
         chatStore.isTyping;
-        
+        chatStore.activeTool;
+
         tick().then(() => {
             if (scrollContainer && isNearBottom) {
                 scrollContainer.scrollTo({
@@ -206,7 +208,7 @@
                     <div class="flex-1 flex flex-col min-w-0 space-y-4">
                         <div class="flex items-center gap-2">
                         <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                            {msg.role === 'user' ? 'Human' : 'Nomi'} - {Number(msg.total_tokens) > 0 ? `${msg.total_tokens} Token`:`0`}
+                            {msg.role === 'user' ? 'Human' : 'Nomi'}  {msg.role === 'user' ? '' : `- ${formatTokenCount(msg.total_tokens)} Token`} 
                         </span>
                         </div>
 
@@ -239,6 +241,12 @@
                                     <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce"></div>
                                     <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
                                     <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                                </div>
+                            {/if}
+                            {#if chatStore.activeTool}
+                                <div class="flex items-center gap-1.5 ml-3 px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full animate-in fade-in zoom-in duration-300">
+                                    <Wrench class="w-2.5 h-2.5 text-amber-500 animate-pulse" />
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-amber-500/90">Using {chatStore.activeTool.replace(/_/g, ' ')}</span>
                                 </div>
                             {/if}
                         </div>

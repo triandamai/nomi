@@ -15,6 +15,8 @@ use crate::common::tools::tools_model::{
     UpdateUserProfileResponse,
 };
 use crate::prompts::PromptRegistry;
+use chrono::{Utc, TimeZone};
+use chrono_tz::Tz;
 use dotenvy::var;
 use gemini_rust::{FunctionDeclaration, Tool, UsageMetadata};
 use serde::{Deserialize, Serialize};
@@ -131,6 +133,11 @@ pub enum ArtaTool {
     #[serde(rename = "get_expense_summary")]
     GetExpenseSummary {
         params: tools_model::GetExpenseSummaryParameters,
+        user_message: String,
+    },
+    #[serde(rename = "get_transaction_details")]
+    GetTransactionDetails {
+        params: tools_model::GetTransactionDetailsParameters,
         user_message: String,
     },
 }
@@ -258,6 +265,10 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.get_expense_summary(params, user_message).await,
+            ArtaTool::GetTransactionDetails {
+                params,
+                user_message,
+            } => self.get_transaction_details(params, user_message).await,
         }
     }
 
@@ -411,6 +422,14 @@ impl ToolDispatcher {
             .with_parameters::<tools_model::GetExpenseSummaryParameters>()
             .with_response::<tools_model::GetExpenseSummaryResponse>();
 
+        let get_transaction_details = FunctionDeclaration::new(
+            "get_transaction_details",
+            "Use this tool when the user asks for a list of items, specific purchases, or a breakdown of where their money went for a specific day.",
+            None,
+        )
+            .with_parameters::<tools_model::GetTransactionDetailsParameters>()
+            .with_response::<tools_model::GetTransactionDetailsResponse>();
+
         // let get_latest_media_context = FunctionDeclaration::new(
         //     "get_latest_media_context",
         //     "Retrieve the latest media (image, video, etc.) context from the current conversation if not provided in the current turn.",
@@ -439,6 +458,7 @@ impl ToolDispatcher {
             log_expense,
             analyze_media,
             get_expense_summary,
+            get_transaction_details,
             // get_latest_media_context,
         ])
     }
@@ -1546,7 +1566,7 @@ impl ToolDispatcher {
             SELECT 
                 id,
                 content,
-                due_at,
+                (due_at AT TIME ZONE 'Asia/Jakarta') as due_at,
                 status,
                 frequency,
                 current_runs
@@ -1570,11 +1590,15 @@ impl ToolDispatcher {
         match query_result {
             Ok(rows) => {
                 let mut results = Vec::new();
+                let tz: Tz = "Asia/Jakarta".parse().unwrap_or(chrono_tz::UTC);
                 for row in rows {
+                    let due_at_naive = row.due_at.unwrap();
+                    let due_at_utc = tz.from_local_datetime(&due_at_naive).single().unwrap().with_timezone(&Utc);
                     let item = json!({
                         "id": row.id.to_string(),
                         "content": row.content,
-                        "due_at": row.due_at.to_rfc3339(),
+                        "due_at_utc": due_at_utc.to_rfc3339(),
+                        "due_at_local": due_at_naive.format("%Y-%m-%d %H:%M:%S").to_string(),
                         "status": row.status,
                         "frequency": row.frequency,
                         "current_runs": row.current_runs
@@ -1765,172 +1789,6 @@ impl ToolDispatcher {
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
             },
-        }
-    }
-
-    async fn get_expense_summary(
-        &self,
-        params: tools_model::GetExpenseSummaryParameters,
-        user_message: String,
-    ) -> ToolResult {
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                return ToolResult {
-                    error: "User not authenticated".to_string(),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        use chrono::Datelike;
-        let now_wib = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).unwrap());
-        
-        let (start_date, end_date) = match params.period.as_str() {
-            "today" => {
-                let start = now_wib.date_naive().and_hms_opt(0, 0, 0).unwrap();
-                let end = now_wib.date_naive().and_hms_opt(23, 59, 59).unwrap();
-                (start, end)
-            },
-            "yesterday" => {
-                let yesterday = now_wib.date_naive() - chrono::Duration::days(1);
-                let start = yesterday.and_hms_opt(0, 0, 0).unwrap();
-                let end = yesterday.and_hms_opt(23, 59, 59).unwrap();
-                (start, end)
-            },
-            "last_7_days" => {
-                let start_date = now_wib.date_naive() - chrono::Duration::days(6);
-                let start = start_date.and_hms_opt(0, 0, 0).unwrap();
-                let end = now_wib.date_naive().and_hms_opt(23, 59, 59).unwrap();
-                (start, end)
-            },
-            "last_month" => {
-                let month = if now_wib.month() == 1 { 12 } else { now_wib.month() - 1 };
-                let year = if now_wib.month() == 1 { now_wib.year() - 1 } else { now_wib.year() };
-                let start = chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-                let next_month = if month == 12 { 1 } else { month + 1 };
-                let next_month_year = if month == 12 { year + 1 } else { year };
-                let end = chrono::NaiveDate::from_ymd_opt(next_month_year, next_month, 1).unwrap().and_hms_opt(0, 0, 0).unwrap() - chrono::Duration::seconds(1);
-                (start, end)
-            },
-            _ => { // "this_month" or fallback
-                let start = chrono::NaiveDate::from_ymd_opt(now_wib.year(), now_wib.month(), 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-                let end = now_wib.date_naive().and_hms_opt(23, 59, 59).unwrap();
-                (start, end)
-            }
-        };
-
-        let start_tz = start_date.and_local_timezone(chrono::FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
-        let end_tz = end_date.and_local_timezone(chrono::FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
-
-        let is_monthly = params.period == "this_month" || params.period == "last_month";
-        let mut total_expenses = 0.0;
-        let mut total_income = 0.0;
-        let mut summary_found = false;
-
-        if is_monthly {
-            let period_start_date = start_tz.date_naive();
-            if let Ok(Some(row)) = sqlx::query!(
-                "SELECT total_expenses, total_income FROM money_tracking_summary WHERE user_id = $1 AND period = $2",
-                user_id,
-                period_start_date
-            )
-            .fetch_optional(&self.pool)
-            .await
-            {
-                use rust_decimal::prelude::ToPrimitive;
-                total_expenses = row.total_expenses.unwrap_or_default().to_f64().unwrap_or(0.0);
-                total_income = row.total_income.unwrap_or_default().to_f64().unwrap_or(0.0);
-                summary_found = total_expenses > 0.0 || total_income > 0.0;
-            }
-        }
-
-        let mut top_category = None;
-        let mut trend_percentage = None;
-        
-        if !summary_found {
-            // Fallback calculation
-            if let Ok(sum_row) = sqlx::query!(
-                "SELECT SUM(total_amount) as total_expenses
-                 FROM money_tracking 
-                 WHERE user_id = $1 AND created_at >= $2 AND created_at <= $3",
-                user_id,
-                start_tz,
-                end_tz
-            )
-            .fetch_one(&self.pool)
-            .await
-            {
-                use rust_decimal::prelude::ToPrimitive;
-                total_expenses = sum_row.total_expenses.unwrap_or_default().to_f64().unwrap_or(0.0);
-
-                if total_expenses > 0.0 {
-                    let cat_row = sqlx::query!(
-                        "SELECT category 
-                         FROM money_tracking 
-                         WHERE user_id = $1 AND created_at >= $2 AND created_at <= $3 
-                         GROUP BY category 
-                         ORDER BY SUM(total_amount) DESC LIMIT 1",
-                        user_id,
-                        start_tz,
-                        end_tz
-                    )
-                    .fetch_optional(&self.pool)
-                    .await
-                    .unwrap_or(None);
-                    
-                    top_category = cat_row.and_then(|r| r.category);
-                }
-            }
-        }
-
-        // Calculate previous period for trend
-        let duration = end_tz.signed_duration_since(start_tz);
-        let actual_duration = duration + chrono::Duration::seconds(1);
-        let prev_end_tz = start_tz - chrono::Duration::seconds(1);
-        let prev_start_tz = start_tz - actual_duration;
-        
-        if let Ok(prev_sum_row) = sqlx::query!(
-            "SELECT SUM(total_amount) as total_expenses
-             FROM money_tracking 
-             WHERE user_id = $1 AND created_at >= $2 AND created_at <= $3",
-            user_id,
-            prev_start_tz,
-            prev_end_tz
-        )
-        .fetch_one(&self.pool)
-        .await
-        {
-            use rust_decimal::prelude::ToPrimitive;
-            let prev_total = prev_sum_row.total_expenses.unwrap_or_default().to_f64().unwrap_or(0.0);
-            if prev_total > 0.0 {
-                trend_percentage = Some(((total_expenses - prev_total) / prev_total) * 100.0);
-            }
-        }
-
-        if total_expenses == 0.0 {
-            return ToolResult {
-                error: "".to_string(),
-                success: true,
-                content: format!("Zero spending for {}! 💸✨", params.period),
-                follow_up_prompt: "".to_string(),
-            };
-        }
-
-        let json_result = json!({
-            "total_expenses": total_expenses,
-            "total_income": total_income,
-            "top_category": top_category,
-            "trend_percentage": trend_percentage
-        });
-
-        ToolResult {
-            error: "".to_string(),
-            success: true,
-            content: json_result.to_string(),
-            follow_up_prompt: build_follow_up_prompt(user_message, json_result.to_string(), "get_expense_summary".to_string()),
         }
     }
 
@@ -2400,6 +2258,279 @@ impl ToolDispatcher {
                 user_message,
                 content_json,
                 "analyze_media".to_string(),
+            ),
+        }
+    }
+
+    async fn get_expense_summary(
+        &self,
+        params: tools_model::GetExpenseSummaryParameters,
+        user_message: String,
+    ) -> ToolResult {
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                return ToolResult {
+                    error: "User not authenticated".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        use chrono::Datelike;
+        let now_wib = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).unwrap());
+
+        let (start_date, end_date) = match params.period.as_str() {
+            "today" => {
+                let start = now_wib.date_naive().and_hms_opt(0, 0, 0).unwrap();
+                let end = now_wib.date_naive().and_hms_opt(23, 59, 59).unwrap();
+                (start, end)
+            },
+            "yesterday" => {
+                let yesterday = now_wib.date_naive() - chrono::Duration::days(1);
+                let start = yesterday.and_hms_opt(0, 0, 0).unwrap();
+                let end = yesterday.and_hms_opt(23, 59, 59).unwrap();
+                (start, end)
+            },
+            "last_7_days" => {
+                let start_date = now_wib.date_naive() - chrono::Duration::days(6);
+                let start = start_date.and_hms_opt(0, 0, 0).unwrap();
+                let end = now_wib.date_naive().and_hms_opt(23, 59, 59).unwrap();
+                (start, end)
+            },
+            "last_month" => {
+                let month = if now_wib.month() == 1 { 12 } else { now_wib.month() - 1 };
+                let year = if now_wib.month() == 1 { now_wib.year() - 1 } else { now_wib.year() };
+                let start = chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
+                let next_month = if month == 12 { 1 } else { month + 1 };
+                let next_month_year = if month == 12 { year + 1 } else { year };
+                let end = chrono::NaiveDate::from_ymd_opt(next_month_year, next_month, 1).unwrap().and_hms_opt(0, 0, 0).unwrap() - chrono::Duration::seconds(1);
+                (start, end)
+            },
+            _ => { // "this_month" or fallback
+                let start = chrono::NaiveDate::from_ymd_opt(now_wib.year(), now_wib.month(), 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
+                let end = now_wib.date_naive().and_hms_opt(23, 59, 59).unwrap();
+                (start, end)
+            }
+        };
+
+        let start_tz = start_date.and_local_timezone(chrono::FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
+        let end_tz = end_date.and_local_timezone(chrono::FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
+
+        let is_monthly = params.period == "this_month" || params.period == "last_month";
+        let mut total_expenses = 0.0;
+        let mut total_income = 0.0;
+        let mut summary_found = false;
+
+        if is_monthly {
+            let period_start_date = start_tz.date_naive();
+            if let Ok(Some(row)) = sqlx::query!(
+                "SELECT total_expenses, total_income FROM money_tracking_summary WHERE user_id = $1 AND period = $2",
+                user_id,
+                period_start_date
+            )
+                .fetch_optional(&self.pool)
+                .await
+            {
+                use rust_decimal::prelude::ToPrimitive;
+                total_expenses = row.total_expenses.unwrap_or_default().to_f64().unwrap_or(0.0);
+                total_income = row.total_income.unwrap_or_default().to_f64().unwrap_or(0.0);
+                summary_found = total_expenses > 0.0 || total_income > 0.0;
+            }
+        }
+
+        let mut top_category = None;
+        let mut trend_percentage = None;
+
+        if !summary_found {
+            // Fallback calculation
+            if let Ok(sum_row) = sqlx::query!(
+                "SELECT SUM(total_amount) as total_expenses
+                 FROM money_tracking
+                 WHERE user_id = $1 AND created_at >= $2 AND created_at <= $3",
+                user_id,
+                start_tz,
+                end_tz
+            )
+                .fetch_one(&self.pool)
+                .await
+            {
+                use rust_decimal::prelude::ToPrimitive;
+                total_expenses = sum_row.total_expenses.unwrap_or_default().to_f64().unwrap_or(0.0);
+
+                if total_expenses > 0.0 {
+                    let cat_row = sqlx::query!(
+                        "SELECT category
+                         FROM money_tracking
+                         WHERE user_id = $1 AND created_at >= $2 AND created_at <= $3
+                         GROUP BY category
+                         ORDER BY SUM(total_amount) DESC LIMIT 1",
+                        user_id,
+                        start_tz,
+                        end_tz
+                    )
+                        .fetch_optional(&self.pool)
+                        .await
+                        .unwrap_or(None);
+
+                    top_category = cat_row.and_then(|r| r.category);
+                }
+            }
+        }
+
+        // Calculate previous period for trend
+        let duration = end_tz.signed_duration_since(start_tz);
+        let actual_duration = duration + chrono::Duration::seconds(1);
+        let prev_end_tz = start_tz - chrono::Duration::seconds(1);
+        let prev_start_tz = start_tz - actual_duration;
+
+        if let Ok(prev_sum_row) = sqlx::query!(
+            "SELECT SUM(total_amount) as total_expenses
+             FROM money_tracking
+             WHERE user_id = $1 AND created_at >= $2 AND created_at <= $3",
+            user_id,
+            prev_start_tz,
+            prev_end_tz
+        )
+            .fetch_one(&self.pool)
+            .await
+        {
+            use rust_decimal::prelude::ToPrimitive;
+            let prev_total = prev_sum_row.total_expenses.unwrap_or_default().to_f64().unwrap_or(0.0);
+            if prev_total > 0.0 {
+                trend_percentage = Some(((total_expenses - prev_total) / prev_total) * 100.0);
+            }
+        }
+
+        if total_expenses == 0.0 {
+            return ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: format!("Zero spending for {}! 💸✨", params.period),
+                follow_up_prompt: "".to_string(),
+            };
+        }
+
+        let json_result = json!({
+            "total_expenses": total_expenses,
+            "total_income": total_income,
+            "top_category": top_category,
+            "trend_percentage": trend_percentage
+        });
+
+        ToolResult {
+            error: "".to_string(),
+            success: true,
+            content: json_result.to_string(),
+            follow_up_prompt: build_follow_up_prompt(user_message, json_result.to_string(), "get_expense_summary".to_string()),
+        }
+    }
+    async fn get_transaction_details(
+        &self,
+        params: tools_model::GetTransactionDetailsParameters,
+        user_message: String,
+    ) -> ToolResult {
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                return ToolResult {
+                    error: "User not authenticated".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        let now_wib = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).unwrap());
+        
+        let target_date = if let Some(date_str) = params.date {
+            match chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+                Ok(d) => d,
+                Err(_) => now_wib.date_naive(),
+            }
+        } else {
+            now_wib.date_naive()
+        };
+
+        let start_tz = target_date.and_hms_opt(0, 0, 0).unwrap()
+            .and_local_timezone(chrono::FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
+        let end_tz = target_date.and_hms_opt(23, 59, 59).unwrap()
+            .and_local_timezone(chrono::FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
+
+        let mut transactions = Vec::new();
+        let mut total_day_amount = 0.0;
+
+        let rows = sqlx::query!(
+            r#"
+            SELECT 
+                mt.id, 
+                mt.merchant_name, 
+                mt.total_amount, 
+                mt.category, 
+                mt.description, 
+                mt.created_at as "created_at!",
+                COALESCE(
+                    jsonb_agg(
+                        jsonb_build_object(
+                            'name', mti.name,
+                            'quantity', mti.quantity,
+                            'total_amount', mti.total_amount
+                        )
+                    ) FILTER (WHERE mti.id IS NOT NULL),
+                    '[]'::jsonb
+                ) as "items!"
+            FROM money_tracking mt
+            LEFT JOIN money_tracking_items mti ON mt.id = mti.money_tracking_id
+            WHERE mt.user_id = $1 AND mt.created_at >= $2 AND mt.created_at <= $3
+            GROUP BY mt.id
+            ORDER BY mt.created_at DESC
+            "#,
+            user_id,
+            start_tz,
+            end_tz
+        )
+        .fetch_all(&self.pool)
+        .await;
+
+        if let Ok(rows) = rows {
+            for row in rows {
+                use rust_decimal::prelude::ToPrimitive;
+                let amount = row.total_amount.to_f64().unwrap_or(0.0);
+                let created_at = row.created_at.with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).unwrap()).to_rfc3339();
+
+                total_day_amount += amount;
+
+                let items: Vec<tools_model::TransactionItem> = serde_json::from_value(row.items).unwrap_or_default();
+
+                transactions.push(tools_model::TransactionDetail {
+                    merchant_name: row.merchant_name,
+                    total_amount: amount,
+                    category: row.category,
+                    description: row.description,
+                    items,
+                    created_at,
+                });
+            }
+        }
+
+        let result = tools_model::GetTransactionDetailsResponse {
+            transactions,
+            total_amount: total_day_amount,
+        };
+
+        let content_json = serde_json::to_string_pretty(&result).unwrap_or_default();
+
+        ToolResult {
+            error: "".to_string(),
+            success: true,
+            content: content_json.clone(),
+            follow_up_prompt: build_follow_up_prompt(
+                user_message,
+                content_json,
+                "get_transaction_details".to_string(),
             ),
         }
     }

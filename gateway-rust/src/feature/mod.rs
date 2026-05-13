@@ -7,8 +7,6 @@ pub mod realtime;
 pub mod redis;
 pub mod admin;
 
-
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InboundMessage {
     pub is_group: bool,

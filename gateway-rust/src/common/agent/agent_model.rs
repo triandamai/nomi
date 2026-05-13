@@ -9,6 +9,7 @@ pub enum PromptActor {
         memories: String,
         message: String,
         system_prompt: String,
+        media: Option<(String, String)>, // (mime_type, base64_data)
     },
     #[serde(rename = "multi_tool_prompt")]
     MultiTool {
@@ -19,6 +20,7 @@ pub enum PromptActor {
         /// Turn-based history of tool interactions.
         /// Each turn is a pair of: (All tool calls in that turn, All results for those calls)
         tool_turns: Vec<(Vec<gemini_rust::FunctionCall>, Vec<(String, ToolResult)>)>,
+        media: Option<(String, String)>, // (mime_type, base64_data)
     },
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]

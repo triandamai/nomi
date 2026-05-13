@@ -25,8 +25,7 @@ pub async fn upsert_pending_media(
         ON CONFLICT (conversation_id) DO UPDATE
         SET media_url = EXCLUDED.media_url,
             media_type = EXCLUDED.media_type,
-            classification = EXCLUDED.classification,
-            created_at = now()
+            classification = EXCLUDED.classification
         "#,
         conversation_id,
         media_url,
@@ -36,6 +35,15 @@ pub async fn upsert_pending_media(
     .execute(pool)
     .await?;
 
+    Ok(())
+}
+
+pub async fn cleanup_old_pending_media(pool: &PgPool) -> anyhow::Result<()> {
+    sqlx::query!(
+        "DELETE FROM pending_media WHERE created_at < now() - INTERVAL '24 hours'"
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

@@ -200,10 +200,9 @@ pub async fn handle_get_file(
     }
 }
 
-
 pub async fn handle_get_path_file(
     State(state): State<AppState>,
-    Path((path,filename)): Path<(String,String)>,
+    Path((path, filename)): Path<(String, String)>,
 ) -> impl axum::response::IntoResponse {
     let bucket = "conversations";
     match state
@@ -216,7 +215,7 @@ pub async fn handle_get_path_file(
                 .first_or_octet_stream()
                 .to_string();
 
-            info!("mime : {}",mime);
+            info!("mime : {}", mime);
             (
                 [
                     (axum::http::header::CONTENT_TYPE, mime),

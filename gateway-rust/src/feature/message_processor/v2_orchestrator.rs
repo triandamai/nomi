@@ -61,14 +61,19 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         info!("Zero-intent {} detected: {}", media_type, media_url);
 
         // Save to pending_media table for Media Checkpoint System
-        let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
-            &state.pool,
-            conversation_id,
-            media_url,
-            media_type,
-            None,
-        )
-        .await;
+        let pool = state.pool.clone();
+        let m_url = media_url.to_string();
+        let m_type = media_type.to_string();
+        tokio::spawn(async move {
+            let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
+                &pool,
+                conversation_id,
+                &m_url,
+                &m_type,
+                None,
+            )
+            .await;
+        });
 
         // Instead of hardcoded clarification, we inject a system prompt to the LLM to ask for clarification.
         // This will be passed to process_v2_message_with_intent but NOT saved as a message.
@@ -83,10 +88,10 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         )
         .await
     } else if has_media && !is_skip {
-        // Instead of hardcoded clarification, we inject a system prompt to the LLM to ask for clarification.
-        // This will be passed to process_v2_message_with_intent but NOT saved as a message.
+        // Task 1: If message.text is NOT empty: Do not ask for clarification.
+        // Combine the text and the image into a single multi-part prompt for Gemini.
         let injected_system_prompt =
-            crate::prompts::PromptRegistry::media_intent_clarification().to_string();
+            crate::prompts::PromptRegistry::media_with_text_instruction().to_string();
         process_v2_message_with_intent(
             state.clone(),
             msg,
@@ -228,6 +233,13 @@ async fn process_v2_message_with_intent(
     )
     .await;
 
+    // Fetch media data if present for Multi-Part prompt
+    let media_data = if let Some(ref url) = msg.image_url {
+        crate::feature::message_processor::processor::fetch_media_from_storage(&state, url).await.ok()
+    } else {
+        None
+    };
+
     let dispatcher = ToolDispatcher::new(
         state.pool.clone(),
         std::env::current_dir().unwrap_or_default(),
@@ -255,9 +267,23 @@ async fn process_v2_message_with_intent(
             combined.push_str(&soul);
         }
 
+        let timezone_str = "Asia/Jakarta"; // Default to Trian's timezone
+        let tz: chrono_tz::Tz = timezone_str.parse().unwrap_or(chrono_tz::UTC);
+        let now_local = Utc::now().with_timezone(&tz);
+
         combined.push_str(&format!(
-            "\n### Current Contextual Time (UTC)\n{}\n",
-            Utc::now().to_rfc3339()
+            "\n### Current Contextual Time\n- UTC: {}\n- Local Time: {} ({})\n",
+            Utc::now().to_rfc3339(),
+            now_local.to_rfc3339(),
+            timezone_str
+        ));
+
+        combined.push_str("\n### Timezone Instructions\n");
+        combined.push_str(&format!(
+            "The user's current local time is {} ({}). When the user asks for a time like \"6:00\", assume they mean this local time and calculate the UTC equivalent for storage using the +07:00 offset or by converting from Asia/Jakarta. ALWAYS provide the due_at in ISO 8601 format including the local offset (e.g., {} ) for the tool call, but you can acknowledge the local time in your thoughts.\n",
+            now_local.format("%H:%M"),
+            timezone_str,
+            now_local.format("%Y-%m-%dT%H:%M:%S%z")
         ));
 
         combined.push_str("\n### Orchestrator Instructions \n");
@@ -387,6 +413,7 @@ async fn process_v2_message_with_intent(
             message: augmented_text.clone(),
             system_prompt: system_prompt.clone(),
             tool_turns: tool_turns.clone(),
+            media: media_data.clone(),
         };
 
         // Status: Model is thinking
