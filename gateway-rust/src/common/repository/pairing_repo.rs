@@ -6,7 +6,7 @@ use sqlx::PgPool;
 use tracing::{error, info};
 use uuid::Uuid;
 use crate::AppState;
-use crate::feature::conversation::chat_model::PairingResponse;
+use crate::feature::conversation::model::PairingResponse;
 
 pub async fn validate_pairing_code(
     pool: &PgPool,

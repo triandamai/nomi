@@ -1,4 +1,4 @@
-use crate::feature::conversation::chat_model::MessageItem;
+use crate::feature::conversation::model::MessageItem;
 use serde_json::json;
 use sqlx::PgPool;
 use tracing::info;

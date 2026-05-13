@@ -118,3 +118,15 @@ pub async fn link_channel_group(
 
     Ok(())
 }
+
+pub async fn is_group_registered(pool: &sqlx::PgPool, external_id: &str, channel: &str) -> bool {
+    sqlx::query!(
+        "SELECT is_active FROM channel_group WHERE external_group_id = $1 AND channel = $2",
+        external_id,
+        channel
+    )
+        .fetch_optional(pool)
+        .await
+        .map(|r| r.map(|row| row.is_active.unwrap_or(true)).unwrap_or(false))
+        .unwrap_or(false)
+}

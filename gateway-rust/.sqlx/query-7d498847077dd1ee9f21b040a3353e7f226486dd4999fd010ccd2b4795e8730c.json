@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE money_tracking SET total_amount = COALESCE($1, total_amount), merchant_name = COALESCE($2, merchant_name), category = COALESCE($3, category) WHERE id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Numeric",
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7d498847077dd1ee9f21b040a3353e7f226486dd4999fd010ccd2b4795e8730c"
+}

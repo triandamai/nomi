@@ -1,22 +1,26 @@
 use crate::AppState;
 use crate::common::api_response::ApiResponse;
-use crate::feature::conversation::{handle_chat_stream, handle_create_conversation, handle_create_pairing, handle_delete_conversation, handle_get_conversations, handle_get_messages, handle_get_soul_history, handle_get_user_channels, handle_restore_conversation_soul, handle_update_conversation, handle_upload_file, handle_get_file, auth::{handle_request_otp, handle_verify_otp, handle_get_profile, handle_logout}, reminder::handle_get_reminders, handle_get_path_file};
+use crate::feature::conversation::{auth::{handle_get_profile, handle_logout, handle_request_otp, handle_verify_otp}, handle_chat_stream, handle_create_conversation, handle_create_pairing, handle_delete_conversation, handle_get_conversations, handle_get_file, handle_get_messages, handle_get_path_file, handle_get_soul_history, handle_get_user_channels, handle_restore_conversation_soul, handle_update_conversation, handle_upload_file};
 use crate::common::identity::middleware::auth_middleware;
 use axum::extract::Request;
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, put};
-use axum::{Json, Router, routing::post};
+use axum::{routing::post, Json, Router};
 use crate::feature::graph::{handle_get_graph, handle_search_graph};
 use crate::feature::realtime::register_public_sse;
 use axum::extract::DefaultBodyLimit;
+use crate::common::reminder::handle_get_reminders;
 
 pub fn create_router(state: AppState) -> Router {
     let admin_routes = Router::new()
         .route("/storage/explore", get(crate::feature::admin::handle_explore_storage))
         .route("/storage/delete", delete(crate::feature::admin::handle_delete_storage))
         .route("/storage/upload", post(crate::feature::admin::handle_upload_to_storage))
+        .route("/money/history", get(crate::feature::admin::handle_get_money_history))
+        .route("/money/history/{id}", axum::routing::patch(crate::feature::admin::handle_update_money_history))
+        .route("/money/history/{id}", delete(crate::feature::admin::handle_delete_money_history))
         .layer(middleware::from_fn_with_state(state.clone(), crate::feature::admin::admin_middleware))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 

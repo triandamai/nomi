@@ -9,7 +9,7 @@ use crate::common::tools::tools_model::{
     UpdateConversationSoulParameters,
 };
 use crate::common::tools::{ArtaTool, ToolDispatcher};
-use crate::feature::conversation::chat_model::ChatStreamChunk;
+use crate::feature::conversation::model::ChatStreamChunk;
 use crate::prompts::PromptRegistry;
 use chrono::Utc;
 use gemini_rust::{

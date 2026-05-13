@@ -1,9 +1,12 @@
 use crate::AppState;
 use crate::common::identity;
 use crate::common::repository::channel_repo;
-use crate::feature::message_processor::{
+use crate::common::repository::channel_repo::is_group_registered;
+use crate::feature::conversation::command::{
     get_help_command, process_generate_pairing, process_login, process_pairing, process_register,
 };
+use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
+use crate::feature::message_processor::v2_orchestrator::process_v2_message;
 use crate::feature::{FallBackPayload, InboundMessage, OutboundMessage};
 use serde_json::json;
 use tokio_stream::StreamExt;
@@ -69,12 +72,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
 
     // 1. Group Filtering & Registration Check
     if msg.is_group {
-        let registered = crate::feature::message_processor::is_group_registered(
-            &state.pool,
-            &msg.conversation_id,
-            &msg.channel,
-        )
-        .await;
+        let registered = is_group_registered(&state.pool, &msg.conversation_id, &msg.channel).await;
 
         info!("group registered status {}", registered);
         if !registered {
@@ -205,7 +203,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             .await;
 
         // B. Unified Processing (Contextual Image Classification if image present)
-        let unified_msg = crate::feature::message_processor::UnifiedMessage {
+        let unified_msg = UnifiedMessage {
             conversation_id: external_conversation_id,
             user_id: Some(user_id),
             text_content: user_text,
@@ -215,21 +213,14 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             sticker_url,
             doc_url: document_url,
             source: match msg.channel.as_str() {
-                "telegram" => {
-                    crate::feature::message_processor::MessageSource::Telegram { name: msg.channel }
-                }
-                "whatsapp" => {
-                    crate::feature::message_processor::MessageSource::WhatsApp { name: msg.channel }
-                }
-                _ => crate::feature::message_processor::MessageSource::Other { name: msg.channel },
+                "telegram" => MessageSource::Telegram { name: msg.channel },
+                "whatsapp" => MessageSource::WhatsApp { name: msg.channel },
+                _ => MessageSource::Other { name: msg.channel },
             },
             v2: true,
         };
 
-        if let Err(e) =
-            crate::feature::message_processor::process_incoming_message(state_clone, unified_msg)
-                .await
-        {
+        if let Err(e) = process_v2_message(state, unified_msg).await {
             error!("Failed to process inbound message: {}", e);
         }
     });

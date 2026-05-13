@@ -2,19 +2,18 @@ use crate::AppState;
 use crate::common::agent::agent_model::PromptActor;
 use crate::common::agent::execute_tools;
 use crate::common::tools::ToolDispatcher;
-use crate::feature::message_processor::model::UnifiedMessage;
+use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
 use crate::feature::{OutboundMessage, PresenceMessage};
 use crate::rag;
 use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::common::agent::classification::classification;
+use crate::common::agent::classification::{classification, fetch_media_from_storage};
 use crate::common::repository::message_repo::save_message;
-use crate::feature::conversation::chat_model::MessageItem;
-use crate::feature::message_processor::MessageSource;
-use crate::feature::message_processor::processor::trigger_memory_consolidation;
+use crate::feature::conversation::model::MessageItem;
 use tracing::{error, info};
+use crate::rag::trigger_memory_consolidation;
 
 pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
     let conversation_id = msg.conversation_id;
@@ -249,7 +248,7 @@ async fn process_v2_message_with_intent(
 
     // Fetch media data if present for Multi-Part prompt
     let media_data = if let Some(ref url) = msg.image_url {
-        crate::feature::message_processor::processor::fetch_media_from_storage(&state, url).await.ok()
+        fetch_media_from_storage(&state, url).await.ok()
     } else {
         None
     };
@@ -646,8 +645,7 @@ async fn process_v2_message_with_intent(
         let gemini_api_key = state.gemini_api_key.clone();
         let sse = state.sse.clone();
         tokio::spawn(async move {
-            let _ =
-                trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id, sse).await;
+            let _ = trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id, sse).await;
         });
 
         let payload = json!({
@@ -905,7 +903,7 @@ pub fn send_message_to_subscriber(
             }
 
             // --- Multi-bubble Sequential Burst Strategy ---
-            let bubbles = crate::feature::message_processor::splitter::split_into_bubbles(&outbound_message.content);
+            let bubbles = crate::common::splitter::split_into_bubbles(&outbound_message.content);
 
             if data.conversation_type.eq_ignore_ascii_case("private") {
                 match source {

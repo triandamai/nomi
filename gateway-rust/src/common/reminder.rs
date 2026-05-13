@@ -184,7 +184,7 @@ pub async fn handle_get_reminders(
         crate::feature::conversation::auth::Claims,
     >,
 ) -> crate::common::api_response::ApiResponse<
-    Vec<crate::feature::conversation::chat_model::ReminderResponse>,
+    Vec<crate::feature::conversation::model::ReminderResponse>,
 > {
     let user_id = match uuid::Uuid::parse_str(&claims.sub) {
         Ok(id) => id,
@@ -211,7 +211,7 @@ pub async fn handle_get_reminders(
             let reminders = rows
                 .into_iter()
                 .map(
-                    |r| crate::feature::conversation::chat_model::ReminderResponse {
+                    |r| crate::feature::conversation::model::ReminderResponse {
                         id: r.id,
                         content: r.content,
                         // Convert NaiveDateTime (from AT TIME ZONE) back to DateTime<Utc>

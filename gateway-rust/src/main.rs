@@ -263,7 +263,7 @@ async fn main() -> anyhow::Result<()> {
     // Start Reminder Worker
     let reminder_state = state.clone();
     tokio::spawn(async move {
-        feature::conversation::reminder::start_reminder_worker(reminder_state).await;
+        common::reminder::start_reminder_worker(reminder_state).await;
     });
 
     // Start Stock Worker

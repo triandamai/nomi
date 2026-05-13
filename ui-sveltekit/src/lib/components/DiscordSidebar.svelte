@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { Plus, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings, Bell, Database, Settings2, RefreshCw, MessageSquare, LineChart } from 'lucide-svelte';
+    import { Plus, Edit2, Trash2, Link, Copy, Check, LogOut, User, Settings, Bell, Database, Settings2, RefreshCw, MessageSquare, LineChart, DollarSign } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import SoulTimeline from './SoulTimeline.svelte';
     import QRCode from './QRCode.svelte';
+    import TransactionHistoryPopUp from './TransactionHistoryPopUp.svelte';
     import { conversationStore } from '$lib/stores/conversation.svelte';
     import { profileStore } from '$lib/stores/profile.svelte';
     import { popupStore } from '$lib/stores/popup.svelte';
@@ -107,6 +108,15 @@
     function openStockSignals() {
         sidebarStore.showUserMenu = false;
         goto('/admin/stock');
+    }
+
+    function openMoneyTracking() {
+        sidebarStore.showUserMenu = false;
+        popupStore.open({
+            title: 'Transaction History',
+            width: 'w-full max-w-2xl h-screen',
+            contentSnippet: moneyTrackingSnippet
+        });
     }
 
     function openConnectionManager() {
@@ -320,6 +330,10 @@
     {#if conversationStore.activeConversationId}
         <SoulTimeline conversationId={conversationStore.activeConversationId} />
     {/if}
+{/snippet}
+
+{#snippet moneyTrackingSnippet()}
+    <TransactionHistoryPopUp />
 {/snippet}
 
 {#snippet connectionManagementSnippet()}
@@ -537,6 +551,13 @@
                     >
                         <Database size={14} />
                         <span>Storage</span>
+                    </button>
+                    <button 
+                        onclick={openMoneyTracking}
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+                    >
+                        <DollarSign size={14} />
+                        <span>Money Tracking</span>
                     </button>
                     {/if}
 

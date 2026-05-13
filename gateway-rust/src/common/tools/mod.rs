@@ -26,6 +26,8 @@ use std::fs;
 use std::path::PathBuf;
 use tracing::info;
 use uuid::Uuid;
+use crate::common::agent::agent_model::{ExpenseData, ExpenseItem};
+use crate::common::agent::classification::log_expense_transaction;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "tool", content = "args")]
@@ -1838,7 +1840,7 @@ impl ToolDispatcher {
             };
         }
 
-        let expense_data = crate::feature::message_processor::media::ExpenseData {
+        let expense_data = ExpenseData {
             merchant: params.merchant,
             total: params.total.unwrap_or(0.),
             tax: params.tax,
@@ -1847,7 +1849,7 @@ impl ToolDispatcher {
             items: params
                 .items
                 .into_iter()
-                .map(|i| crate::feature::message_processor::media::ExpenseItem {
+                .map(|i| ExpenseItem {
                     name: i.name,
                     quantity: i.quantity,
                     amount: i.amount,
@@ -1856,7 +1858,7 @@ impl ToolDispatcher {
             category: params.category,
         };
 
-        match crate::feature::message_processor::processor::log_expense_transaction(
+        match log_expense_transaction(
             &self.pool,
             user_id,
             self.conversation_id,

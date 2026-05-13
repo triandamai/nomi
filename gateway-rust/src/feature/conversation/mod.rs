@@ -1,9 +1,11 @@
 use crate::common::api_response::ApiResponse;
-use crate::feature::conversation::chat_model::{
+use crate::feature::conversation::model::{
     ChannelStatus, ChatRequest, ConversationResponse, CreateConversationRequest, MessageItem,
     MessageListParams, MessageListResponse, PairingResponse, RestoreSoulRequest,
     RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest, UserChannelsResponse,
 };
+use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
+use crate::feature::message_processor::v2_orchestrator::process_v2_message;
 use crate::{AppState, common};
 use axum::Json;
 use axum::extract::{Path, State};
@@ -15,8 +17,8 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 pub mod auth;
-pub mod chat_model;
-pub mod reminder;
+pub mod command;
+pub mod model;
 
 pub async fn handle_get_user_channels(
     State(state): State<AppState>,
@@ -667,7 +669,7 @@ pub async fn handle_chat_stream(
     let user_id = Uuid::parse_str(&claims.sub).ok();
 
     tokio::spawn(async move {
-        let unified_msg = crate::feature::message_processor::UnifiedMessage {
+        let unified_msg = UnifiedMessage {
             conversation_id,
             user_id,
             text_content: user_message,
@@ -676,16 +678,13 @@ pub async fn handle_chat_stream(
             video_url: payload.video_url,
             sticker_url: None,
             doc_url: payload.doc_url,
-            source: crate::feature::message_processor::MessageSource::Web {
+            source: MessageSource::Web {
                 name: "web".to_string(),
             },
             v2: true,
         };
 
-        if let Err(e) =
-            crate::feature::message_processor::process_incoming_message(state_clone, unified_msg)
-                .await
-        {
+        if let Err(e) = process_v2_message(state_clone, unified_msg).await {
             error!("Failed to process web message: {}", e);
         }
     });

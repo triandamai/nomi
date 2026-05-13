@@ -3,7 +3,7 @@
     import { slide } from 'svelte/transition';
     import { page } from '$app/state';
     import { conversationStore } from '$lib/stores/conversation.svelte';
-    import { headerStore } from '$lib/stores/header.svelte.ts';
+    import { headerStore } from '$lib/stores/header.svelte';
     import { formatTokenCount } from '$lib/utils';
     import { onMount } from "svelte";
 
