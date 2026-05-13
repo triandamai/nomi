@@ -108,9 +108,7 @@ pub async fn link_channel_group(
 ) -> anyhow::Result<()> {
     let _ = sqlx::query!(
         "INSERT INTO channel_group (conversation_id, channel, external_group_id, registered_at,is_active)
-         VALUES ($1, $2, $3, now(), true)
-         ON CONFLICT (channel,conversation_id,external_group_id)
-         DO UPDATE SET conversation_id = EXCLUDED.conversation_id, channel = EXCLUDED.channel",
+         VALUES ($1, $2, $3, now(), true)",
         conversation_id,
         channel,
         external_group_id

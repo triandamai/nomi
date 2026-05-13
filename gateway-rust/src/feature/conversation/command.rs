@@ -396,9 +396,7 @@ pub async fn process_group_registration(
 
     let link_channel_group = sqlx::query!(
         "INSERT INTO channel_group (conversation_id, channel, external_group_id, registered_at,is_active)
-         VALUES ($1, $2, $3, now(), true)
-         ON CONFLICT (channel,conversation_id,external_group_id)
-         DO UPDATE SET conversation_id = EXCLUDED.conversation_id, channel = EXCLUDED.channel",
+         VALUES ($1, $2, $3, now(), true)",
         trx_convo.id,
         msg.channel,
         msg.conversation_id
