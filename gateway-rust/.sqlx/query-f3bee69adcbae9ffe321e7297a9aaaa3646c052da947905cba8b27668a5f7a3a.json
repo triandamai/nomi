@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT category \n                         FROM money_tracking \n                         WHERE user_id = $1 AND created_at >= $2 AND created_at <= $3 \n                         GROUP BY category \n                         ORDER BY SUM(total_amount) DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "category",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "f3bee69adcbae9ffe321e7297a9aaaa3646c052da947905cba8b27668a5f7a3a"
+}

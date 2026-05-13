@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                users.display_name as display_name,\n                messages.created_at,\n                messages.role,\n                messages.content,\n                messages.image_url,\n                messages.video_url,\n                messages.audio_url,\n                messages.document_url,\n                messages.sticker_url,\n                messages.metadata\n            FROM messages LEFT JOIN users ON users.id = messages.user_id\n            WHERE conversation_id = $1\n            ORDER BY created_at\n        DESC LIMIT 15",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "display_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "image_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "video_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "audio_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "document_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "sticker_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "7789369843d57ed362aaf4f87b6a1b6aa18ef537e5e8b723932f7d93ab2966bf"
+}
