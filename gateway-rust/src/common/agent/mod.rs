@@ -18,6 +18,7 @@ use gemini_rust::{
 };
 use std::sync::Arc;
 use tracing::{error, info};
+use tokio_stream::StreamExt;
 
 pub async fn send_prompt(
     gemini: &Gemini,
@@ -159,75 +160,126 @@ pub async fn send_prompt(
             builder.with_max_output_tokens(4096)
         }
     };
+
+    // Task 4: Increase timeout
+    // Assuming gemini_rust supports with_timeout on the builder
+    // gemini_builder = gemini_builder.with_timeout(Duration::from_secs(120));
+
     // D. Streaming Egress
-    match gemini_builder.execute().await {
-        Ok(s) => {
-            let raw_text = s.text();
-            info!(
-                "\n ===== raw response ===== \n {} \n ================ \n",
-                raw_text
-            );
-
-            // Task 1: Heal tags if broken
-            let mut healed_text = crate::common::format::heal_thinking_tags(&raw_text);
-            if healed_text != raw_text {
-                info!(
-                    "\n ===== healed response ===== \n {} \n ================ \n",
-                    healed_text
-                );
-            }
-
-            let mut parse = parse_llm_output(&healed_text);
-
-            // Task 2: Refiner Utility
-            // If thought is empty OR response still looks like it contains 'thinking' at the start
-            if parse.thought.is_empty()
-                && (parse.response.to_lowercase().starts_with("thinking")
-                    || parse.response.contains("<thinking>"))
-            {
-                if let Ok(refined_text) =
-                    crate::common::format::refine_output(&raw_text, gemini).await
-                {
-                    healed_text = refined_text;
-                    parse = parse_llm_output(&healed_text);
-                }
-            }
-
-            let finish_reason = s
-                .candidates
-                .first()
-                .and_then(|c| c.finish_reason.as_ref().map(|r| format!("{:?}", r)));
-
-            let usage = s.usage_metadata.clone().unwrap_or(UsageMetadata {
-                prompt_token_count: None,
-                candidates_token_count: None,
-                total_token_count: None,
-                thoughts_token_count: None,
-                prompt_tokens_details: None,
-                cached_content_token_count: None,
-                cache_tokens_details: None,
-            });
-            let prompt_tokens = usage.prompt_token_count.unwrap_or(0);
-            let answer_tokens = usage.candidates_token_count.unwrap_or(0);
-            let total_tokens = usage.total_token_count.unwrap_or(0);
-
-            let payload = ChatStreamChunk {
-                content: parse.response,
-                thought: parse.thought,
-                code_block: parse.code,
-                tool_call: None,
-                prompt_tokens,
-                answer_tokens,
-                total_tokens,
-                finish_reason,
-            };
-            Ok((s, payload))
-        }
+    let mut stream = match gemini_builder.execute_stream().await {
+        Ok(s) => s,
         Err(e) => {
-            error!("Gemini stream failed: {}", e);
-            Err(e.to_string().to_string())
+            error!("Gemini stream start failed: {}", e);
+            return Err(e.to_string());
+        }
+    };
+
+    let mut accumulated_text = String::new();
+    let mut last_response: Option<GenerationResponse> = None;
+    let mut all_function_calls = Vec::new();
+
+    while let Some(res_result) = stream.next().await {
+        match res_result {
+            Ok(res) => {
+                accumulated_text.push_str(&res.text());
+                // Clone the function calls to own them and avoid lifetime issues
+                all_function_calls.extend(res.function_calls().into_iter().cloned());
+                last_response = Some(res);
+            }
+            Err(e) => {
+                error!("Stream chunk error: {}", e);
+                if accumulated_text.trim().ends_with(':') {
+                    error!("Stream stopped at a colon! Chunk error: {}", e);
+                }
+                return Err(e.to_string());
+            }
         }
     }
+
+    let Some(mut s) = last_response else {
+        return Err("Empty stream response".to_string());
+    };
+
+    // Aggregate everything into the final response object
+    if let Some(candidate) = s.candidates.first_mut() {
+        let content = &mut candidate.content;
+       // if let Some(content) = &mut candidate.content {
+            let mut new_parts = vec![gemini_rust::Part::Text {
+                text: accumulated_text.clone(),
+                thought: None,
+                thought_signature: None,
+            }];
+            
+            for call in all_function_calls {
+                new_parts.push(gemini_rust::Part::FunctionCall {
+                    function_call: call.clone(),
+                    thought_signature: None,
+                });
+            }
+            content.parts = Some(new_parts);
+        //}
+    }
+
+    let raw_text = accumulated_text;
+    info!(
+        "\n ===== raw response (streamed) ===== \n {} \n ================ \n",
+        raw_text
+    );
+
+    // Task 1: Heal tags if broken
+    let mut healed_text = crate::common::format::heal_thinking_tags(&raw_text);
+    if healed_text != raw_text {
+        info!(
+            "\n ===== healed response ===== \n {} \n ================ \n",
+            healed_text
+        );
+    }
+
+    let mut parse = parse_llm_output(&healed_text);
+
+    // Task 2: Refiner Utility
+    // If thought is empty OR response still looks like it contains 'thinking' at the start
+    if parse.thought.is_empty()
+        && (parse.response.to_lowercase().starts_with("thinking")
+            || parse.response.contains("<thinking>"))
+    {
+        if let Ok(refined_text) =
+            crate::common::format::refine_output(&raw_text, gemini).await
+        {
+            healed_text = refined_text;
+            parse = parse_llm_output(&healed_text);
+        }
+    }
+
+    let finish_reason = s
+        .candidates
+        .first()
+        .and_then(|c| c.finish_reason.as_ref().map(|r| format!("{:?}", r)));
+
+    let usage = s.usage_metadata.clone().unwrap_or(UsageMetadata {
+        prompt_token_count: None,
+        candidates_token_count: None,
+        total_token_count: None,
+        thoughts_token_count: None,
+        prompt_tokens_details: None,
+        cached_content_token_count: None,
+        cache_tokens_details: None,
+    });
+    let prompt_tokens = usage.prompt_token_count.unwrap_or(0);
+    let answer_tokens = usage.candidates_token_count.unwrap_or(0);
+    let total_tokens = usage.total_token_count.unwrap_or(0);
+
+    let payload = ChatStreamChunk {
+        content: parse.response,
+        thought: parse.thought,
+        code_block: parse.code,
+        tool_call: None,
+        prompt_tokens,
+        answer_tokens,
+        total_tokens,
+        finish_reason,
+    };
+    Ok((s, payload))
 }
 
 pub async fn execute_tools(

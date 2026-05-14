@@ -1,6 +1,6 @@
 use crate::AppState;
 use crate::common::agent::agent_model::PromptActor;
-use crate::common::agent::{execute_tools, parse_llm_output};
+use crate::common::agent::execute_tools;
 use crate::common::tools::ToolDispatcher;
 use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
 use crate::feature::{OutboundMessage, PresenceMessage};
@@ -103,7 +103,11 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
     }
 }
 
-async fn classify_intent(gemini: &gemini_rust::Gemini, user_msg: &str, history: &str) -> Vec<String> {
+async fn classify_intent(
+    gemini: &gemini_rust::Gemini,
+    user_msg: &str,
+    history: &str,
+) -> Vec<String> {
     let prompt = format!(
         "Analyze the user request and history. Classify into one or more categories: [FINANCE, VITALITY, STORAGE, REMINDER, WEB, DASHBOARD, COMMUNICATION, GENERAL]. If multiple apply, return them as a comma-separated list (e.g., REMINDER, WEB). Return ONLY the keywords.\n\n\
         Rules:\n\
@@ -135,8 +139,17 @@ async fn classify_intent(gemini: &gemini_rust::Gemini, user_msg: &str, history: 
 
     match result {
         Ok(res) => {
-            let valid_intents = ["FINANCE", "VITALITY", "STORAGE", "REMINDER", "WEB", "DASHBOARD", "COMMUNICATION"];
-            let intents: Vec<String> = res.text()
+            let valid_intents = [
+                "FINANCE",
+                "VITALITY",
+                "STORAGE",
+                "REMINDER",
+                "WEB",
+                "DASHBOARD",
+                "COMMUNICATION",
+            ];
+            let intents: Vec<String> = res
+                .text()
                 .split(',')
                 .map(|s| s.trim().to_uppercase())
                 .filter(|s| valid_intents.contains(&s.as_str()))
@@ -200,7 +213,7 @@ async fn process_v2_message_with_intent(
 
     let saved_message = save_user_message?;
 
-    for member in members.iter().map(|v|v.user_id.clone()) {
+    for member in members.iter().map(|v| v.user_id.clone()) {
         let _ = state.send_sse_to_user(
             member.to_string().as_str(),
             "message",
@@ -382,7 +395,8 @@ async fn process_v2_message_with_intent(
         };
         history_text.push_str(&format!(
             "-[{}] {}: {}.\n {}{}{}{}{}",
-            msg_h.created_at
+            msg_h
+                .created_at
                 .unwrap_or(Utc::now())
                 .format("%Y-%m-%d %H:%M")
                 .to_string(),
@@ -397,19 +411,23 @@ async fn process_v2_message_with_intent(
     }
 
     let mut intents = classify_intent(state.gemini.as_ref(), &augmented_text, &history_text).await;
-    
+
     // Fallback Logic: override GENERAL if imperative verbs or URLs are present
     let msg_lower = augmented_text.to_lowercase();
     if intents.contains(&"GENERAL".to_string()) && intents.len() == 1 {
-        if msg_lower.contains("http://") || msg_lower.contains("https://") 
-            || msg_lower.contains("check") || msg_lower.contains("log") 
-            || msg_lower.contains("find") || msg_lower.contains("search") 
-            || msg_lower.contains("save") {
+        if msg_lower.contains("http://")
+            || msg_lower.contains("https://")
+            || msg_lower.contains("check")
+            || msg_lower.contains("log")
+            || msg_lower.contains("find")
+            || msg_lower.contains("search")
+            || msg_lower.contains("save")
+        {
             intents = vec!["FULL_REGISTRY".to_string()];
             info!("Scout overridden: Fallback to FULL_REGISTRY due to keywords");
         }
     }
-    
+
     info!("Scout Intents Detected: {:?}", intents);
 
     let dispatcher = ToolDispatcher::new(
@@ -433,14 +451,17 @@ async fn process_v2_message_with_intent(
     let old_system_prompt_len = {
         let boot = conversation.bootstrap_content.clone().unwrap_or_default();
         let soul = conversation.soul_content.clone().unwrap_or_default();
-        boot.len() + soul.len() + crate::prompts::PromptRegistry::orchestrator_instructions().len() + crate::prompts::PromptRegistry::tool_usage_guidelines().len()
+        boot.len()
+            + soul.len()
+            + crate::prompts::PromptRegistry::orchestrator_instructions().len()
+            + crate::prompts::PromptRegistry::tool_usage_guidelines().len()
     };
 
     let build_system_prompt = |intents_val: &[String]| -> String {
         let mut combined = String::new();
         combined.push_str(crate::prompts::PromptRegistry::CORE_RULES);
         combined.push_str(crate::prompts::PromptRegistry::BOUNDARIES);
-        
+
         let boot = conversation.bootstrap_content.clone().unwrap_or_default();
         let soul = conversation.soul_content.clone().unwrap_or_default();
 
@@ -451,7 +472,7 @@ async fn process_v2_message_with_intent(
             combined.push_str(&soul);
         }
 
-        let timezone_str = "Asia/Jakarta"; 
+        let timezone_str = "Asia/Jakarta";
         let tz: chrono_tz::Tz = timezone_str.parse().unwrap_or(chrono_tz::UTC);
         let now_local = Utc::now().with_timezone(&tz);
 
@@ -490,10 +511,13 @@ async fn process_v2_message_with_intent(
     };
 
     let mut system_prompt = build_system_prompt(&intents);
-    
+
     let new_system_prompt_len = system_prompt.len();
     let saved_percent = if old_system_prompt_len > 0 {
-        ((old_system_prompt_len as f64 - new_system_prompt_len as f64) / old_system_prompt_len as f64 * 100.0).max(0.0)
+        ((old_system_prompt_len as f64 - new_system_prompt_len as f64)
+            / old_system_prompt_len as f64
+            * 100.0)
+            .max(0.0)
     } else {
         0.0
     };
@@ -555,7 +579,8 @@ async fn process_v2_message_with_intent(
             );
         }
 
-        let result = crate::common::agent::send_prompt(state.gemini.as_ref(), current_actor, &intents).await;
+        let result =
+            crate::common::agent::send_prompt(state.gemini.as_ref(), current_actor, &intents).await;
 
         match result {
             Ok((response, chunk)) => {
@@ -579,6 +604,21 @@ async fn process_v2_message_with_intent(
                     };
                 }
                 if !chunk.content.is_empty() {
+                    // Task 2: Recursive Retry on Truncation
+                    if chunk.content.trim().ends_with(':') && chunk.content.len() < 100 {
+                        info!("Truncation detected (ends with ':'). Triggering self-correction.");
+                        history_text.push_str(&format!(
+                            "-[{}] Nomi: {}.",
+                            Utc::now().format("%Y-%m-%d %H:%M").to_string(),
+                            chunk.content
+                        ));
+                        history_text.push_str(&format!(
+                            "-[{}] System: Continue your response starting from the code block.",
+                            Utc::now().format("%Y-%m-%d %H:%M").to_string()
+                        ));
+                        continue;
+                    }
+
                     turn_text.push_str(&chunk.content);
 
                     accumulated_content.push_str(&chunk.content);
@@ -608,7 +648,8 @@ async fn process_v2_message_with_intent(
                     // we might need to force the model to synthesize.
                     let current_content_is_empty =
                         strip_thinking_tags(&chunk.content).trim().is_empty();
-                    if !tool_turns.is_empty() && current_content_is_empty && loop_count < max_loops {
+                    if !tool_turns.is_empty() && current_content_is_empty && loop_count < max_loops
+                    {
                         info!(
                             "Synthesis Turn: Model tried to stop after tools without content. Forcing synthesis turn."
                         );
@@ -1042,7 +1083,7 @@ pub fn send_message_to_subscriber(
                                     is_group: false,
                                     sender_id: channel.external_id.clone(),
                                     conversation_id: channel.external_chat_id.clone(),
-                                    text: parse_llm_output(bubble_text.clone().as_str()).response,
+                                    text: bubble_text.clone(),
                                     channel: channel.channel_type.clone(),
                                     // Attach media only to the first bubble
                                     video_url: if i == 0 {
@@ -1110,7 +1151,7 @@ pub fn send_message_to_subscriber(
                                     is_group: false,
                                     sender_id: "".to_string(),
                                     conversation_id: channel.external_group_id.clone(),
-                                    text: parse_llm_output(bubble_text.clone().as_str()).response,
+                                    text: bubble_text.clone(),
                                     channel: channel.channel.clone(),
                                     // Attach media only to the first bubble
                                     video_url: if i == 0 {

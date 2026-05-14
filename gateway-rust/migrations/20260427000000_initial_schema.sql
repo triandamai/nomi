@@ -87,6 +87,12 @@ CREATE TABLE IF NOT EXISTS conversation_members (
     PRIMARY KEY (conversation_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS waitlist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 
 CREATE INDEX IF NOT EXISTS idx_soul_history_conversation_id_created_at
     ON soul_history (conversation_id, created_at DESC);

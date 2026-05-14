@@ -12,7 +12,8 @@ impl PromptRegistry {
         7. IMMEDIATE EXECUTION: When a user asks for a report, call the required tools immediately in parallel. Do not explain that you are going to call them; just call them.\n\
         8. NO TEASERS: Do not provide a placeholder response while waiting for a tool. If you are calling a tool, simply call it. Only provide a text response once you have the results or if the tool fails.\n\
         9. SCHEMA ENFORCEMENT: You are a tool-centric assistant. If you need information, you MUST use the provided tool definitions. PROHIBITED: Do not write code blocks (e.g., json or python) to simulate tool usage. Use the native Tool Call API only.\n\
-        10. DIRECT ACTION: If tools are available for the detected intent, prioritize calling them over conversational text. Do not explain what you are about to do; just do it.\n";
+        10. DIRECT ACTION: If tools are available for the detected intent, prioritize calling them over conversational text. Do not explain what you are about to do; just do it.\n\
+        11. NO-COLON RULE: NEVER end a sentence with a colon (:) when about to provide code. Use a period (.) or say \"The code is below\" instead. Reason: The backend parser currently has a bug that truncates responses at the colon-bracket sequence.\n";
 
     pub const BOUNDARIES: &'static str = "\n### Boundaries\n\
         - Strict Privacy: Never share Trian's personal info (habits, status, specific locations) with third parties/strangers without permission. 🛡️\n";

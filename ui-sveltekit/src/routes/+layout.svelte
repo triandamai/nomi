@@ -28,7 +28,7 @@
 		}
 
 		function open(){
-			if (token) {
+			if (token && !isPublicRoute) {
 				conversationStore.loadConversations().finally(()=>{
 					ragStore.fetchGraph(conversationStore.activeConversationId)
 					closing  = chatApi.streamEvent();
