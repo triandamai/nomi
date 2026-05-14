@@ -61,7 +61,7 @@
         <div class="relative group/thought">
             <button
                     onclick={() => thoughtExpanded = !thoughtExpanded}
-                    class="flex items-center gap-2 mb-2 text-[9px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors"
+                    class="flex items-center gap-2 mb-2 text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-blue-400 transition-colors"
             >
                 <Cpu class="w-3 h-3"/>
                 Deep Thought
@@ -73,16 +73,16 @@
             </button>
 
             {#if thoughtExpanded}
-                <div class="p-4 bg-zinc-900/30 border-l-2 border-zinc-700 rounded-r-lg text-xs text-zinc-500 font-mono italic leading-relaxed prose prose-invert prose-sm max-w-none animate-in fade-in slide-in-from-top-1 duration-200">
+                <div class="p-4 bg-slate-900/30 border-l-2 border-blue-500/50 rounded-r-lg text-xs text-slate-500 font-mono italic leading-relaxed prose prose-invert prose-sm max-w-none animate-in fade-in slide-in-from-top-1 duration-200">
                     {@html renderedThought}
                 </div>
             {/if}
         </div>
     {/if}
 
-    <div class="prose prose-invert max-w-none prose-sm text-zinc-200">
+    <div class="prose prose-invert max-w-none prose-sm text-slate-200">
         {#if image_url}
-            <div class="mb-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900/50 group/image relative">
+            <div class="mb-4 rounded-xl overflow-hidden border border-slate-800 bg-slate-900/50 group/image relative">
                 <img
                         src={image_url.startsWith("http") ? image_url : FILE_URL + image_url}
                         alt="Uploaded content"
@@ -96,7 +96,7 @@
                 <a
                         href={image_url.startsWith("http") ? image_url : FILE_URL + image_url}
                         target="_blank"
-                        class="absolute top-2 right-2 p-2 bg-zinc-900/80 rounded-lg opacity-0 group-hover/image:opacity-100 transition-opacity hover:text-emerald-400"
+                        class="absolute top-2 right-2 p-2 bg-slate-900/80 rounded-lg opacity-0 group-hover/image:opacity-100 transition-opacity hover:text-emerald-400"
                         title="Open full size"
                 >
                     <ExternalLink class="w-4 h-4"/>
@@ -109,10 +109,10 @@
 
 <style>
     :global(.prose pre) {
-        background-color: #0c0c0e !important;
+        background-color: #020617 !important;
         padding: 1rem;
-        border-radius: 0.5rem;
-        border: 1px solid #27272a;
+        border-radius: 1rem;
+        border: 1px solid #1e293b;
         margin: 1rem 0;
         white-space: pre-wrap;
         word-break: break-all;
@@ -124,10 +124,10 @@
     }
 
     :global(.prose :not(pre) > code) {
-        background-color: #18181b;
+        background-color: #1e293b;
         padding: 0.2rem 0.4rem;
         border-radius: 0.25rem;
-        color: #e4e4e7;
+        color: #f1f5f9;
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }
 
@@ -136,10 +136,10 @@
         top: 0.5rem;
         right: 0.5rem;
         padding: 0.25rem;
-        border-radius: 0.375rem;
-        background-color: rgba(24, 24, 27, 0.8);
-        border: 1px solid #3f3f46;
-        color: #a1a1aa;
+        border-radius: 0.5rem;
+        background-color: rgba(15, 23, 42, 0.8);
+        border: 1px solid #334155;
+        color: #64748b;
         opacity: 0;
         transition: all 0.2s;
         cursor: pointer;
@@ -154,13 +154,13 @@
     }
 
     :global(.copy-button:hover) {
-        background-color: #3f3f46;
-        color: #f4f4f5;
-        border-color: #52525b;
+        background-color: #334155;
+        color: #f1f5f9;
+        border-color: #475569;
     }
 
     :global(.copy-button.copied) {
         opacity: 1;
-        border-color: #10b981;
+        border-color: #3b82f6;
     }
 </style>

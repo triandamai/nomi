@@ -119,7 +119,7 @@ async fn process_v2_message_with_intent(
     );
 
     // 1. Immediate Save (Only the actual user content)
-    let m = save_message(
+    let save_user_message = save_message(
         &state.pool,
         conversation_id,
         "user",
@@ -135,7 +135,25 @@ async fn process_v2_message_with_intent(
         msg.doc_url.clone(),
         None,
     )
-    .await?;
+    .await;
+    if let Err(e) = save_user_message{
+        info!("Saving message failed :{}",e);
+        return Ok(());
+    }
+    let saved_message = save_user_message.unwrap();
+
+    // Group is registered, only respond if mentioned
+    if msg.is_group && !msg.is_mentioned
+        && (msg.image_url.is_none()
+        && msg.video_url.is_none()
+        && msg.audio_url.is_none()
+        && msg.doc_url.is_none()
+        && msg.sticker_url.is_none())
+    {
+        info!("Message is from registered group, but not mentioned or image, ignoring. but immediate save for beter context history");
+
+        return Ok(());
+    }
 
     // Fetch updated total tokens and broadcast
     if let Ok(row) = sqlx::query!(
@@ -165,15 +183,15 @@ async fn process_v2_message_with_intent(
                 member.user_id.to_string().as_str(),
                 "message",
                 json!({
-                        "id": m.id,
+                        "id": saved_message.id,
                         "conversation_id":conversation_id,
-                        "role": m.role,
-                        "content": m.content.clone(),
-                        "thought": m.thought,
-                        "user_id": m.user_id,
+                        "role": saved_message.role,
+                        "content": saved_message.content.clone(),
+                        "thought": saved_message.thought,
+                        "user_id": saved_message.user_id,
                         "total_tokens": 0,
-                        "image_url": m.image_url.as_ref().map(|path| state.storage.get_full_url( path)),
-                        "created_at": m.created_at
+                        "image_url": saved_message.image_url.as_ref().map(|path| state.storage.get_full_url( path)),
+                        "created_at": saved_message.created_at
             })
             )
             .await;
@@ -189,14 +207,14 @@ async fn process_v2_message_with_intent(
     }
 
     let payload = json!({
-        "id": m.id,
+        "id": saved_message.id,
         "conversation_id": conversation_id,
-        "role": m.role,
-        "content": m.content,
-        "thought": m.thought,
-        "user_id": m.user_id,
-        "image_url": m.image_url.as_ref().map(|path| state.storage.get_full_url(path)),
-        "created_at": m.created_at,
+        "role": saved_message.role,
+        "content": saved_message.content,
+        "thought": saved_message.thought,
+        "user_id": saved_message.user_id,
+        "image_url": saved_message.image_url.as_ref().map(|path| state.storage.get_full_url(path)),
+        "created_at": saved_message.created_at,
         "total_tokens": 0,
     });
     let _ = match user_id {

@@ -35,7 +35,7 @@ pub async fn send_prompt(
         } => {
             info!("\n ==== sending user prompt ===== \n");
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-
+            info!("system prompt\n ${}\n ========",build_prompt);
             let mut user_parts = vec![gemini_rust::Part::Text {
                 text: message,
                 thought: None,
@@ -76,7 +76,7 @@ pub async fn send_prompt(
         } => {
             info!("\n ==== sending tool prompt ===== \n");
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-
+            info!("system prompt\n ${}\n ========",build_prompt);
             let mut user_parts = vec![gemini_rust::Part::Text {
                 text: message,
                 thought: None,

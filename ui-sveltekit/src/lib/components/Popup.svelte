@@ -21,21 +21,21 @@
 >
 	<!-- Popup Container -->
 	<div
-		class="absolute inset-y-0 right-0 flex w-full flex-col bg-[#09090b] shadow-2xl border-l border-zinc-800 text-zinc-100 {popup.width} max-w-1/2"
+		class="absolute inset-y-0 right-0 flex w-full flex-col bg-[#0f172a] shadow-2xl border-l border-slate-800 text-slate-100 {popup.width} max-w-1/2"
 		transition:fly={{ x: '100%', duration: 300, opacity: 1 }}
 	>
 		<!-- Header -->
-		<header class="flex h-14 items-center justify-between border-b border-zinc-800 px-6 bg-[#09090b]/80 backdrop-blur-md">
+		<header class="flex h-14 items-center justify-between border-b border-slate-800 px-6 bg-[#0f172a]/80 backdrop-blur-md">
 			{#if popup.headerSnippet}
 				{@render popup.headerSnippet()}
 			{:else}
-				<h2 class="text-xs font-bold uppercase tracking-widest text-zinc-200">
+				<h2 class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-200">
 					{popup.title}
 				</h2>
 			{/if}
 			<button
 				type="button"
-				class="rounded-lg p-2 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300 transition-colors"
+				class="rounded-lg p-2 text-slate-500 hover:bg-slate-900 hover:text-slate-300 transition-colors"
 				onclick={() => popupStore.close(popup.id)}
 			>
 				<X size={18} />
@@ -49,7 +49,7 @@
 
 		<!-- Footer -->
 		{#if popup.footerSnippet}
-			<footer class="border-t border-zinc-800 px-6 py-4 bg-[#09090b]">
+			<footer class="border-t border-slate-800 px-6 py-4 bg-[#0f172a]">
 				{@render popup.footerSnippet()}
 			</footer>
 		{/if}
@@ -64,10 +64,10 @@
 		background: transparent;
 	}
 	.custom-scrollbar::-webkit-scrollbar-thumb {
-		background: #18181b;
+		background: #1e293b;
 		border-radius: 10px;
 	}
 	.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-		background: #27272a;
+		background: #334155;
 	}
 </style>

@@ -84,17 +84,16 @@
                             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                             <span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                         </span>
-                        <span class="text-[10px] font-black uppercase tracking-widest text-blue-400">v2.0 Beta Now Open</span>
+                        <span class="text-[10px] font-black uppercase tracking-widest text-blue-400 font-mono">v2.0 Beta Now Open</span>
                     </div>
 
                     <h1 class="text-5xl md:text-7xl font-black text-white leading-[1.1] tracking-tight">
-                        Your Life, <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Decoded.</span>
+                        Your Life, <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-blue-400">Decoded.</span>
                     </h1>
 
                     <p class="text-lg md:text-xl text-slate-400 leading-relaxed max-w-xl">
                         The multimodal life infrastructure that lives where you do. Finance, vitality, and memories—all synced through a single, intelligent interface.
                     </p>
-
                     <div class="flex flex-col sm:flex-row gap-4">
                         <div class="relative flex-1 max-w-md">
                             <input

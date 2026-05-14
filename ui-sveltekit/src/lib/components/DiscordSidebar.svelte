@@ -136,17 +136,17 @@
 
 {#snippet createConvContent()}
     <div class="space-y-4">
-        <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Conversation Name</p>
+        <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest">Conversation Name</p>
         <input
             type="text"
             bind:value={sidebarStore.newConvName}
             placeholder="e.g. general-chat"
-            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+            class="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all placeholder:text-slate-800"
             onkeydown={(e) => e.key === 'Enter' && createConversation()}
             autofocus
         />
-        <p class="text-[10px] text-zinc-600 leading-relaxed">
-            By creating a conversation, you can organize your AI interactions into different topics.
+        <p class="text-[11px] text-slate-500 leading-relaxed">
+            By creating a conversation, you can organize your AI interactions into different intelligent souls.
         </p>
     </div>
 {/snippet}
@@ -155,14 +155,14 @@
     <div class="flex justify-end gap-3">
         <button
             onclick={() => popupStore.closeLast()}
-            class="px-4 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200"
+            class="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-200 transition-colors"
         >
             Cancel
         </button>
         <button
             onclick={createConversation}
             disabled={!sidebarStore.newConvName.trim()}
-            class="px-6 py-2 text-xs font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:hover:bg-emerald-600 rounded-lg text-white transition-all shadow-lg shadow-emerald-900/20"
+            class="px-6 py-2 text-xs font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 rounded-xl text-white transition-all shadow-lg shadow-blue-500/20"
         >
             Create
         </button>
@@ -171,11 +171,11 @@
 
 {#snippet editConvContent()}
     <div class="space-y-4">
-        <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Edit Name</p>
+        <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest">Edit Name</p>
         <input
             type="text"
             bind:value={sidebarStore.newConvName}
-            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all"
+            class="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
             onkeydown={(e) => e.key === 'Enter' && updateConversation()}
             autofocus
         />
@@ -186,14 +186,14 @@
     <div class="flex justify-end gap-3">
         <button
             onclick={() => popupStore.closeLast()}
-            class="px-4 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200"
+            class="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-200 transition-colors"
         >
             Cancel
         </button>
         <button
             onclick={updateConversation}
             disabled={!sidebarStore.newConvName.trim()}
-            class="px-6 py-2 text-xs font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white transition-all"
+            class="px-6 py-2 text-xs font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-500 rounded-xl text-white transition-all"
         >
             Save Changes
         </button>
@@ -202,8 +202,8 @@
 
 {#snippet deleteConvContent()}
     <div class="space-y-4">
-        <p class="text-sm text-zinc-300">
-            Are you sure you want to delete <span class="font-bold text-zinc-100">{sidebarStore.editingConv?.name}</span>? This action cannot be undone.
+        <p class="text-sm text-slate-400 leading-relaxed">
+            Are you sure you want to delete <span class="font-bold text-slate-100">{sidebarStore.editingConv?.name}</span>? This action will permanently erase this soul.
         </p>
     </div>
 {/snippet}
@@ -212,13 +212,13 @@
     <div class="flex justify-end gap-3">
         <button
             onclick={() => popupStore.closeLast()}
-            class="px-4 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200"
+            class="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-200 transition-colors"
         >
             Cancel
         </button>
         <button
             onclick={deleteConversation}
-            class="px-6 py-2 text-xs font-bold uppercase tracking-wider bg-rose-600 hover:bg-rose-500 rounded-lg text-white transition-all"
+            class="px-6 py-2 text-xs font-black uppercase tracking-widest bg-rose-600 hover:bg-rose-500 rounded-xl text-white transition-all shadow-lg shadow-rose-900/20"
         >
             Delete
         </button>
@@ -229,36 +229,36 @@
     <div class="space-y-4">
         {#if sidebarStore.reminders.length === 0}
             <div class="text-center py-8">
-                <Bell class="w-12 h-12 text-zinc-800 mx-auto mb-3" />
-                <p class="text-sm text-zinc-400">You have no upcoming reminders.</p>
-                <p class="text-xs text-zinc-600 mt-1">Ask the AI to set a reminder for you!</p>
+                <Bell class="w-12 h-12 text-slate-800 mx-auto mb-3" />
+                <p class="text-sm text-slate-400">You have no upcoming reminders.</p>
+                <p class="text-xs text-slate-600 mt-1">Ask Nomi to set a reminder for you!</p>
             </div>
         {:else}
             <div class="space-y-3">
                 {#each sidebarStore.reminders as reminder}
-                    <div class="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-4 transition-all hover:bg-zinc-900">
+                    <div class="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4 transition-all hover:bg-slate-900">
                         <div class="flex justify-between items-start gap-4">
-                            <p class="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{reminder.content}</p>
+                            <p class="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{reminder.content}</p>
                             {#if reminder.frequency && reminder.frequency !== 'once'}
-                                <span class="shrink-0 text-[10px] px-2 py-1 bg-zinc-800/80 text-zinc-400 rounded-md uppercase font-bold tracking-wider">
+                                <span class="shrink-0 text-[10px] px-2 py-1 bg-slate-800/80 text-slate-400 rounded-md uppercase font-black tracking-widest">
                                     {reminder.frequency}
                                 </span>
                             {/if}
                         </div>
-                        <div class="flex items-center justify-between mt-3 text-xs text-zinc-500">
+                        <div class="flex items-center justify-between mt-3 text-xs text-slate-500">
                             <div class="flex items-center gap-1.5 font-mono bg-black/20 px-2 py-1 rounded">
-                                <span class="text-emerald-500/70">
+                                <span class="text-blue-500/70">
                                     {new Date(reminder.due_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                 </span>
                                 <span>&middot;</span>
-                                <span class="text-emerald-500">
+                                <span class="text-blue-500">
                                     {new Date(reminder.due_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                             </div>
                             {#if reminder.status === 'completed'}
-                                <span class="text-emerald-600 font-medium">Completed</span>
+                                <span class="text-emerald-500 font-bold uppercase text-[10px] tracking-widest">Completed</span>
                             {:else if reminder.status === 'archived'}
-                                <span class="text-zinc-600 font-medium">Archived</span>
+                                <span class="text-slate-600 font-bold uppercase text-[10px] tracking-widest">Archived</span>
                             {/if}
                         </div>
                     </div>
@@ -272,7 +272,7 @@
     <div class="flex justify-end">
         <button
             onclick={() => popupStore.closeLast()}
-            class="px-6 py-2 text-xs font-bold uppercase tracking-wider bg-zinc-800 hover:bg-zinc-700 rounded-lg text-white transition-all"
+            class="px-8 py-2 text-xs font-black uppercase tracking-widest bg-slate-800 hover:bg-slate-700 rounded-xl text-white transition-all border border-slate-700"
         >
             Close
         </button>
@@ -281,18 +281,18 @@
 
 {#snippet pairingContent()}
     <div class="space-y-6 py-2">
-        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col items-center gap-4">
-            <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Internal Pairing Code</p>
-            <div class="text-5xl font-black text-emerald-400 tracking-[0.2em] font-mono">
+        <div class="bg-slate-950 border border-slate-800 rounded-3xl p-8 flex flex-col items-center gap-6">
+            <p class="text-[10px] text-slate-500 uppercase font-black tracking-[0.2em]">Internal Pairing Code</p>
+            <div class="text-5xl font-black text-blue-400 tracking-[0.3em] font-mono">
                 {sidebarStore.pairingCode}
             </div>
             <button 
                 onclick={() => sidebarStore.copyToClipboard()}
-                class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all"
+                class="flex items-center gap-2 px-6 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs text-slate-300 transition-all active:scale-95"
             >
                 {#if sidebarStore.copied}
-                    <Check size={14} class="text-emerald-400" />
-                    <span class="text-emerald-400">Copied!</span>
+                    <Check size={14} class="text-blue-400" />
+                    <span class="text-blue-400">Copied!</span>
                 {:else}
                     <Copy size={14} />
                     <span>Copy Code</span>
@@ -300,16 +300,16 @@
             </button>
         </div>
 
-        <div class="space-y-3">
-            <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Instructions</p>
-            <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside">
+        <div class="space-y-4">
+            <p class="text-[10px] text-slate-500 font-black uppercase tracking-widest">Instructions</p>
+            <ol class="text-sm text-slate-400 space-y-3 list-decimal list-inside">
                 {#if sidebarStore.currentPlatform === 'telegram'}
-                    <li>Open <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-emerald-400 hover:underline">@ArtaOpenAgentBot</a></li>
+                    <li>Open <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-blue-400 hover:underline">@ArtaOpenAgentBot</a></li>
                 {:else}
                     <li>Open our bot on WhatsApp</li>
                 {/if}
-                <li>Send the command: <code class="bg-zinc-900 px-1.5 py-0.5 rounded text-emerald-400 font-mono">/pair {sidebarStore.pairingCode}</code></li>
-                <li>Wait for confirmation here</li>
+                <li>Send the command: <code class="bg-slate-950 px-2 py-1 rounded text-blue-400 font-mono text-xs border border-slate-800">/pair {sidebarStore.pairingCode}</code></li>
+                <li>Wait for automated soul linking</li>
             </ol>
         </div>
     </div>
@@ -319,7 +319,7 @@
     <div class="flex justify-center w-full">
         <button
             onclick={() => popupStore.closeLast()}
-            class="px-8 py-2 text-xs font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-200 transition-all"
+            class="px-8 py-2 text-xs font-black uppercase tracking-[0.2em] text-slate-600 hover:text-slate-200 transition-all"
         >
             Cancel
         </button>
@@ -339,11 +339,11 @@
 {#snippet connectionManagementSnippet()}
     <div class="space-y-4 py-2">
         <div class="flex items-center justify-between px-1">
-            <p class="text-xs text-zinc-500 font-medium">Manage your connected messaging platforms.</p>
+            <p class="text-xs text-slate-500 font-medium">Manage your connected messaging platforms.</p>
             {#if profileStore.currentUser?.role === 'admin'}
             <button 
                 onclick={() => sidebarStore.openWhatsappBotManager(whatsappBotSetupSnippet, pairingFooter)}
-                class="text-[10px] font-black uppercase tracking-tighter text-emerald-500 hover:text-emerald-400 transition-colors bg-emerald-500/5 px-2 py-1 rounded border border-emerald-500/10"
+                class="text-[10px] font-black uppercase tracking-tighter text-blue-500 hover:text-blue-400 transition-colors bg-blue-500/5 px-2 py-1 rounded border border-blue-500/10"
             >
                 Bot Setup
             </button>
@@ -351,9 +351,9 @@
         </div>
         <div class="grid gap-3">
             {#each sidebarStore.channels as channel}
-                <div class="flex items-center justify-between p-4 bg-zinc-950 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-colors">
+                <div class="flex items-center justify-between p-4 bg-slate-950 border border-slate-800 rounded-2xl hover:border-slate-700 transition-colors">
                     <div class="flex items-center gap-4">
-                        <div class="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
+                        <div class="w-10 h-10 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400">
                             {#if channel.platform === 'telegram'}
                                 <svg viewBox="0 0 24 24" class="w-5 h-5 fill-current"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>
                             {:else if channel.platform === 'whatsapp'}
@@ -363,22 +363,22 @@
                             {/if}
                         </div>
                         <div>
-                            <p class="text-sm font-bold text-zinc-100 capitalize">{channel.platform}</p>
-                            <p class="text-[11px] text-zinc-500 font-medium">
+                            <p class="text-sm font-bold text-slate-100 capitalize">{channel.platform}</p>
+                            <p class="text-[11px] text-slate-500 font-medium">
                                 {channel.paired ? 'Currently linked' : 'Not connected yet'}
                             </p>
                         </div>
                     </div>
                     
                     {#if channel.paired}
-                        <div class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <div class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
                             <Check size={12} strokeWidth={3} />
                             <span class="text-[10px] font-black uppercase tracking-widest">Linked</span>
                         </div>
                     {:else}
                         <button 
                             onclick={() => sidebarStore.handlePairing(channel.platform, pairingContent, pairingFooter)}
-                            class="px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-bold transition-all active:scale-95"
+                            class="px-4 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-bold transition-all active:scale-95"
                         >
                             Connect
                         </button>
@@ -391,14 +391,14 @@
 
 {#snippet whatsappBotSetupSnippet()}
     <div class="space-y-6 py-2">
-        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-8 flex flex-col items-center gap-6">
-            <p class="text-xs text-zinc-500 uppercase font-bold tracking-widest">Scan to Connect Bot</p>
+        <div class="bg-slate-950 border border-slate-800 rounded-3xl p-8 flex flex-col items-center gap-6">
+            <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest">Scan to Connect Bot</p>
             
             <div class="relative group">
                 <QRCode data={sidebarStore.whatsappQr} size={220} />
                 {#if sidebarStore.isLoadingQr}
-                    <div class="absolute inset-0 bg-zinc-950/80 rounded-lg flex items-center justify-center backdrop-blur-sm">
-                        <div class="w-8 h-8 border-4 border-zinc-800 border-t-emerald-500 rounded-full animate-spin"></div>
+                    <div class="absolute inset-0 bg-slate-950/80 rounded-3xl flex items-center justify-center backdrop-blur-sm">
+                        <div class="w-8 h-8 border-4 border-slate-800 border-t-blue-500 rounded-full animate-spin"></div>
                     </div>
                 {/if}
             </div>
@@ -407,7 +407,7 @@
                 <button 
                     onclick={() => sidebarStore.fetchWhatsappQr()}
                     disabled={sidebarStore.isLoadingQr}
-                    class="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs text-zinc-300 transition-all disabled:opacity-50"
+                    class="flex items-center gap-2 px-6 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs text-slate-300 transition-all disabled:opacity-50"
                 >
                     <RefreshCw size={14} class={sidebarStore.isLoadingQr ? 'animate-spin' : ''} />
                     <span>Refresh QR</span>
@@ -416,7 +416,7 @@
                 <button 
                     onclick={() => sidebarStore.handleWhatsappLogout()}
                     disabled={sidebarStore.isLoadingQr}
-                    class="flex items-center gap-2 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg text-xs text-rose-400 transition-all disabled:opacity-50"
+                    class="flex items-center gap-2 px-6 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-xs text-rose-400 transition-all disabled:opacity-50"
                 >
                     <RefreshCw size={14} />
                     <span>Logout & Reset</span>
@@ -425,28 +425,28 @@
         </div>
 
         <div class="space-y-3 px-1">
-            <p class="text-xs text-zinc-400 font-bold uppercase tracking-wider">Bot Instructions</p>
-            <p class="text-sm text-zinc-500 leading-relaxed">
-                Scanning this QR code links your WhatsApp account to our backend service. This allows Arta to send and receive messages as you.
+            <p class="text-[10px] text-slate-500 font-black uppercase tracking-widest">Bot Instructions</p>
+            <p class="text-sm text-slate-500 leading-relaxed">
+                Scanning this QR code links your WhatsApp account to our backend service. This allows Nomi to send and receive messages as you.
             </p>
-            <ol class="text-sm text-zinc-400 space-y-2 list-decimal list-inside mt-2">
+            <ol class="text-sm text-slate-400 space-y-2 list-decimal list-inside mt-2">
                 <li>Open WhatsApp on your phone</li>
-                <li>Go to <span class="text-zinc-200">Linked Devices</span></li>
+                <li>Go to <span class="text-slate-200">Linked Devices</span></li>
                 <li>Scan this QR code</li>
             </ol>
         </div>
     </div>
 {/snippet}
 
-<aside class="w-[72px] h-screen bg-[#0c0c0e] border-r border-zinc-800 flex flex-col items-center py-3 gap-3">
+<aside class="w-[72px] h-screen bg-[#0f172a] border-r border-slate-800 flex flex-col items-center py-3 gap-3">
     <!-- Home / Logo -->
     <div class="mb-2">
-        <div class="w-12 h-12 bg-zinc-100 rounded-[16px] flex items-center justify-center cursor-pointer hover:bg-white transition-all">
-            <span class="text-zinc-950 font-bold text-xl">O</span>
-        </div>
+        <a href="/" class="w-12 h-12 bg-blue-600 rounded-[16px] flex items-center justify-center cursor-pointer hover:bg-blue-500 transition-all shadow-lg shadow-blue-500/20">
+            <span class="text-white font-black text-xl">N</span>
+        </a>
     </div>
 
-    <div class="w-8 h-[2px] bg-zinc-800 rounded-full mb-1"></div>
+    <div class="w-8 h-[2px] bg-slate-800 rounded-full mb-1"></div>
 
     <!-- Conversations -->
     <div class="flex-1 pt-2 w-full flex flex-col items-center gap-3 overflow-y-auto no-scrollbar">
@@ -460,24 +460,24 @@
                 />
 
                 <!-- Action Tooltip/Menu -->
-                <div class="absolute left-16 hidden group-hover:flex bg-zinc-950 border border-zinc-800 rounded-lg p-1 shadow-2xl z-50">
+                <div class="absolute left-16 hidden group-hover:flex bg-slate-950 border border-slate-800 rounded-lg p-1 shadow-2xl z-50">
                     <button
                         onclick={() => handlePairing(conv)}
-                        class="p-2 hover:bg-zinc-800 text-zinc-400 hover:text-emerald-400 rounded-md transition-colors"
+                        class="p-2 hover:bg-slate-800 text-slate-400 hover:text-blue-400 rounded-md transition-colors"
                         title="Link Telegram"
                     >
                         <Link size={14} />
                     </button>
                     <button
                         onclick={() => handleEditConversation(conv)}
-                        class="p-2 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-md transition-colors"
+                        class="p-2 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-md transition-colors"
                         title="Edit"
                     >
                         <Edit2 size={14} />
                     </button>
                     <button
                         onclick={() => handleDeleteConversation(conv)}
-                        class="p-2 hover:bg-rose-900/30 text-zinc-400 hover:text-rose-400 rounded-md transition-colors"
+                        class="p-2 hover:bg-rose-900/30 text-slate-400 hover:text-rose-400 rounded-md transition-colors"
                         title="Delete"
                     >
                         <Trash2 size={14} />
@@ -488,15 +488,15 @@
     </div>
 
     <!-- Bottom Actions -->
-    <div class="w-full flex flex-col items-center gap-3 mt-auto pt-3 border-t border-zinc-800">
+    <div class="w-full flex flex-col items-center gap-3 mt-auto pt-3 border-t border-slate-800">
         <!-- Add Button -->
         {#if profileStore.currentUser?.role === 'admin'}
         <button
             onclick={handleAddConversation}
-            class="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-zinc-800 hover:bg-emerald-600 text-emerald-500 hover:text-white flex items-center justify-center transition-all group relative"
+            class="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-slate-800 hover:bg-blue-600 text-blue-500 hover:text-white flex items-center justify-center transition-all group relative"
         >
             <Plus class="w-6 h-6" />
-            <div class="absolute left-16 px-3 py-1 bg-zinc-950 text-white text-xs font-bold rounded shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+            <div class="absolute left-16 px-3 py-1 bg-slate-950 text-white text-xs font-bold rounded shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
                 Add Conversation
             </div>
         </button>
@@ -513,32 +513,32 @@
 
             {#if sidebarStore.showUserMenu}
                 <div 
-                    class="absolute bottom-0 left-16 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-[100] py-2 overflow-hidden animate-in fade-in slide-in-from-left-2 duration-200"
+                    class="absolute bottom-0 left-16 w-56 bg-slate-950 border border-slate-800 rounded-xl shadow-2xl z-[100] py-2 overflow-hidden animate-in fade-in slide-in-from-left-2 duration-200"
                 >
-                    <div class="px-4 py-3 border-b border-zinc-900 mb-1">
-                        <p class="text-sm font-bold text-zinc-100 truncate">
+                    <div class="px-4 py-3 border-b border-slate-900 mb-1">
+                        <p class="text-sm font-bold text-slate-100 truncate">
                             {profileStore.currentUser?.display_name || 'Anonymous User'}
                         </p>
-                        <p class="text-[10px] text-zinc-500 truncate font-mono mt-0.5">
+                        <p class="text-[10px] text-slate-500 truncate font-mono mt-0.5">
                             {profileStore.currentUser?.external_id}
                         </p>
                     </div>
 
-                    <button class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors">
+                    <button class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors">
                         <User size={14} />
                         <span>Profile Settings</span>
                     </button>
                     
-                    <button class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors">
+                    <button class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors">
                         <Settings size={14} />
                         <span>Preferences</span>
                     </button>
 
-                    <div class="h-px bg-zinc-900 my-1"></div>
+                    <div class="h-px bg-slate-900 my-1"></div>
 
                     <button 
                         onclick={handleShowReminders}
-                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
                     >
                         <Bell size={14} />
                         <span>Reminders</span>
@@ -547,26 +547,26 @@
                     {#if profileStore.currentUser?.role === 'admin'}
                     <button 
                         onclick={() => { sidebarStore.showUserMenu = false; goto('/admin/storage'); }}
-                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
                     >
                         <Database size={14} />
                         <span>Storage</span>
                     </button>
                     <button 
                         onclick={openMoneyTracking}
-                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
                     >
                         <DollarSign size={14} />
                         <span>Money Tracking</span>
                     </button>
                     {/if}
 
-                    <div class="h-px bg-zinc-900 my-1"></div>
+                    <div class="h-px bg-slate-900 my-1"></div>
 
                     {#if conversationStore.activeConversationId}
                     <button 
                         onclick={openConnectionManager}
-                        class="w-full flex items-center gap-3 px-4 py-2 text-xs transition-colors {sidebarStore.isPaired ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/10' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900'}"
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs transition-colors {sidebarStore.isPaired ? 'text-blue-400 hover:text-blue-300 hover:bg-blue-900/10' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900'}"
                     >
                         <Link size={14} />
                         <span>Linked App</span>
@@ -574,7 +574,7 @@
 
                     <button 
                         onclick={openTimeline}
-                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
                     >
                         <Settings2 size={14} />
                         <span>Soul Timeline</span>
@@ -583,14 +583,14 @@
                     {#if profileStore.currentUser?.role === 'admin'}
                     <button 
                         onclick={openStockSignals}
-                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors"
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
                     >
                         <LineChart size={14} />
                         <span>Stock Signals</span>
                     </button>
                     {/if}
 
-                    <div class="h-px bg-zinc-900 my-1"></div>
+                    <div class="h-px bg-slate-900 my-1"></div>
                     {/if}
 
                     <button 

@@ -50,6 +50,7 @@ pub async fn save_message(
     document_url: Option<String>,
     sticker_url: Option<String>
 ) -> anyhow::Result<MessageItem> {
+    info!("Saving message to conversation:{:?} from user:{:?}",conversation_id,user_id);
     let mut tx = pool.begin().await?;
 
     let save_message = sqlx::query!(

@@ -86,43 +86,46 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             );
             return Ok(());
         }
-
-        // Group is registered, only respond if mentioned
-        if !msg.is_mentioned
-            && (msg.image_url.is_none()
-                && msg.video_url.is_none()
-                && msg.audio_url.is_none()
-                && msg.doc_url.is_none()
-                && msg.sticker_url.is_none())
-        {
-            info!("Message is from registered group, but not mentioned or image, ignoring");
-            return Ok(());
-        }
     }
 
     // 2. Resolve Identity and Channel Info
-    let channel_info = if msg.is_group {
+    let conversation_id = if msg.is_group {
         // For groups, we look up the channel_group table instead of the regular channels table
-        sqlx::query!(
-            "SELECT conversation_id FROM channel_group WHERE external_group_id = $1 AND channel = $2",
-            msg.conversation_id,
-            msg.channel
-        ).fetch_optional(&state.pool).await?.map(|r| channel_repo::ChannelInfo {
-            user_id: Uuid::nil(), // No single user for a group
-            conversation_id: r.conversation_id,
-        })
+        match channel_repo::get_channel_group_info(&state.pool, &msg.channel, &msg.conversation_id)
+            .await
+        {
+            Ok(value) => value.map_or_else(|| Uuid::nil(), |v| v.conversation_id),
+            Err(_) => Uuid::nil(),
+        }
     } else {
-        channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.conversation_id).await?
+        match channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.conversation_id).await
+        {
+            Ok(value) => value.map_or_else(|| Uuid::nil(), |v| v.conversation_id),
+            Err(_) => Uuid::nil(),
+        }
     };
 
-    let (user_id, external_conversation_id) = if let Some(ci) = channel_info {
-        (ci.user_id, ci.conversation_id)
-    } else {
-        let identity =
-            identity::resolve_identity(&state.pool, &msg.sender_id, &msg.channel).await?;
-        (identity.id, Uuid::nil())
+    info!("Conversation id {}",conversation_id);
+    let display_name = match &msg.metadata {
+        None => msg.sender_id.clone(),
+        Some(meta) => meta
+            .get("display_name")
+            .map_or_else(|| msg.sender_id.clone(), |v| v.to_string()),
     };
+    let user_id = identity::resolve_identity(
+        &state,
+        &msg.sender_id,
+        &msg.conversation_id,
+        &msg.channel,
+        msg.is_group.clone(),
+        display_name,
+    )
+    .await;
+    if let Err(err) = &user_id {
+        info!("User not exist:{}", err);
+    }
 
+    let user_id = user_id.unwrap().id;
     // ================================== BEGIN COMMAND ============================//
     // 3. Check for Pairing/Register/Login
     if text.to_uppercase().starts_with("/pair ") {
@@ -139,7 +142,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
 
     // ================================== NOT REGISTERED STOP HERE ============================//
     // 3. Resolve/Create Conversation
-    if external_conversation_id.is_nil() {
+    if conversation_id.is_nil() {
         info!("{} via {}", msg.conversation_id, msg.channel);
         info!(
             "Unfortunately user doesnt associate with any conversation, stop here will not sent to llm"
@@ -189,7 +192,7 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
             .send_presence_to_user(
                 user_id.to_string().as_str(),
                 json! ({
-                    "conversation_id": external_conversation_id,
+                    "conversation_id": conversation_id,
                     "is_typing": true,
                     "user_id": "nomi"
                 }),
@@ -204,7 +207,9 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
 
         // B. Unified Processing (Contextual Image Classification if image present)
         let unified_msg = UnifiedMessage {
-            conversation_id: external_conversation_id,
+            is_group: msg.is_group,
+            is_mentioned: msg.is_mentioned,
+            conversation_id,
             user_id: Some(user_id),
             text_content: user_text,
             image_url,

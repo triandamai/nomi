@@ -36,14 +36,13 @@
     </div>
 
     <!-- Avatar Container -->
-    <div class="{sizeClasses[size]} rounded-[24px] group-hover:rounded-[16px] transition-all duration-200 overflow-hidden bg-zinc-800
-        {active ? 'rounded-[16px] ring-2 ring-emerald-500 ring-offset-2 ring-offset-[#0c0c0e]' : ''} 
-        {online && !active ? 'ring-2 ring-emerald-500/50' : ''}">
+    <div class="{sizeClasses[size]} rounded-[24px] group-hover:rounded-[16px] transition-all duration-200 overflow-hidden bg-slate-800
+        {active ? 'rounded-[16px] ring-2 ring-blue-500 ring-offset-2 ring-offset-[#0f172a]' : ''}
+        {online && !active ? 'ring-2 ring-blue-500/50' : ''}">
         <img src={avatarUrl} alt={name} class="w-full h-full object-cover" />
     </div>
 
     <!-- Tooltip -->
-    <div class="absolute left-16 px-3 py-1 bg-zinc-950 text-white text-xs font-bold rounded shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
-        {name}
+    <div class="absolute left-16 px-3 py-1 bg-slate-950 text-white text-xs font-bold rounded shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">        {name}
     </div>
 </button>

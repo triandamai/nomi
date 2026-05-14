@@ -670,6 +670,8 @@ pub async fn handle_chat_stream(
 
     tokio::spawn(async move {
         let unified_msg = UnifiedMessage {
+            is_group: false,
+            is_mentioned: false,
             conversation_id,
             user_id,
             text_content: user_message,

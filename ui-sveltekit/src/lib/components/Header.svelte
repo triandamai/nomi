@@ -20,26 +20,26 @@
     ];
 </script>
 
-<header class="h-14 border-b border-zinc-800/50 flex justify-between items-center px-4 bg-[#09090b] sticky top-0 z-20">
+<header class="h-14 border-b border-slate-800/50 flex justify-between items-center px-4 bg-[#0f172a] sticky top-0 z-20">
     <div class="flex items-center gap-6">
         <!-- Breadcrumbs -->
-        <div class="flex items-center gap-2 text-zinc-500">
-            <span class="text-xs font-medium hover:text-zinc-300 cursor-pointer transition-colors hidden sm:inline">Workspace</span>
-            <ChevronRight class="w-3.5 h-3.5 text-zinc-700 hidden sm:block" />
-            <span class="text-xs font-semibold text-zinc-200 truncate max-w-[120px] sm:max-w-none">
-                {conversationStore.activeConversation?.name || 'No Session'} - {formatTokenCount(conversationStore.activeConversation?.cumulative_tokens)} Token
+        <div class="flex items-center gap-2 text-slate-500">
+            <span class="text-xs font-medium hover:text-slate-300 cursor-pointer transition-colors hidden sm:inline">Workspace</span>
+            <ChevronRight class="w-3.5 h-3.5 text-slate-700 hidden sm:block" />
+            <span class="text-xs font-semibold text-slate-200 truncate max-w-[120px] sm:max-w-none">
+                {conversationStore.activeConversation?.name || 'No Session'} - <span class="font-mono">{formatTokenCount(conversationStore.activeConversation?.cumulative_tokens)}</span> Token
             </span>
         </div>
 
         <!-- Vertical Divider -->
-        <div class="h-4 w-[1px] bg-zinc-800 hidden md:block"></div>
+        <div class="h-4 w-[1px] bg-slate-800 hidden md:block"></div>
 
         <!-- Tabs -->
         <nav class="hidden md:flex items-center gap-1">
             {#each tabs as tab}
                 <a
                     href={tab.href}
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 {activeTab === tab.name ? 'bg-zinc-800/50 text-emerald-400 border border-emerald-500/20' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'}"
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 {activeTab === tab.name ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900'}"
                 >
                     <tab.icon class="w-3.5 h-3.5" />
                     {tab.name}
@@ -66,29 +66,29 @@
 
         <!-- Model Badge -->
         <div class="relative group">
-            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800/50 cursor-help">
-                <Cpu class="w-3.5 h-3.5 text-zinc-500"/>
-                <span class="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{headerStore.modelInfo.agent_model}</span>
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800/50 cursor-help">
+                <Cpu class="w-3.5 h-3.5 text-slate-500"/>
+                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{headerStore.modelInfo.agent_model}</span>
             </div>
             
             <!-- Tooltip -->
-            <div class="absolute right-0 top-full mt-2 w-64 p-3 bg-zinc-950 border border-zinc-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                <p class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2 border-b border-zinc-800 pb-1">System Models</p>
+            <div class="absolute right-0 top-full mt-2 w-64 p-3 bg-slate-950 border border-slate-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 border-b border-slate-800 pb-1">System Models</p>
                 <div class="space-y-2">
                     <div class="flex justify-between items-center">
-                        <span class="text-[11px] text-zinc-400">Agent:</span>
-                        <span class="text-[11px] font-mono text-emerald-400">{headerStore.modelInfo.agent_model}</span>
+                        <span class="text-[11px] text-slate-400">Agent:</span>
+                        <span class="text-[11px] font-mono text-blue-400">{headerStore.modelInfo.agent_model}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-[11px] text-zinc-400">RAG:</span>
-                        <span class="text-[11px] font-mono text-blue-400">{headerStore.modelInfo.rag_embedding}</span>
+                        <span class="text-[11px] text-slate-400">RAG:</span>
+                        <span class="text-[11px] font-mono text-emerald-400">{headerStore.modelInfo.rag_embedding}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-[11px] text-zinc-400">Classification:</span>
+                        <span class="text-[11px] text-slate-400">Classification:</span>
                         <span class="text-[11px] font-mono text-amber-400">{headerStore.modelInfo.media_classification}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-[11px] text-zinc-400">Vision:</span>
+                        <span class="text-[11px] text-slate-400">Vision:</span>
                         <span class="text-[11px] font-mono text-purple-400">{headerStore.modelInfo.media_analyze}</span>
                     </div>
                 </div>

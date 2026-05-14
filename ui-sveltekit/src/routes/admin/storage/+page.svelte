@@ -139,7 +139,7 @@
 {#snippet fileDetailsContent()}
     <div class="space-y-6">
         {#if isImage(selectedFile.name)}
-            <div class="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center min-h-[300px] relative group">
+            <div class="rounded-xl overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center min-h-[300px] relative group">
                 <img
                         src={FILE_URL + stripUrl(selectedFile.full_path)}
                         alt={selectedFile.name}
@@ -147,22 +147,22 @@
                 />
             </div>
         {:else}
-            <div class="rounded-xl bg-zinc-900 border border-zinc-800 p-12 flex flex-col items-center justify-center space-y-4">
-                <div class="p-6 bg-zinc-950 rounded-2xl border border-zinc-800">
-                    <FileIcon class="w-16 h-16 text-zinc-500"/>
+            <div class="rounded-xl bg-slate-900 border border-slate-800 p-12 flex flex-col items-center justify-center space-y-4">
+                <div class="p-6 bg-slate-950 rounded-2xl border border-slate-800">
+                    <FileIcon class="w-16 h-16 text-slate-500"/>
                 </div>
-                <p class="text-sm text-zinc-400">Preview not available for this file type</p>
+                <p class="text-sm text-slate-400">Preview not available for this file type</p>
             </div>
         {/if}
 
         <div class="grid grid-cols-2 gap-4">
             <div class="space-y-1">
-                <p class="text-[10px] uppercase font-bold text-zinc-500 tracking-widest">File Name</p>
-                <p class="text-sm text-zinc-200 font-medium truncate">{selectedFile.name}</p>
+                <p class="text-[10px] uppercase font-bold text-slate-500 tracking-widest">File Name</p>
+                <p class="text-sm text-slate-200 font-medium truncate">{selectedFile.name}</p>
             </div>
             <div class="space-y-1">
-                <p class="text-[10px] uppercase font-bold text-zinc-500 tracking-widest">Full Path</p>
-                <p class="text-sm text-zinc-400 font-mono truncate">{stripUrl(selectedFile.full_path)}</p>
+                <p class="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Full Path</p>
+                <p class="text-sm text-slate-400 font-mono truncate">{stripUrl(selectedFile.full_path)}</p>
             </div>
         </div>
     </div>
@@ -172,7 +172,7 @@
     <div class="flex justify-between w-full">
         <button
                 onclick={() => handleDeleteFile(selectedFile)}
-                class="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                class="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all"
         >
             <Trash2 size={14}/>
             Delete File
@@ -182,14 +182,14 @@
                     href={FILE_URL + stripUrl(selectedFile.full_path)}
                     target="_blank"
                     download
-                    class="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-all"
+                    class="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-all"
             >
                 <Download size={14}/>
                 Download
             </a>
             <button
                     onclick={() => popupStore.closeLast()}
-                    class="px-6 py-2 text-xs font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition-all"
+                    class="px-6 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-white transition-all"
             >
                 Close
             </button>
@@ -197,23 +197,23 @@
     </div>
 {/snippet}
 
-<div class="h-full flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden">
-    <div class="flex items-center p-4 border-b border-zinc-800 bg-zinc-900 shrink-0 gap-4">
+<div class="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
+    <div class="flex items-center p-4 border-b border-slate-800 bg-[#0f172a]/50 backdrop-blur-md shrink-0 gap-4">
         <div class="flex items-center">
-            <Database class="w-5 h-5 text-zinc-400 mr-3"/>
+            <Database class="w-5 h-5 text-slate-400 mr-3"/>
             <div class="flex items-center space-x-1 text-sm font-medium">
                 <button
                         class="hover:text-white transition-colors"
-                        class:text-zinc-500={currentPath !== ''}
+                        class:text-slate-500={currentPath !== ''}
                         onclick={() => goto('?')}
                 >
                     Root
                 </button>
                 {#each breadcrumbs as crumb, i}
-                    <ChevronRight class="w-4 h-4 text-zinc-600"/>
+                    <ChevronRight class="w-4 h-4 text-slate-600"/>
                     <button
                             class="hover:text-white transition-colors"
-                            class:text-zinc-500={i !== breadcrumbs.length - 1}
+                            class:text-slate-500={i !== breadcrumbs.length - 1}
                             onclick={() => handleNavigate(crumb.path)}
                     >
                         {crumb.name}
@@ -224,7 +224,7 @@
 
         <div class="ml-auto flex items-center gap-2">
             {#if currentPath && currentPath.includes('/')}
-                <label class="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold cursor-pointer transition-all shadow-lg shadow-emerald-900/20">
+                <label class="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold cursor-pointer transition-all shadow-lg shadow-blue-900/20">
                     {#if uploading}
                         <RefreshCw class="w-3.5 h-3.5 animate-spin"/>
                         <span>Uploading...</span>
@@ -238,17 +238,17 @@
 
             <button
                     onclick={() => loadData(currentPath)}
-                    class="p-2 rounded-lg hover:bg-zinc-800 transition-colors"
+                    class="p-2 rounded-xl hover:bg-slate-800 transition-colors"
                     disabled={loading}
             >
-                <RefreshCw class="w-4 h-4 {loading ? 'animate-spin text-zinc-400' : 'text-zinc-400'}"/>
+                <RefreshCw class="w-4 h-4 {loading ? 'animate-spin text-slate-400' : 'text-slate-400'}"/>
             </button>
         </div>
     </div>
 
     <div class="flex-1 overflow-auto p-4">
         {#if error}
-            <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4 flex items-start gap-3">
+            <div class="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
                 <AlertCircle class="w-5 h-5 text-red-500 shrink-0 mt-0.5"/>
                 <div>
                     <h3 class="text-sm font-medium text-red-500">Storage Error</h3>
@@ -256,11 +256,11 @@
                 </div>
             </div>
         {:else if items.length === 0 && !loading}
-            <div class="h-full flex flex-col items-center justify-center text-zinc-500 space-y-3">
+            <div class="h-full flex flex-col items-center justify-center text-slate-500 space-y-3">
                 <Folder class="w-12 h-12 opacity-20"/>
                 <p class="text-sm">This folder is empty</p>
                 {#if currentPath && currentPath.includes('/')}
-                    <p class="text-xs text-zinc-600">You can upload files to this folder using the button above.</p>
+                    <p class="text-xs text-slate-600">You can upload files to this folder using the button above.</p>
                 {/if}
             </div>
         {:else}
@@ -269,7 +269,7 @@
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
                     <!-- svelte-ignore a11y_no_static_element_interactions -->
                     <div
-                            class="group flex flex-col p-4 rounded-2xl border border-zinc-800/50 bg-zinc-900/50 hover:bg-zinc-800 hover:border-zinc-700 cursor-pointer transition-all animate-in fade-in zoom-in-95 duration-200"
+                            class="group flex flex-col p-4 rounded-2xl border border-slate-800/50 bg-slate-900/50 hover:bg-slate-800 hover:border-slate-700 cursor-pointer transition-all animate-in fade-in zoom-in-95 duration-200"
                             onclick={() => {
                             if (item.type === 'file') {
                                 handleFileClick(item);
@@ -278,7 +278,7 @@
                             }
                         }}
                     >
-                        <div class="mb-4 aspect-square rounded-xl bg-zinc-950 flex items-center justify-center relative overflow-hidden">
+                        <div class="mb-4 aspect-square rounded-xl bg-slate-950 flex items-center justify-center relative overflow-hidden">
                             {#if item.type === 'bucket'}
                                 <Database
                                         class="w-10 h-10 text-indigo-500 group-hover:scale-110 transition-transform duration-300"/>
@@ -291,24 +291,24 @@
                                         class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-300"
                                         loading="lazy"
                                 />
-                                <div class="absolute inset-0 bg-gradient-to-t from-zinc-950/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"/>
+                                <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"/>
                             {:else}
                                 <File class="w-10 h-10 text-sky-500 group-hover:scale-110 transition-transform duration-300"/>
                             {/if}
                         </div>
 
                         <div class="overflow-hidden">
-                            <h3 class="text-xs font-bold text-zinc-200 truncate group-hover:text-white transition-colors"
+                            <h3 class="text-xs font-bold text-slate-200 truncate group-hover:text-white transition-colors"
                                 title={item.name}>
                                 {item.name}
                             </h3>
                             <div class="flex items-center gap-2 mt-1">
-                                <span class="text-[9px] text-zinc-500 uppercase font-black tracking-tighter">
+                                <span class="text-[9px] text-slate-500 uppercase font-black tracking-tighter">
                                     {item.type}
                                 </span>
                                 {#if item.type === 'file'}
-                                    <span class="w-1 h-1 rounded-full bg-zinc-800"></span>
-                                    <span class="text-[9px] text-zinc-600 truncate">
+                                    <span class="w-1 h-1 rounded-full bg-slate-800"></span>
+                                    <span class="text-[9px] text-slate-600 truncate">
                                         .{item.name.split('.').pop()}
                                     </span>
                                 {/if}

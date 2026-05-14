@@ -118,60 +118,60 @@
     {#if conversationStore.conversations.length === 0}
         <div class="h-full flex flex-col items-center justify-center max-w-lg mx-auto text-center space-y-8 animate-in fade-in zoom-in duration-700">
             <div class="relative">
-                <div class="absolute -inset-4 bg-emerald-500/10 blur-3xl rounded-full"></div>
-                <div class="w-20 h-20 bg-zinc-900 border border-zinc-800 rounded-[28px] flex items-center justify-center relative">
-                    <Sparkles class="w-10 h-10 text-emerald-500" />
+                <div class="absolute -inset-8 bg-blue-500/20 blur-3xl rounded-full"></div>
+                <div class="w-20 h-20 bg-blue-600 rounded-[28px] flex items-center justify-center relative shadow-2xl shadow-blue-500/20">
+                    <Sparkles class="w-10 h-10 text-white fill-white" />
                 </div>
             </div>
             
             <div class="space-y-3">
-                <h2 class="text-2xl font-black text-zinc-100 tracking-tight">Your Agentic Workspace</h2>
-                <p class="text-sm text-zinc-400 leading-relaxed">
-                    Arta is ready to help you orchestrate your AI agents. Start a conversation to begin your journey.
+                <h2 class="text-3xl font-black text-white tracking-tight">Your Life, Decoded</h2>
+                <p class="text-sm text-slate-400 leading-relaxed max-w-sm mx-auto">
+                    Nomi is ready to help you orchestrate your multimodal life infrastructure. Start a conversation to begin.
                 </p>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 <button 
                     onclick={startFirstConversation}
-                    class="group p-6 bg-zinc-900/50 hover:bg-emerald-900/20 border border-zinc-800 hover:border-emerald-500/50 rounded-2xl text-left transition-all"
+                    class="group p-6 bg-slate-900/50 hover:bg-blue-600/10 border border-slate-800 hover:border-blue-500/50 rounded-2xl text-left transition-all"
                 >
-                    <MessageSquarePlus class="w-6 h-6 text-zinc-500 group-hover:text-emerald-400 mb-4 transition-colors" />
-                    <h3 class="text-sm font-bold text-zinc-200 group-hover:text-emerald-300 transition-colors">Start your first Soul</h3>
-                    <p class="text-[11px] text-zinc-500 group-hover:text-emerald-400/70 mt-1 transition-colors leading-snug">Create a new sandbox for your AI interactions.</p>
+                    <MessageSquarePlus class="w-6 h-6 text-slate-500 group-hover:text-blue-400 mb-4 transition-colors" />
+                    <h3 class="text-sm font-bold text-slate-200 group-hover:text-blue-300 transition-colors">Start a new Soul</h3>
+                    <p class="text-[11px] text-slate-500 group-hover:text-blue-400/70 mt-1 transition-colors leading-snug">Create a new intelligent sandbox.</p>
                 </button>
 
                 <button 
                     onclick={() => goto('/rag')}
-                    class="group p-6 bg-zinc-900/50 hover:bg-blue-900/20 border border-zinc-800 hover:border-blue-500/50 rounded-2xl text-left transition-all"
+                    class="group p-6 bg-slate-900/50 hover:bg-emerald-600/10 border border-slate-800 hover:border-emerald-500/50 rounded-2xl text-left transition-all"
                 >
-                    <Share2 class="w-6 h-6 text-zinc-500 group-hover:text-blue-400 mb-4 transition-colors" />
-                    <h3 class="text-sm font-bold text-zinc-200 group-hover:text-blue-300 transition-colors">Knowledge Base</h3>
-                    <p class="text-[11px] text-zinc-500 group-hover:text-blue-400/70 mt-1 transition-colors leading-snug">Upload documents to make Arta even smarter.</p>
+                    <Share2 class="w-6 h-6 text-slate-500 group-hover:text-emerald-400 mb-4 transition-colors" />
+                    <h3 class="text-sm font-bold text-slate-200 group-hover:text-emerald-300 transition-colors">Knowledge Base</h3>
+                    <p class="text-[11px] text-slate-500 group-hover:text-emerald-400/70 mt-1 transition-colors leading-snug">Upload documents to sharpen Nomi's memory.</p>
                 </button>
             </div>
         </div>
     {:else if chatStore.messages.length === 0 && !chatStore.loading}
         <div class="h-full flex flex-col items-center justify-center max-w-lg mx-auto text-center space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div class="w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center shadow-2xl">
-                <MessageSquarePlus class="w-8 h-8 text-zinc-500" />
+            <div class="w-16 h-16 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center shadow-2xl">
+                <MessageSquarePlus class="w-8 h-8 text-slate-500" />
             </div>
             <div class="space-y-2">
-                <h3 class="text-xl font-bold text-zinc-200">New Conversation</h3>
-                <p class="text-sm text-zinc-500 leading-relaxed">
+                <h3 class="text-xl font-bold text-slate-200">New Conversation</h3>
+                <p class="text-sm text-slate-500 leading-relaxed">
                     This conversation is empty. Send a message to start interacting with your agent.
                 </p>
             </div>
             <div class="flex flex-wrap justify-center gap-2 max-w-sm">
                 <button 
                     onclick={() => inputMessage = "Hello! How can you help me today?"}
-                    class="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-[11px] text-zinc-400 hover:text-zinc-200 transition-all"
+                    class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-[11px] text-slate-400 hover:text-slate-200 transition-all"
                 >
                     "How can you help me?"
                 </button>
                 <button 
                     onclick={() => inputMessage = "What are your capabilities?"}
-                    class="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-[11px] text-zinc-400 hover:text-zinc-200 transition-all"
+                    class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-[11px] text-slate-400 hover:text-slate-200 transition-all"
                 >
                     "What are your capabilities?"
                 </button>
@@ -184,7 +184,7 @@
                     <button 
                         onclick={() => chatStore.fetchMessages(true)}
                         disabled={chatStore.loading}
-                        class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50"
+                        class="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-300 transition-colors disabled:opacity-50"
                     >
                         {chatStore.loading ? 'Loading...' : 'Load Previous Messages'}
                     </button>
@@ -195,20 +195,20 @@
                 <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div class="flex-shrink-0 pt-1">
                         {#if msg.role === 'user'}
-                            <div class="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center">
-                                <User class="w-4 h-4 text-zinc-950"/>
+                            <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
+                                <User class="w-4 h-4 text-slate-950"/>
                             </div>
                         {:else}
-                            <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-                                <Bot class="w-4 h-4 text-zinc-400"/>
+                            <div class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center">
+                                <Bot class="w-4 h-4 text-slate-400"/>
                             </div>
                         {/if}
                     </div>
 
                     <div class="flex-1 flex flex-col min-w-0 space-y-4">
                         <div class="flex items-center gap-2">
-                        <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                            {msg.role === 'user' ? 'Human' : 'Nomi'}  {msg.role === 'user' ? '' : `- ${formatTokenCount(msg.total_tokens)} Token`} 
+                        <span class="text-xs font-bold uppercase tracking-wider {msg.role === 'user' ? 'text-slate-300' : 'text-blue-400'}">
+                            {msg.role === 'user' ? 'Human' : 'Nomi'}  {#if msg.role !== 'user'}<span class="font-mono ml-2 text-[10px] text-slate-500">- {formatTokenCount(msg.total_tokens)} Token</span>{/if}
                         </span>
                         </div>
 
@@ -228,36 +228,36 @@
             {#if chatStore.currentThought || chatStore.isTyping}
                 <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div class="flex-shrink-0 pt-1">
-                        <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-                            <Bot class="w-4 h-4 text-zinc-400"/>
+                        <div class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center">
+                            <Bot class="w-4 h-4 text-slate-400"/>
                         </div>
                     </div>
 
                     <div class="flex-1 flex flex-col min-w-0 space-y-4">
                         <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">Nomi</span>
+                            <span class="text-xs font-bold uppercase tracking-wider text-blue-400">Nomi</span>
                             {#if chatStore.isTyping}
                                 <div class="flex gap-1 ml-2">
-                                    <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce"></div>
-                                    <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-                                    <div class="w-1 h-1 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                                    <div class="w-1 h-1 bg-blue-500 rounded-full animate-bounce"></div>
+                                    <div class="w-1 h-1 bg-blue-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                                    <div class="w-1 h-1 bg-blue-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
                                 </div>
                             {/if}
                             {#if chatStore.activeTool}
-                                <div class="flex items-center gap-1.5 ml-3 px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full animate-in fade-in zoom-in duration-300">
-                                    <Wrench class="w-2.5 h-2.5 text-amber-500 animate-pulse" />
-                                    <span class="text-[9px] font-black uppercase tracking-widest text-amber-500/90">Using {chatStore.activeTool.replace(/_/g, ' ')}</span>
+                                <div class="flex items-center gap-1.5 ml-3 px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 rounded-full animate-in fade-in zoom-in duration-300">
+                                    <Wrench class="w-2.5 h-2.5 text-blue-500 animate-pulse" />
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-blue-500/90">Using {chatStore.activeTool.replace(/_/g, ' ')}</span>
                                 </div>
                             {/if}
                         </div>
 
                         {#if chatStore.currentThought}
-                            <div class="p-4 rounded-2xl bg-zinc-900/30 border border-zinc-800/50">
+                            <div class="p-4 rounded-2xl bg-slate-900/30 border border-slate-800/50">
                                 <div class="flex items-center gap-2 mb-2">
-                                    <Sparkles class="w-3 h-3 text-zinc-500" />
-                                    <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Thinking...</span>
+                                    <Sparkles class="w-3 h-3 text-blue-500" />
+                                    <span class="text-[10px] font-bold uppercase tracking-widest text-blue-400/70">Thinking...</span>
                                 </div>
-                                <p class="text-xs text-zinc-400 italic leading-relaxed">
+                                <p class="text-xs text-slate-400 italic leading-relaxed">
                                     {chatStore.currentThought}
                                 </p>
                             </div>
@@ -268,21 +268,21 @@
 
             {#if chatStore.loading}
                 <div class="flex gap-6 animate-pulse opacity-50">
-                    <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800"></div>
+                    <div class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800"></div>
                     <div class="flex-1 space-y-4 pt-1">
-                        <div class="h-2.5 w-24 bg-zinc-800 rounded"></div>
+                        <div class="h-2.5 w-24 bg-slate-800 rounded"></div>
                         <div class="space-y-2">
-                            <div class="h-2 w-full bg-zinc-800 rounded"></div>
-                            <div class="h-2 w-[90%] bg-zinc-800 rounded"></div>
+                            <div class="h-2 w-full bg-slate-800 rounded"></div>
+                            <div class="h-2 w-[90%] bg-slate-800 rounded"></div>
                         </div>
                     </div>
                 </div>
             {/if}
 
             {#if chatStore.error}
-                <div class="p-4 rounded-xl bg-red-500/5 border border-red-500/10 flex items-center gap-3">
-                    <div class="w-2 h-2 rounded-full bg-red-500"></div>
-                    <p class="text-xs font-medium text-red-400">{chatStore.error}</p>
+                <div class="p-4 rounded-xl bg-rose-500/5 border border-rose-500/10 flex items-center gap-3">
+                    <div class="w-2 h-2 rounded-full bg-rose-500"></div>
+                    <p class="text-xs font-medium text-rose-400">{chatStore.error}</p>
                 </div>
             {/if}
         </div>
@@ -290,32 +290,32 @@
 </main>
 
 <!-- Input -->
-<footer class="p-8 bg-gradient-to-t from-[#09090b] via-[#09090b] to-transparent">
+<footer class="p-8 bg-gradient-to-t from-[#0f172a] via-[#0f172a] to-transparent">
     <div class="max-w-4xl mx-auto">
-        <div class="relative transition-all duration-500 rounded-2xl {chatStore.isTyping ? 'ring-2 ring-emerald-500/20 shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)]' : ''}">
-            <div class="relative bg-zinc-900/50 border border-zinc-800 rounded-2xl p-1 shadow-2xl focus-within:border-zinc-700 transition-colors">
+        <div class="relative transition-all duration-500 rounded-2xl {chatStore.isTyping ? 'ring-2 ring-blue-500/20 shadow-[0_0_30px_-5px_rgba(59,130,246,0.3)]' : ''}">
+            <div class="relative bg-slate-900/50 border border-slate-800 rounded-2xl p-1 shadow-2xl focus-within:border-slate-700 transition-colors backdrop-blur-xl">
                 
                 {#if selectedFile}
                     <div class="px-5 pt-4">
-                        <div class="inline-flex items-center gap-3 p-2 bg-zinc-800/50 border border-zinc-700 rounded-xl animate-in fade-in slide-in-from-left-2">
-                            <div class="w-10 h-10 bg-zinc-900 rounded-lg flex items-center justify-center border border-zinc-700">
+                        <div class="inline-flex items-center gap-3 p-2 bg-slate-800/50 border border-slate-700 rounded-xl animate-in fade-in slide-in-from-left-2">
+                            <div class="w-10 h-10 bg-slate-950 rounded-lg flex items-center justify-center border border-slate-700">
                                 {#if selectedFile.type.startsWith('image/')}
-                                    <ImageIcon class="w-5 h-5 text-emerald-500" />
+                                    <ImageIcon class="w-5 h-5 text-blue-500" />
                                 {:else if selectedFile.type.startsWith('audio/')}
-                                    <FileAudio class="w-5 h-5 text-blue-500" />
+                                    <FileAudio class="w-5 h-5 text-emerald-500" />
                                 {:else}
-                                    <FileText class="w-5 h-5 text-zinc-400" />
+                                    <FileText class="w-5 h-5 text-slate-400" />
                                 {/if}
                             </div>
                             <div class="flex flex-col">
-                                <span class="text-[11px] font-bold text-zinc-200 truncate max-w-[150px]">{selectedFile.name}</span>
-                                <span class="text-[9px] text-zinc-500 uppercase">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                                <span class="text-[11px] font-bold text-slate-200 truncate max-w-[150px]">{selectedFile.name}</span>
+                                <span class="text-[9px] text-slate-500 uppercase">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
                             </div>
                             <button 
                                 onclick={removeFile}
-                                class="p-1 hover:bg-zinc-700 rounded-lg transition-colors ml-1"
+                                class="p-1 hover:bg-slate-700 rounded-lg transition-colors ml-1"
                             >
-                                <X class="w-4 h-4 text-zinc-500" />
+                                <X class="w-4 h-4 text-slate-500" />
                             </button>
                         </div>
                     </div>
@@ -324,8 +324,8 @@
                 <textarea
                         bind:value={inputMessage}
                         onkeydown={handleKeydown}
-                        placeholder="Message Arta..."
-                        class="w-full bg-transparent border-none focus:ring-0 text-sm py-4 px-5 min-h-[60px] max-h-48 resize-none placeholder:text-zinc-600 text-zinc-200 focus-within:border-zinc-700 focus:border-0 focus:outline-0"
+                        placeholder="Message Nomi..."
+                        class="w-full bg-transparent border-none focus:ring-0 text-sm py-4 px-5 min-h-[60px] max-h-48 resize-none placeholder:text-slate-600 text-slate-200 focus-within:border-slate-700 focus:border-0 focus:outline-0"
                 ></textarea>
 
                 <div class="flex items-center justify-between px-3 pb-2 pt-1">
@@ -339,11 +339,11 @@
                         />
                         <button 
                             onclick={() => fileInput?.click()}
-                            class="p-2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                            class="p-2 text-slate-500 hover:text-slate-300 transition-colors"
                         >
                             <Paperclip class="w-4 h-4"/>
                         </button>
-                        <button class="p-2 text-zinc-500 hover:text-zinc-300 transition-colors">
+                        <button class="p-2 text-slate-500 hover:text-slate-300 transition-colors">
                             <Sparkles class="w-4 h-4"/>
                         </button>
                     </div>
@@ -351,7 +351,7 @@
                     <button
                             onclick={handleSubmit}
                             disabled={(!inputMessage.trim() && !selectedFile) || chatStore.loading || isUploading}
-                            class="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 text-zinc-950 text-xs font-bold hover:bg-zinc-200 disabled:opacity-20 transition-all shadow-lg"
+                            class="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 disabled:opacity-20 transition-all shadow-lg shadow-blue-500/20"
                     >
                         {#if isUploading}
                             <Loader2 class="w-3.5 h-3.5 animate-spin"/>
@@ -364,15 +364,15 @@
                 </div>
             </div>
         </div>
-        <p class="text-[9px] text-zinc-700 text-center mt-4 uppercase tracking-[0.2em] font-bold">
-            Experimental AI System — Powered by Axum & SvelteKit
+        <p class="text-[9px] text-slate-700 text-center mt-4 uppercase tracking-[0.2em] font-bold">
+            Experimental AI System — Powered by Nomi Infrastructure
         </p>
     </div>
 </footer>
 
 <style>
     :global(body) {
-        background-color: #09090b;
+        background-color: #0f172a;
         margin: 0;
         height: 100vh;
         width: 100vw;
@@ -388,11 +388,11 @@
     }
 
     ::-webkit-scrollbar-thumb {
-        background: #18181b;
+        background: #1e293b;
         border-radius: 10px;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-        background: #27272a;
+        background: #334155;
     }
 </style>

@@ -13,6 +13,8 @@ pub enum MessageSource {
 
 #[derive(Debug, Clone)]
 pub struct UnifiedMessage {
+    pub is_group: bool,
+    pub is_mentioned: bool,
     pub conversation_id: Uuid,
     pub user_id: Option<Uuid>,
     pub text_content: String,

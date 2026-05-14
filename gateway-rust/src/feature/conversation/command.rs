@@ -354,7 +354,7 @@ pub async fn process_group_registration(
     let title = format!("Group: {} via {}", msg.conversation_id, msg.channel);
 
     let trx_convo = sqlx::query!(
-        "INSERT INTO conversations (id, title,soul_content,bootstrap_content) VALUES ($1, $2,$3,$4) RETURNING id",
+        "INSERT INTO conversations (id, title,soul_content,bootstrap_content,conversation_type) VALUES ($1, $2,$3,$4,'group') RETURNING id",
         conv_id,
         title,
         PromptRegistry::default_soul_prompts(),
