@@ -15,7 +15,7 @@ use crate::common::tools::tools_model::{
     UpdateUserProfileParameters, UpdateUserProfileResponse,
 };
 use crate::prompts::PromptRegistry;
-use chrono::{Utc, TimeZone};
+use chrono::{Utc, TimeZone, NaiveDateTime};
 use chrono_tz::Tz;
 use dotenvy::var;
 use gemini_rust::{FunctionDeclaration, Tool, UsageMetadata};
@@ -349,7 +349,7 @@ impl ToolDispatcher {
 
         let schedule_task = FunctionDeclaration::new(
             "schedule_task",
-            "Schedule a background task. Supports personal reminders, automated direct messages (delayed messages), and background agent actions. Supports natural language descriptions and recurrence (daily, weekly, monthly). ALWAYS use the format YYYY-MM-DDTHH:MM:SSZ for due_at. Always convert relative times (e.g., 'in 2 minutes') into an absolute ISO 8601 UTC timestamp based on the current time provided in the system prompt.",
+            "Schedule a background task. Supports personal reminders, automated direct messages (delayed messages), and background agent actions. Supports natural language descriptions and recurrence (daily, weekly, monthly). The absolute execution time. Format: 'YYYY-MM-DD HH:MM'. The user is in WIB (UTC+7). If the user says 'in 30 minutes', calculate the time based on the current WIB time provided in the system prompt.",
             None,
         )
             .with_parameters::<ScheduleTaskParameters>()
@@ -566,11 +566,25 @@ impl ToolDispatcher {
             }
         };
 
-        let due_at_utc = match chrono::DateTime::parse_from_rfc3339(&params.due_at) {
-            Ok(dt) => dt.with_timezone(&chrono::Utc),
+        let tz_wib: Tz = "Asia/Jakarta".parse().unwrap();
+        let due_at_utc = match NaiveDateTime::parse_from_str(&params.due_at, "%Y-%m-%d %H:%M") {
+            Ok(naive) => {
+                // Assume LLM sent time in WIB (UTC+7)
+                match tz_wib.from_local_datetime(&naive).single() {
+                    Some(dt) => dt.with_timezone(&Utc),
+                    None => {
+                        return ToolResult {
+                            error: "Ambiguous or invalid time for WIB timezone".to_string(),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                        };
+                    }
+                }
+            }
             Err(e) => {
                 return ToolResult {
-                    error: format!("Invalid date format: {}. Please use ISO 8601.", e),
+                    error: format!("Invalid date format: {}. Please use 'YYYY-MM-DD HH:MM'.", e),
                     success: false,
                     content: "".to_string(),
                     follow_up_prompt: "".to_string(),
@@ -578,8 +592,7 @@ impl ToolDispatcher {
             }
         };
 
-        // WIB Conversion for output
-        let tz_wib: Tz = "Asia/Jakarta".parse().unwrap();
+        // WIB Conversion for output confirmation
         let due_at_wib = due_at_utc.with_timezone(&tz_wib);
         let time_str = due_at_wib.format("%Y-%m-%d %H:%M WIB").to_string();
 
@@ -607,15 +620,16 @@ impl ToolDispatcher {
         };
 
         let result = sqlx::query!(
-            "INSERT INTO reminders (user_id, conversation_id, task_type, payload, due_at, frequency, max_repeats) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+            "INSERT INTO reminders (user_id, conversation_id, task_type, payload, due_at, frequency, max_repeats,content)
+             VALUES ($1, $2, $3, $4, $5, $6, $7,$8) RETURNING id",
             user_id,
             self.conversation_id,
             params.task_type,
             params.payload,
             due_at_utc,
             frequency,
-            params.max_repeats
+            params.max_repeats,
+            task_description.clone(),
         )
             .fetch_one(&self.pool)
             .await;

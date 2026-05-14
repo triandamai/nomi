@@ -11,6 +11,8 @@ pub enum MediaClassification {
     TechnicalDoc,
     #[serde(rename = "NATURE")]
     Nature,
+    #[serde(rename = "IGNORE")]
+    Ignore,
     #[serde(rename = "OTHER")]
     Other,
 }

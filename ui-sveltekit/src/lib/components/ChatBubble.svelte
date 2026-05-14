@@ -4,7 +4,7 @@
     import {mdIt} from "$lib/utils";
     import {env} from '$env/dynamic/public';
 
-    let {content = '', thought = '', image_url = ''} = $props();
+    let {content = '', thought = '', image_url = '', onToggleThought = () => {}} = $props();
 
     const BASE_URL = env.PUBLIC_GATEWAY_URL || 'http://localhost:8000/api';
     const FILE_URL = BASE_URL.replace('/api', '') + '/api/files/';
@@ -13,6 +13,11 @@
     let renderedThought = $state('');
 
     let thoughtExpanded = $state(false);
+
+    function toggleThought() {
+        thoughtExpanded = !thoughtExpanded;
+        onToggleThought(thoughtExpanded);
+    }
 
     async function init() {
 
@@ -60,7 +65,7 @@
     {#if thought}
         <div class="relative group/thought">
             <button
-                    onclick={() => thoughtExpanded = !thoughtExpanded}
+                    onclick={toggleThought}
                     class="flex items-center gap-2 mb-2 text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-blue-400 transition-colors"
             >
                 <Cpu class="w-3 h-3"/>

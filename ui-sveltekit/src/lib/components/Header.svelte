@@ -114,17 +114,17 @@
     <!-- Mobile Menu Drawer -->
     <div 
         transition:slide
-        class="md:hidden fixed inset-x-0 top-14 bottom-0 bg-[#09090b] z-30 border-t border-zinc-800 flex flex-col p-4 space-y-6 overflow-y-auto"
+        class="md:hidden fixed inset-x-0 top-14 bottom-0 bg-[#0f172a] z-30 border-t border-slate-800/50 flex flex-col p-6 space-y-8 overflow-y-auto"
     >
         <!-- Mobile Tabs -->
-        <div class="space-y-2">
-            <p class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 px-2">Navigation</p>
-            <div class="grid gap-1">
+        <div class="space-y-4">
+            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 px-2">Navigation</p>
+            <div class="grid gap-2">
                 {#each tabs as tab}
                     <a
                         href={tab.href}
                         onclick={() => isMenuOpen = false}
-                        class="flex items-center gap-3 px-4 py-4 rounded-xl text-sm font-medium transition-all {activeTab === tab.name ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-zinc-400 hover:bg-zinc-900'}"
+                        class="flex items-center gap-4 px-4 py-4 rounded-2xl text-sm font-bold transition-all {activeTab === tab.name ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:bg-slate-900 border border-transparent'}"
                     >
                         <tab.icon class="w-5 h-5" />
                         {tab.name}
@@ -134,8 +134,8 @@
         </div>
 
         <!-- Status & Model info at bottom -->
-        <div class="mt-auto pt-6 border-t border-zinc-900 space-y-4">
-            <div class="flex flex-col p-4 rounded-xl bg-zinc-900/50 border border-zinc-800 gap-4">
+        <div class="mt-auto pt-8 border-t border-slate-800/50 space-y-4">
+            <div class="flex flex-col p-5 rounded-3xl bg-slate-900 border border-slate-800 gap-6">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
                         <div class="relative flex h-2.5 w-2.5">
@@ -146,30 +146,30 @@
                                 <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
                             {/if}
                         </div>
-                        <span class="text-sm font-bold text-zinc-300">Gateway {headerStore.isGatewayOnline ? 'Online' : 'Offline'}</span>
+                        <span class="text-sm font-black uppercase tracking-tight text-slate-200">Gateway {headerStore.isGatewayOnline ? 'Online' : 'Offline'}</span>
                     </div>
-                    <div class="flex items-center gap-2 text-zinc-500">
+                    <div class="flex items-center gap-2 text-slate-500">
                         <Cpu class="w-4 h-4"/>
-                        <span class="text-xs font-bold uppercase tracking-tighter">System Models</span>
+                        <span class="text-[10px] font-black uppercase tracking-widest">System</span>
                     </div>
                 </div>
                 
-                <div class="space-y-2 border-t border-zinc-800/50 pt-3">
+                <div class="space-y-3 border-t border-slate-800/50 pt-4">
                     <div class="flex justify-between items-center">
-                        <span class="text-[11px] text-zinc-400">Agent:</span>
-                        <span class="text-[11px] font-mono text-emerald-400">{headerStore.modelInfo.agent_model}</span>
+                        <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Agent</span>
+                        <span class="text-[11px] font-mono text-blue-400 font-bold">{headerStore.modelInfo.agent_model}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-[11px] text-zinc-400">RAG:</span>
-                        <span class="text-[11px] font-mono text-blue-400">{headerStore.modelInfo.rag_embedding}</span>
+                        <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">RAG</span>
+                        <span class="text-[11px] font-mono text-emerald-400 font-bold">{headerStore.modelInfo.rag_embedding}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-[11px] text-zinc-400">Classification:</span>
-                        <span class="text-[11px] font-mono text-amber-400">{headerStore.modelInfo.media_classification}</span>
+                        <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Classification</span>
+                        <span class="text-[11px] font-mono text-amber-400 font-bold">{headerStore.modelInfo.media_classification}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-[11px] text-zinc-400">Vision:</span>
-                        <span class="text-[11px] font-mono text-purple-400">{headerStore.modelInfo.media_analyze}</span>
+                        <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Vision</span>
+                        <span class="text-[11px] font-mono text-purple-400 font-bold">{headerStore.modelInfo.media_analyze}</span>
                     </div>
                 </div>
             </div>

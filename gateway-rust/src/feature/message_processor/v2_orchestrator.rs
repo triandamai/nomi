@@ -59,9 +59,58 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
             "sticker"
         };
 
-        info!("[Orchestrator] 🖼️ Media buffered silently for context. No LLM turn triggered. Type: {}, URL: {}", media_type, media_url);
+        // 1. Save to messages table for history
+        let save_user_message = save_message(
+            &state.pool,
+            conversation_id,
+            "user",
+            "",
+            None,
+            msg.user_id,
+            0,
+            0,
+            0,
+            msg.image_url.clone(),
+            msg.video_url.clone(),
+            msg.audio_url.clone(),
+            msg.doc_url.clone(),
+            msg.sticker_url.clone(),
+        )
+        .await;
 
-        // Save to pending_media table for Media Checkpoint System
+        if let Ok(saved_message) = save_user_message {
+            // 2. Broadcast to members via SSE
+            let members = sqlx::query!(
+                "SELECT m.user_id FROM conversation_members as m WHERE m.conversation_id = $1",
+                conversation_id
+            )
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or(Vec::new());
+
+            for member in members {
+                let _ = state.send_sse_to_user(
+                    member.user_id.to_string().as_str(),
+                    "message",
+                    json!({
+                        "id": saved_message.id,
+                        "conversation_id": conversation_id,
+                        "role": saved_message.role,
+                        "content": saved_message.content.clone(),
+                        "thought": saved_message.thought,
+                        "user_id": saved_message.user_id,
+                        "total_tokens": 0,
+                        "image_url": saved_message.image_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
+                        "video_url": saved_message.video_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
+                        "audio_url": saved_message.audio_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
+                        "document_url": saved_message.document_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
+                        "sticker_url": saved_message.sticker_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
+                        "created_at": saved_message.created_at
+                    })).await;
+            }
+        }
+
+        // 3. Save to pending_media table for Media Checkpoint System
         let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
             &state.pool,
             conversation_id,
@@ -70,6 +119,8 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
             None,
         )
         .await;
+
+        info!("[Orchestrator] 🖼️ Media saved and buffered silently. No LLM turn triggered.");
 
         // STRICT ACTION: Terminate the orchestrator execution loop immediately for this event.
         return Ok(());
@@ -112,13 +163,13 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         let injected_system_prompt =
             crate::prompts::PromptRegistry::zero_intent_clarification().to_string();
 
-        return process_v2_message_with_intent(
+        process_v2_message_with_intent(
             state.clone(),
             msg,
             format!("[User poked about this {}]", media_type),
             Some(injected_system_prompt),
         )
-        .await;
+        .await
     } else if has_media && !is_skip {
         // Task 1: If message.text is NOT empty: Do not ask for clarification.
         // Combine the text and the image into a single multi-part prompt for Gemini.
@@ -165,7 +216,7 @@ async fn process_v2_message_with_intent(
         msg.video_url.clone(),
         msg.audio_url.clone(),
         msg.doc_url.clone(),
-        None,
+        msg.sticker_url.clone(),
     )
     .await;
     if let Err(e) = save_user_message {
@@ -196,6 +247,10 @@ async fn process_v2_message_with_intent(
                     "user_id": saved_message.user_id,
                     "total_tokens": 0,
                     "image_url": saved_message.image_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
+                    "video_url": saved_message.video_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
+                    "audio_url": saved_message.audio_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
+                    "document_url": saved_message.document_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
+                    "sticker_url": saved_message.sticker_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
                     "created_at": saved_message.created_at
         })).await;
     }
@@ -272,7 +327,7 @@ async fn process_v2_message_with_intent(
         }
     }
 
-    let (augmented_text, _media_context) = classification(
+    let (augmented_text, _media_context, should_ignore) = classification(
         &state,
         members.iter().map(|v| v.user_id.clone()).collect(),
         conversation_id,
@@ -281,6 +336,11 @@ async fn process_v2_message_with_intent(
         injected_system_prompt,
     )
     .await;
+
+    if should_ignore {
+        info!("Media classification returned IGNORE, stopping orchestrator loop");
+        return Ok(());
+    }
 
     // Fetch media data if present for Multi-Part prompt
     let media_data = if let Some(ref url) = msg.image_url {
@@ -832,7 +892,7 @@ async fn process_v2_message_with_intent(
 
 fn strip_thinking_tags(text: &str) -> String {
     let healed = crate::common::format::heal_thinking_tags(text);
-    let re = regex::Regex::new(r"(?s)<thinking>.*?</thinking>|<thinking>.*").unwrap();
+    let re = regex::Regex::new(r"(?si)<thinking>.*?</thinking>|<thinking>.*").unwrap();
     re.replace_all(&healed, "").trim().to_string()
 }
 

@@ -13,13 +13,14 @@ use uuid::Uuid;
 
 pub async fn classification(
     state: &AppState,
-    members:Vec<Uuid>,
+    members: Vec<Uuid>,
     conversation_id: Uuid,
     msg: &UnifiedMessage,
     text_content: String,
     injected_system_prompt: Option<String>,
-) -> (String, String) {
+) -> (String, String, bool) {
     let mut media_context = String::new();
+    let mut should_ignore = false;
     if let Some(ref image_url) = msg.image_url {
         let is_empty = text_content.trim().is_empty();
         let is_vague = text_content.trim().len() < 10; // Basic heuristic for "vague"
@@ -41,9 +42,13 @@ pub async fn classification(
                 StatusRegistry::random_action_phrase("analyze_media"),
             );
 
-            let classification = classify_media_context(&state, &image_url)
+            let classification = classify_media_context(&state, &image_url, Some(text_content.clone()))
                 .await
                 .unwrap_or(MediaClassification::Other);
+
+            if let MediaClassification::Ignore = classification {
+                should_ignore = true;
+            }
 
             // Task 1: If text is empty, we do the full proceeding (extraction/KB saving)
             // If it's vague, we might still want basic context for proactive suggestion.
@@ -57,6 +62,7 @@ pub async fn classification(
                     MediaClassification::MotorcycleMaintenance => "[SYSTEM: This image appears to be a motorcycle maintenance record.]".to_string(),
                     MediaClassification::TechnicalDoc => "[SYSTEM: This image appears to be a technical document.]".to_string(),
                     MediaClassification::Nature => "[SYSTEM: This is a nature photo.]".to_string(),
+                    MediaClassification::Ignore => "[SYSTEM: User requested to ignore this media.]".to_string(),
                     MediaClassification::Other => "[SYSTEM: Uncategorized image.]".to_string(),
                 };
             }
@@ -66,6 +72,7 @@ pub async fn classification(
                 MediaClassification::MotorcycleMaintenance => Some("MOTORCYCLE_MAINTENANCE"),
                 MediaClassification::TechnicalDoc => Some("TECHNICAL_DOC"),
                 MediaClassification::Nature => Some("NATURE"),
+                MediaClassification::Ignore => Some("IGNORE"),
                 MediaClassification::Other => Some("OTHER"),
             };
 
@@ -109,7 +116,7 @@ pub async fn classification(
         augmented_text.push_str("\n\n");
         augmented_text.push_str(&injected);
     }
-    return (augmented_text, media_context);
+    return (augmented_text, media_context, should_ignore);
 }
 
 pub async fn proceed_classification(
@@ -234,6 +241,10 @@ pub async fn proceed_classification(
         }
         MediaClassification::Nature => {
             media_context = crate::prompts::PromptRegistry::media_context_nature().to_string();
+            media_context
+        }
+        MediaClassification::Ignore => {
+            media_context = "".to_string();
             media_context
         }
         MediaClassification::Other => {

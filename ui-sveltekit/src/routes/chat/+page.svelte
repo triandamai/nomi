@@ -28,6 +28,23 @@
         chatStore.fetchMessages();
     });
 
+    function scrollToBottom() {
+        tick().then(() => {
+            if (scrollContainer) {
+                scrollContainer.scrollTo({
+                    top: scrollContainer.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+        });
+    }
+
+    function handleToggleThought(isExpanded: boolean, isLast: boolean) {
+        if (isExpanded && isLast) {
+            scrollToBottom();
+        }
+    }
+
     // Auto-scroll to bottom on new messages, thoughts, or typing
     $effect(() => {
         // Track dependencies
@@ -86,12 +103,14 @@
         const target = e.target as HTMLInputElement;
         if (target.files && target.files.length > 0) {
             selectedFile = target.files[0];
+            scrollToBottom();
         }
     }
 
     function removeFile() {
         selectedFile = null;
         if (fileInput) fileInput.value = '';
+        scrollToBottom();
     }
 
     function handleKeydown(e: KeyboardEvent) {
@@ -119,7 +138,7 @@
 <main 
     bind:this={scrollContainer} 
     onscroll={handleScroll}
-    class="flex-1 overflow-y-auto px-6 py-8 space-y-10 scroll-smooth"
+    class="flex-1 overflow-y-auto px-6 pt-8 {selectedFile ? 'pb-64' : 'pb-48'} space-y-10 scroll-smooth"
 >
     {#if conversationStore.conversations.length === 0}
         <div class="h-full flex flex-col items-center justify-center max-w-lg mx-auto text-center space-y-8 animate-in fade-in zoom-in duration-700">
@@ -197,7 +216,7 @@
                 </div>
             {/if}
 
-            {#each chatStore.messages as msg (msg.id)}
+            {#each chatStore.messages as msg, index (msg.id)}
                 <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div class="flex-shrink-0 pt-1">
                         {#if msg.role === 'user'}
@@ -226,7 +245,12 @@
                         </div>
                         {/if}
 
-                        <ChatBubble content={msg.content} thought={msg.thought} image_url={msg.image_url} />
+                        <ChatBubble 
+                            content={msg.content} 
+                            thought={msg.thought} 
+                            image_url={msg.image_url} 
+                            onToggleThought={(expanded: boolean) => handleToggleThought(expanded, index === chatStore.messages.length - 1)}
+                        />
                     </div>
                 </div>
             {/each}
@@ -296,32 +320,32 @@
 </main>
 
 <!-- Input -->
-<footer class="p-8 bg-gradient-to-t from-[#0f172a] via-[#0f172a] to-transparent">
-    <div class="max-w-4xl mx-auto">
+<footer class="absolute bottom-0 left-0 right-0 p-4 md:p-8 pointer-events-none z-20">
+    <div class="max-w-4xl mx-auto pointer-events-auto">
         <div class="relative transition-all duration-500 rounded-2xl {chatStore.isTyping ? 'ring-2 ring-blue-500/20 shadow-[0_0_30px_-5px_rgba(59,130,246,0.3)]' : ''}">
-            <div class="relative bg-slate-900/50 border border-slate-800 rounded-2xl p-1 shadow-2xl focus-within:border-slate-700 transition-colors backdrop-blur-xl">
+            <div class="relative bg-[#0f172a]/80 border border-slate-800 rounded-2xl p-1 shadow-2xl focus-within:border-slate-700 transition-colors backdrop-blur-xl">
                 
                 {#if selectedFile}
-                    <div class="px-5 pt-4">
+                    <div class="px-4 md:px-5 pt-4">
                         <div class="inline-flex items-center gap-3 p-2 bg-slate-800/50 border border-slate-700 rounded-xl animate-in fade-in slide-in-from-left-2">
-                            <div class="w-10 h-10 bg-slate-950 rounded-lg flex items-center justify-center border border-slate-700">
+                            <div class="w-8 h-8 md:w-10 md:h-10 bg-slate-950 rounded-lg flex items-center justify-center border border-slate-700">
                                 {#if selectedFile.type.startsWith('image/')}
-                                    <ImageIcon class="w-5 h-5 text-blue-500" />
+                                    <ImageIcon class="w-4 h-4 md:w-5 md:h-5 text-blue-500" />
                                 {:else if selectedFile.type.startsWith('audio/')}
-                                    <FileAudio class="w-5 h-5 text-emerald-500" />
+                                    <FileAudio class="w-4 h-4 md:w-5 md:h-5 text-emerald-500" />
                                 {:else}
-                                    <FileText class="w-5 h-5 text-slate-400" />
+                                    <FileText class="w-4 h-4 md:w-5 md:h-5 text-slate-400" />
                                 {/if}
                             </div>
-                            <div class="flex flex-col">
-                                <span class="text-[11px] font-bold text-slate-200 truncate max-w-[150px]">{selectedFile.name}</span>
-                                <span class="text-[9px] text-slate-500 uppercase">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                            <div class="flex flex-col min-w-0">
+                                <span class="text-[10px] md:text-[11px] font-bold text-slate-200 truncate max-w-[100px] md:max-w-[150px]">{selectedFile.name}</span>
+                                <span class="text-[8px] md:text-[9px] text-slate-500 uppercase">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
                             </div>
                             <button 
                                 onclick={removeFile}
                                 class="p-1 hover:bg-slate-700 rounded-lg transition-colors ml-1"
                             >
-                                <X class="w-4 h-4 text-slate-500" />
+                                <X class="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-500" />
                             </button>
                         </div>
                     </div>
@@ -331,11 +355,11 @@
                         bind:value={inputMessage}
                         onkeydown={handleKeydown}
                         placeholder="Message Nomi..."
-                        class="w-full bg-transparent border-none focus:ring-0 text-sm py-4 px-5 min-h-[60px] max-h-48 resize-none placeholder:text-slate-600 text-slate-200 focus-within:border-slate-700 focus:border-0 focus:outline-0"
+                        class="w-full bg-transparent border-none focus:ring-0 text-sm py-3 md:py-4 px-4 md:px-5 min-h-[50px] md:min-h-[60px] max-h-32 md:max-h-48 resize-none placeholder:text-slate-600 text-slate-200 focus-within:border-slate-700 focus:border-0 focus:outline-0"
                 ></textarea>
 
-                <div class="flex items-center justify-between px-3 pb-2 pt-1">
-                    <div class="flex items-center gap-1">
+                <div class="flex items-center justify-between px-2 md:px-3 pb-2 pt-1">
+                    <div class="flex items-center gap-0.5 md:gap-1">
                         <input 
                             type="file" 
                             bind:this={fileInput} 
@@ -361,18 +385,15 @@
                     >
                         {#if isUploading}
                             <Loader2 class="w-3.5 h-3.5 animate-spin"/>
-                            Uploading...
+                            <span class="hidden sm:inline">Uploading...</span>
                         {:else}
-                            Send
+                            <span class="hidden sm:inline">Send</span>
                             <Send class="w-3.5 h-3.5"/>
                         {/if}
                     </button>
                 </div>
             </div>
         </div>
-        <p class="text-[9px] text-slate-700 text-center mt-4 uppercase tracking-[0.2em] font-bold">
-            Experimental AI System — Powered by Nomi Infrastructure
-        </p>
     </div>
 </footer>
 

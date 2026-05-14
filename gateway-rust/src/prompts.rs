@@ -239,7 +239,7 @@ impl PromptRegistry {
     // --- TOOLS PROMPTS ---
 
     pub fn media_classification() -> &'static str {
-        "Classify this image into exactly one of these categories: EXPENSE_RECEIPT, MOTORCYCLE_MAINTENANCE, TECHNICAL_DOC, NATURE, or OTHER. Return ONLY the category name."
+        "Classify this image into exactly one of these categories: EXPENSE_RECEIPT, MOTORCYCLE_MAINTENANCE, TECHNICAL_DOC, NATURE, IGNORE, or OTHER. Return ONLY the category name. Use IGNORE if the user explicitly asks to ignore, skip, or if the content is irrelevant to your core missions (coding, life optimization, expense tracking)."
     }
 
     pub fn expense_extraction() -> &'static str {

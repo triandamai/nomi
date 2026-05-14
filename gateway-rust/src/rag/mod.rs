@@ -291,8 +291,13 @@ pub(crate) async fn trigger_memory_consolidation(
 pub(crate) async fn classify_media_context(
     state: &AppState,
     media_url: &str,
+    text_content: Option<String>,
 ) -> anyhow::Result<MediaClassification> {
-    let prompt = PromptRegistry::media_classification();
+    let mut prompt = PromptRegistry::media_classification().to_string();
+
+    if let Some(text) = text_content {
+        prompt.push_str(&format!("\n\nUser text provided: \"{}\"", text));
+    }
 
     let (mime_type, base64_data) = fetch_media_from_storage(state, media_url).await?;
 
@@ -307,7 +312,7 @@ pub(crate) async fn classify_media_context(
             content: Content {
                 parts: Some(vec![
                     Part::Text {
-                        text: prompt.to_string(), // The Instruction
+                        text: prompt, // The Instruction + User Context
                         thought: None,
                         thought_signature: None,
                     },
@@ -344,6 +349,8 @@ pub(crate) async fn classify_media_context(
         Ok(MediaClassification::TechnicalDoc)
     } else if text.contains("NATURE") {
         Ok(MediaClassification::Nature)
+    } else if text.contains("IGNORE") {
+        Ok(MediaClassification::Ignore)
     } else {
         Ok(MediaClassification::Other)
     }

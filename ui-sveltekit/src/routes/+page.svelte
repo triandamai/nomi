@@ -13,7 +13,9 @@
         Lock,
         MessageSquare,
         Camera,
-        Mic
+        Mic,
+        Menu,
+        X
     } from 'lucide-svelte';
     import { onMount } from 'svelte';
     import { fade, fly, slide } from 'svelte/transition';
@@ -22,6 +24,7 @@
     let email = $state('');
     let status = $state<'idle' | 'loading' | 'success' | 'error'>('idle');
     let message = $state('');
+    let mobileMenuOpen = $state(false);
 
     async function handleJoinWaitlist() {
         if (!email) return;
@@ -64,6 +67,8 @@
                 </div>
                 <span class="text-xl font-black tracking-tighter text-white">NOMI</span>
             </div>
+            
+            <!-- Desktop Nav -->
             <nav class="hidden md:flex items-center gap-8">
                 <a href="#features" class="text-sm font-medium text-slate-400 hover:text-white transition-colors">Features</a>
                 <a href="#stack" class="text-sm font-medium text-slate-400 hover:text-white transition-colors">Stack</a>
@@ -71,7 +76,44 @@
                     Login
                 </a>
             </nav>
+
+            <!-- Mobile Menu Toggle -->
+            <button 
+                class="md:hidden p-2 text-slate-400 hover:text-white"
+                onclick={() => mobileMenuOpen = !mobileMenuOpen}
+            >
+                {#if mobileMenuOpen}
+                    <X class="w-6 h-6" />
+                {:else}
+                    <Menu class="w-6 h-6" />
+                {/if}
+            </button>
         </div>
+
+        <!-- Mobile Nav -->
+        {#if mobileMenuOpen}
+            <div 
+                class="md:hidden absolute top-16 left-0 w-full bg-[#0f172a] border-b border-slate-800 shadow-xl"
+                transition:slide
+            >
+                <nav class="flex flex-col p-6 gap-4">
+                    <a 
+                        href="#features" 
+                        class="text-lg font-medium text-slate-400"
+                        onclick={() => mobileMenuOpen = false}
+                    >Features</a>
+                    <a 
+                        href="#stack" 
+                        class="text-lg font-medium text-slate-400"
+                        onclick={() => mobileMenuOpen = false}
+                    >Stack</a>
+                    <a 
+                        href="/login" 
+                        class="w-full py-4 rounded-xl bg-blue-600 text-center font-bold text-white"
+                    >Login</a>
+                </nav>
+            </div>
+        {/if}
     </header>
 
     <main>
@@ -94,8 +136,10 @@
                     <p class="text-lg md:text-xl text-slate-400 leading-relaxed max-w-xl">
                         The multimodal life infrastructure that lives where you do. Finance, vitality, and memories—all synced through a single, intelligent interface.
                     </p>
-                    <div class="flex flex-col sm:flex-row gap-4">
-                        <div class="relative flex-1 max-w-md">
+                    
+                    <!-- Responsive CTA Hero -->
+                    <div class="flex flex-col gap-4">
+                        <div class="relative flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-center max-w-md">
                             <input
                                 bind:value={email}
                                 type="email"
@@ -105,7 +149,7 @@
                             <button
                                 onclick={handleJoinWaitlist}
                                 disabled={status === 'loading'}
-                                class="absolute right-2 top-2 h-10 px-6 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
+                                class="sm:absolute sm:right-2 h-14 sm:h-10 px-6 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-2xl sm:rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
                             >
                                 {#if status === 'loading'}
                                     <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -290,7 +334,7 @@
 
         <!-- Final CTA -->
         <section class="py-32 px-6">
-            <div class="max-w-4xl mx-auto text-center p-12 md:p-20 bg-gradient-to-br from-blue-600 to-blue-800 rounded-[3rem] shadow-2xl shadow-blue-900/40 relative overflow-hidden">
+            <div class="max-w-4xl mx-auto text-center p-8 md:p-20 bg-gradient-to-br from-blue-600 to-blue-800 rounded-[2rem] md:rounded-[3rem] shadow-2xl shadow-blue-900/40 relative overflow-hidden">
                 <div class="absolute top-0 right-0 p-10 opacity-10">
                     <Zap class="w-64 h-64 text-white fill-white" />
                 </div>
@@ -298,7 +342,7 @@
                     <h2 class="text-4xl md:text-6xl font-black text-white tracking-tight">Ready to Decode?</h2>
                     <p class="text-blue-100 text-lg max-w-xl mx-auto">Join the early beta and start building your multimodal life infrastructure today.</p>
                     <div class="flex flex-col sm:flex-row justify-center gap-4">
-                        <div class="relative flex-1 max-w-md mx-auto sm:mx-0">
+                        <div class="relative flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-center w-full max-w-md mx-auto">
                             <input
                                 bind:value={email}
                                 type="email"
@@ -308,7 +352,7 @@
                             <button
                                 onclick={handleJoinWaitlist}
                                 disabled={status === 'loading'}
-                                class="absolute right-2 top-2 h-12 px-8 bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-50 font-black rounded-xl transition-all shadow-xl"
+                                class="sm:absolute sm:right-2 h-16 sm:h-12 px-8 bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-50 font-black rounded-2xl sm:rounded-xl transition-all shadow-xl flex items-center justify-center"
                             >
                                 Get Started
                             </button>

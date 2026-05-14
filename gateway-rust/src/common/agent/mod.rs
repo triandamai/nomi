@@ -592,18 +592,15 @@ pub fn parse_llm_output(raw_text: &str) -> ChatResponse {
     let mut thought = String::new();
     let mut clean_content = raw_text.to_string();
 
-    if let Some(start) = raw_text.find("<thinking>") {
-        if let Some(end) = raw_text.find("</thinking>") {
-            thought = raw_text[start + 10..end].to_string();
-            // Remove the entire <thinking>...</thinking> block from the response
-            let before = &raw_text[..start];
-            let after = &raw_text[end + 11..];
-            clean_content = format!("{}{}", before, after);
-        } else {
-            // Unclosed thinking tag
-            thought = raw_text[start + 10..].to_string();
-            clean_content = raw_text[..start].to_string();
-        }
+    let re_thinking = regex::Regex::new(r"(?si)<thinking>(.*?)</thinking>").unwrap();
+    let re_unclosed = regex::Regex::new(r"(?si)<thinking>(.*)").unwrap();
+
+    if let Some(caps) = re_thinking.captures(raw_text) {
+        thought = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+        clean_content = re_thinking.replace(raw_text, "").to_string();
+    } else if let Some(caps) = re_unclosed.captures(raw_text) {
+        thought = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+        clean_content = re_unclosed.replace(raw_text, "").to_string();
     }
 
     // 2. Extract Code Block (Improved)
