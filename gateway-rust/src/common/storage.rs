@@ -16,11 +16,14 @@ pub struct ExploreItem {
 pub struct StorageClient {
     access_key: String,
     secret_key: String,
-    url_server: String
+    url_server: String,
 }
 
 impl StorageClient {
-    pub async fn explore_storage(&self, prefix: Option<String>) -> Result<Vec<ExploreItem>, String> {
+    pub async fn explore_storage(
+        &self,
+        prefix: Option<String>,
+    ) -> Result<Vec<ExploreItem>, String> {
         let credentials = Credentials::new(
             Some(self.access_key.clone().as_str()),
             Some(self.secret_key.clone().as_str()),
@@ -44,7 +47,7 @@ impl StorageClient {
                 return Err(res.unwrap_err().to_string());
             }
             let res = res.unwrap();
-            
+
             let mut items = Vec::new();
             for name in res.bucket_names() {
                 items.push(ExploreItem {
@@ -61,11 +64,7 @@ impl StorageClient {
         let bucket_name = parts.next().unwrap();
         let obj_prefix = parts.next().unwrap_or("").to_string();
 
-        let bucket = Bucket::new(
-            bucket_name,
-            region,
-            credentials,
-        );
+        let bucket = Bucket::new(bucket_name, region, credentials);
         if bucket.is_err() {
             return Err(bucket.unwrap_err().to_string());
         }
@@ -81,7 +80,13 @@ impl StorageClient {
         for r in res {
             if let Some(prefixes) = r.common_prefixes {
                 for cp in prefixes {
-                    let name = cp.prefix.trim_end_matches('/').split('/').last().unwrap_or("").to_string();
+                    let name = cp
+                        .prefix
+                        .trim_end_matches('/')
+                        .split('/')
+                        .last()
+                        .unwrap_or("")
+                        .to_string();
                     items.push(ExploreItem {
                         r#type: "folder".to_string(),
                         name,
@@ -105,26 +110,21 @@ impl StorageClient {
         Ok(items)
     }
 
-    pub fn new(
-        access_key: String,
-        secret_key: String,
-        url_server: String
-    ) -> StorageClient {
+    pub fn new(access_key: String, secret_key: String, url_server: String) -> StorageClient {
         info!(target:"app::minio","Init minio");
         StorageClient {
             access_key,
             secret_key,
-            url_server
+            url_server,
         }
     }
-
 
     pub async fn get_file(
         &self,
         bucket_name: String,
-        file_name: String
+        file_name: String,
     ) -> Result<ResponseData, String> {
-        info!(target:"app::minio","Get file");
+        info!(target:"app::minio","getting file bucket:{} filename:{} ",bucket_name, file_name);
         let credentials = Credentials::new(
             Some(self.access_key.clone().as_str()),
             Some(self.secret_key.clone().as_str()),
@@ -177,7 +177,7 @@ impl StorageClient {
         &self,
         bucket_name: String,
         path: String,
-        data:Vec<u8>
+        data: Vec<u8>,
     ) -> Result<String, String> {
         let credentials = Credentials::new(
             Some(self.access_key.clone().as_str()),
@@ -202,7 +202,6 @@ impl StorageClient {
             return Err(bucket.unwrap_err().to_string());
         }
         let bucket = bucket.unwrap().with_path_style();
-
 
         let upload = bucket.put_object(path.as_str(), &data).await;
         match upload {
@@ -291,6 +290,6 @@ impl StorageClient {
 
     pub fn get_full_url(&self, path: &str) -> String {
         let base_url = var("PUBLIC_GATEWAY_URL").expect("http://localhost:8000/api");
-        format!("{}/files/{}",base_url, path)
+        format!("{}/files/{}", base_url, path)
     }
 }

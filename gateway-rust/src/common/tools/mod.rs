@@ -274,7 +274,9 @@ impl ToolDispatcher {
         }
     }
 
-    pub fn generate_tool_for_prompt() -> Tool {
+    pub fn generate_tool_for_prompt(intents: &[String]) -> Tool {
+        let mut tools = Vec::new();
+
         let read_workspace_file = FunctionDeclaration::new(
             "read_workspace_file",
             "Read content of file in workspace",
@@ -432,37 +434,85 @@ impl ToolDispatcher {
             .with_parameters::<tools_model::GetTransactionDetailsParameters>()
             .with_response::<tools_model::GetTransactionDetailsResponse>();
 
-        // let get_latest_media_context = FunctionDeclaration::new(
-        //     "get_latest_media_context",
-        //     "Retrieve the latest media (image, video, etc.) context from the current conversation if not provided in the current turn.",
-        //     None,
-        // )
-        //     .with_parameters::<GetLatestMediaContextParameters>()
-        //     .with_response::<GetLatestMediaContextResponse>();
+        for intent in intents {
+            match intent.as_str() {
+                "FINANCE" => {
+                    tools.push(log_expense.clone());
+                    tools.push(get_expense_summary.clone());
+                    tools.push(get_transaction_details.clone());
+                }
+                "VITALITY" => {
+                    // Not specified clearly which tools but add any health related if there are. None exist explicitly yet, maybe add analyze_media or generic ones if necessary
+                }
+                "STORAGE" => {
+                    tools.push(update_knowledge_base.clone());
+                    tools.push(retrieve_knowledge.clone());
+                    tools.push(read_workspace_file.clone());
+                    tools.push(execute_read_query.clone());
+                }
+                "REMINDER" => {
+                    tools.push(create_reminder.clone());
+                    tools.push(modify_reminder.clone());
+                    tools.push(get_reminder_stats.clone());
+                }
+                "WEB" => {
+                    tools.push(web_search.clone());
+                    tools.push(read_web_page.clone());
+                }
+                "DASHBOARD" => {
+                    tools.push(get_reminder_stats.clone());
+                    tools.push(get_inbox_summary.clone());
+                    tools.push(get_expense_summary.clone());
+                }
+                "COMMUNICATION" => {
+                    tools.push(get_inbox_summary.clone());
+                    tools.push(search_users.clone());
+                    tools.push(send_direct_message.clone());
+                }
+                _ => {}
+            }
+        }
+        
+        // Let's add some generic tools that might always be needed for intent != GENERAL, or specifically requested tools.
+        // The instructions state: "Filter Tools: Pass only the tools relevant to the identified Intent to the LLM. Example: If FINANCE, only pass the expense tracking tools. Critical: If GENERAL, pass ZERO tools."
+        // We'll also add some core ones or just rely strictly on the switch.
+        
+        // Wait, if fallback mode is triggered, intent could be set to "FULL_REGISTRY" or something.
+        if intents.contains(&"FULL_REGISTRY".to_string()) {
+            tools = vec![
+                read_workspace_file,
+                execute_read_query,
+                web_search,
+                read_web_page,
+                update_nomi_soul,
+                update_knowledge_base,
+                retrieve_knowledge,
+                evolve_bootstrap_content,
+                create_reminder,
+                modify_reminder,
+                get_inbox_summary,
+                get_reminder_stats,
+                search_users,
+                update_user_profile,
+                send_direct_message,
+                make_sticker,
+                log_expense,
+                analyze_media,
+                get_expense_summary,
+                get_transaction_details,
+            ];
+        }
 
-        Tool::with_functions(vec![
-            read_workspace_file,
-            execute_read_query,
-            web_search,
-            read_web_page,
-            update_nomi_soul,
-            update_knowledge_base,
-            retrieve_knowledge,
-            evolve_bootstrap_content,
-            create_reminder,
-            modify_reminder,
-            get_inbox_summary,
-            get_reminder_stats,
-            search_users,
-            update_user_profile,
-            send_direct_message,
-            make_sticker,
-            log_expense,
-            analyze_media,
-            get_expense_summary,
-            get_transaction_details,
-            // get_latest_media_context,
-        ])
+        // De-duplicate tools based on name if multiple intents added the same tool
+        let mut unique_tools = Vec::new();
+        let mut seen_names = std::collections::HashSet::new();
+        for t in tools {
+            if seen_names.insert(t.name.clone()) {
+                unique_tools.push(t);
+            }
+        }
+
+        Tool::with_functions(unique_tools)
     }
 
     async fn create_reminder(

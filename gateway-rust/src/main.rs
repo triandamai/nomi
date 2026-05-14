@@ -12,11 +12,11 @@ use crate::feature::{OutboundMessage, PresenceMessage};
 use axum::Router;
 use dotenvy::dotenv;
 use gemini_rust::{Gemini, Model};
-use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use std::{env::var, sync::Arc};
 use tower_http::cors::CorsLayer;
 use tracing::{debug, error, info};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -31,14 +31,13 @@ pub struct AppState {
 }
 
 impl AppState {
-
     pub async fn send_sse_to_user(
         &self,
         user_id: &str,
         event_name: &str,
         sse_data: serde_json::Value,
     ) -> anyhow::Result<()> {
-        info!("sending with sse and publish to subs");
+        // info!("sending with sse and publish to subs");
         let _ = self
             .sse
             .send(SseBuilder::new(
@@ -55,7 +54,7 @@ impl AppState {
         sse_data: serde_json::Value,
         redis_data: &OutboundMessage,
     ) -> anyhow::Result<()> {
-        info!("sending with sse and publish to subs");
+        // info!("sending with sse and publish to subs");
         let _ = self
             .sse
             .send(SseBuilder::new(
@@ -70,9 +69,9 @@ impl AppState {
     pub async fn broadcast_sse(
         &self,
         event_name: &str,
-        sse_data: serde_json::Value
+        sse_data: serde_json::Value,
     ) -> anyhow::Result<()> {
-        info!("sending with sse and publish to subs");
+        // info!("sending with sse and publish to subs");
         let _ = self
             .sse
             .send(SseBuilder::new(
@@ -89,7 +88,7 @@ impl AppState {
         sse_data: serde_json::Value,
         redis_data: &OutboundMessage,
     ) -> anyhow::Result<()> {
-        info!("sending with sse and publish to subs");
+        // info!("sending with sse and publish to subs");
         let _ = self
             .sse
             .send(SseBuilder::new(
@@ -102,14 +101,13 @@ impl AppState {
         Ok(())
     }
 
-
     pub async fn send_presence_to_user(
         &self,
         user_id: &str,
         sse_data: serde_json::Value,
         redis_data: &PresenceMessage,
     ) -> anyhow::Result<()> {
-        info!("sending with sse and publish to subs");
+        // info!("sending with sse and publish to subs");
         let _ = self
             .sse
             .send(SseBuilder::new(
@@ -126,7 +124,6 @@ impl AppState {
         sse_data: serde_json::Value,
         redis_data: &PresenceMessage,
     ) -> anyhow::Result<()> {
-        info!("sending with sse and publish to subs");
         let _ = self
             .sse
             .send(SseBuilder::new(
@@ -139,11 +136,7 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn broadcast_presence_sse(
-        &self,
-        sse_data: serde_json::Value
-    ) -> anyhow::Result<()> {
-        info!("sending with sse and publish to subs");
+    pub async fn broadcast_presence_sse(&self, sse_data: serde_json::Value) -> anyhow::Result<()> {
         let _ = self
             .sse
             .send(SseBuilder::new(
@@ -156,9 +149,8 @@ impl AppState {
     pub async fn send_presence_sse_to_user(
         &self,
         user_id: &str,
-        sse_data: serde_json::Value
+        sse_data: serde_json::Value,
     ) -> anyhow::Result<()> {
-        info!("sending with sse and publish to subs");
         let _ = self
             .sse
             .send(SseBuilder::new(
@@ -170,26 +162,23 @@ impl AppState {
     }
 
     pub async fn publish_outbond(&self, redis_data: &OutboundMessage) {
-        info!("publish to redis");
         match self.redis.publish_event("nomi:outbound", redis_data).await {
             Ok(_) => {
-                info!("outbound event sent");
+                info!("publish to redis: outbound event sent");
             }
             Err(err) => {
-                error!("outbound publishing failed: {}", err);
+                error!("publish to redis: outbound publishing failed: {}", err);
             }
         };
-
     }
 
     pub async fn publish_presence(&self, redis_data: &PresenceMessage) {
-        info!("publish to redis");
         match self.redis.publish_event("nomi:presence", redis_data).await {
             Ok(_) => {
-                info!("presence event sent");
+                info!("publish to redis: presence event sent");
             }
             Err(err) => {
-                error!("presence publishing failed: {}", err);
+                error!("publish to redis: presence publishing failed: {}", err);
             }
         };
     }
@@ -227,14 +216,17 @@ async fn main() -> anyhow::Result<()> {
     let storage_access_key = var("S3_ACCESS_KEY").expect("S3_ACCESS_KEY must be set");
     let storage_secret_key = var("S3_SECRET_KEY").expect("S3_SECRET_KEY must be set");
     let storage_url = var("S3_URL").expect("S3_URL must be set");
-    let storage = crate::common::storage::StorageClient::new(storage_access_key, storage_secret_key, storage_url);
+    let storage = crate::common::storage::StorageClient::new(
+        storage_access_key,
+        storage_secret_key,
+        storage_url,
+    );
 
     // Using Gemini25Flash which corresponds to gemini-1.5-flash
     let gemini = Gemini::with_model(&gemini_api_key, Model::Gemini25Flash)
         .expect("Failed to create Gemini client");
     let gemini = Arc::new(gemini);
     let sse = SseBroadcaster::create();
-
 
     let state = AppState {
         sse,
@@ -277,7 +269,12 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(async move {
         loop {
             info!("Running pending_media cleanup...");
-            if let Err(e) = crate::common::repository::pending_media_repo::cleanup_old_pending_media(&cleanup_state.pool).await {
+            if let Err(e) =
+                crate::common::repository::pending_media_repo::cleanup_old_pending_media(
+                    &cleanup_state.pool,
+                )
+                .await
+            {
                 error!("Failed to cleanup pending_media: {}", e);
             }
             tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;

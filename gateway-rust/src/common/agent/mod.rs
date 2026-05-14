@@ -22,6 +22,7 @@ use tracing::{error, info};
 pub async fn send_prompt(
     gemini: &Gemini,
     actor: PromptActor,
+    intents: &[String],
 ) -> Result<(GenerationResponse, ChatStreamChunk), String> {
     info!("\n ==== sending message to llm ==== \n");
 
@@ -44,15 +45,12 @@ pub async fn send_prompt(
 
             if let Some((mime_type, data)) = media {
                 user_parts.push(gemini_rust::Part::InlineData {
-                    inline_data: gemini_rust::Blob {
-                        mime_type,
-                        data,
-                    },
+                    inline_data: gemini_rust::Blob { mime_type, data },
                     media_resolution: None,
                 });
             }
 
-            gemini
+            let mut builder = gemini
                 .generate_content()
                 .with_system_prompt(build_prompt)
                 .with_message(Message {
@@ -61,10 +59,17 @@ pub async fn send_prompt(
                         parts: Some(user_parts),
                         role: Some(Role::User),
                     },
-                })
-                .with_tool(ToolDispatcher::generate_tool_for_prompt())
-                .with_function_calling_mode(FunctionCallingMode::Auto)
-                .with_max_output_tokens(4096)
+                });
+            if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
+                builder = builder
+                    .with_tool(ToolDispatcher::generate_tool_for_prompt(intents))
+                    .with_function_calling_mode(FunctionCallingMode::Auto);
+            }else{
+                builder = builder
+                    .with_tool(ToolDispatcher::generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]))
+                    .with_function_calling_mode(FunctionCallingMode::Auto);
+            }
+            builder.with_max_output_tokens(4096)
         }
         PromptActor::MultiTool {
             history,
@@ -85,10 +90,7 @@ pub async fn send_prompt(
 
             if let Some((mime_type, data)) = media {
                 user_parts.push(gemini_rust::Part::InlineData {
-                    inline_data: gemini_rust::Blob {
-                        mime_type,
-                        data,
-                    },
+                    inline_data: gemini_rust::Blob { mime_type, data },
                     media_resolution: None,
                 });
             }
@@ -145,32 +147,49 @@ pub async fn send_prompt(
                 }
             }
 
-            builder
-                .with_tool(ToolDispatcher::generate_tool_for_prompt())
-                .with_function_calling_mode(FunctionCallingMode::Auto)
-                .with_max_output_tokens(4096)
+            if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
+                builder = builder
+                    .with_tool(ToolDispatcher::generate_tool_for_prompt(intents))
+                    .with_function_calling_mode(FunctionCallingMode::Auto);
+            }else{
+                builder = builder
+                    .with_tool(ToolDispatcher::generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]))
+                    .with_function_calling_mode(FunctionCallingMode::Auto);
+            }
+            builder.with_max_output_tokens(4096)
         }
     };
     // D. Streaming Egress
     match gemini_builder.execute().await {
         Ok(s) => {
             let raw_text = s.text();
-            info!("===== raw response ===== \n {} \n ================ \n", raw_text);
-            
+            info!(
+                "\n ===== raw response ===== \n {} \n ================ \n",
+                raw_text
+            );
+
             // Task 1: Heal tags if broken
             let mut healed_text = crate::common::format::heal_thinking_tags(&raw_text);
             if healed_text != raw_text {
-                info!("===== healed response ===== \n {} \n ================ \n", healed_text);
+                info!(
+                    "\n ===== healed response ===== \n {} \n ================ \n",
+                    healed_text
+                );
             }
 
             let mut parse = parse_llm_output(&healed_text);
 
             // Task 2: Refiner Utility
             // If thought is empty OR response still looks like it contains 'thinking' at the start
-            if parse.thought.is_empty() && (parse.response.to_lowercase().starts_with("thinking") || parse.response.contains("<thinking>")) {
-                if let Ok(refined_text) = crate::common::format::refine_output(&raw_text, gemini).await {
-                     healed_text = refined_text;
-                     parse = parse_llm_output(&healed_text);
+            if parse.thought.is_empty()
+                && (parse.response.to_lowercase().starts_with("thinking")
+                    || parse.response.contains("<thinking>"))
+            {
+                if let Ok(refined_text) =
+                    crate::common::format::refine_output(&raw_text, gemini).await
+                {
+                    healed_text = refined_text;
+                    parse = parse_llm_output(&healed_text);
                 }
             }
 
@@ -441,7 +460,7 @@ pub async fn execute_tools(
                         })
                         .await
                 }
-                "get_transaction_details"=>{
+                "get_transaction_details" => {
                     let param: crate::common::tools::tools_model::GetTransactionDetailsParameters =
                         serde_json::from_value(args).unwrap();
                     dispatcher

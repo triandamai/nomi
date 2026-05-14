@@ -1,6 +1,6 @@
 use crate::AppState;
 use crate::common::agent::agent_model::PromptActor;
-use crate::common::agent::execute_tools;
+use crate::common::agent::{execute_tools, parse_llm_output};
 use crate::common::tools::ToolDispatcher;
 use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
 use crate::feature::{OutboundMessage, PresenceMessage};
@@ -100,6 +100,55 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         .await
     } else {
         process_v2_message_with_intent(state.clone(), msg, text_content, None).await
+    }
+}
+
+async fn classify_intent(gemini: &gemini_rust::Gemini, user_msg: &str, history: &str) -> Vec<String> {
+    let prompt = format!(
+        "Analyze the user request and history. Classify into one or more categories: [FINANCE, VITALITY, STORAGE, REMINDER, WEB, DASHBOARD, COMMUNICATION, GENERAL]. If multiple apply, return them as a comma-separated list (e.g., REMINDER, WEB). Return ONLY the keywords.\n\n\
+        Rules:\n\
+        1. If the user uses an imperative verb (Check, Log, Save, Find, Search) followed by a noun that relates to a tool (DMs, Expense, Health, File), it is NEVER General. Map it to the most relevant functional category.\n\
+        2. Explicit Mapping: 'DMs', 'Messages', 'Email', and 'Inbox' are explicitly linked to COMMUNICATION or WEB.\n\
+        3. Examples:\n\
+        User: \"nom check my dms\" -> COMMUNICATION\n\
+        User: \"nom what's the news?\" -> WEB\n\
+        User: \"nom save this receipt\" -> FINANCE\n\n\
+        History:\n{}\n\nUser Message: {}",
+        history, user_msg
+    );
+    let result = gemini
+        .generate_content()
+        .with_message(gemini_rust::Message {
+            role: gemini_rust::Role::User,
+            content: gemini_rust::Content {
+                parts: Some(vec![gemini_rust::Part::Text {
+                    text: prompt,
+                    thought: None,
+                    thought_signature: None,
+                }]),
+                role: Some(gemini_rust::Role::User),
+            },
+        })
+        .with_max_output_tokens(20)
+        .execute()
+        .await;
+
+    match result {
+        Ok(res) => {
+            let valid_intents = ["FINANCE", "VITALITY", "STORAGE", "REMINDER", "WEB", "DASHBOARD", "COMMUNICATION"];
+            let intents: Vec<String> = res.text()
+                .split(',')
+                .map(|s| s.trim().to_uppercase())
+                .filter(|s| valid_intents.contains(&s.as_str()))
+                .collect();
+
+            if intents.is_empty() {
+                vec!["GENERAL".to_string()]
+            } else {
+                intents
+            }
+        }
+        Err(_) => vec!["GENERAL".to_string()],
     }
 }
 
@@ -257,6 +306,112 @@ async fn process_v2_message_with_intent(
         None
     };
 
+    let history = sqlx::query!(
+        "SELECT
+                users.display_name as display_name,
+                messages.created_at,
+                messages.role,
+                messages.content,
+                messages.image_url,
+                messages.video_url,
+                messages.audio_url,
+                messages.document_url,
+                messages.sticker_url,
+                messages.metadata
+            FROM messages LEFT JOIN users ON users.id = messages.user_id
+            WHERE conversation_id = $1
+            ORDER BY created_at
+        DESC LIMIT 15",
+        conversation_id
+    )
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut history_text = String::new();
+    for msg_h in history.into_iter().rev() {
+        let is_processed = if let Some(meta) = msg_h.metadata {
+            meta.get("is_processed")
+                .and_then(|v| v.as_bool())
+                .or_else(|| {
+                    meta.get("is_processed")
+                        .and_then(|v| v.as_str().map(|s| s == "true"))
+                })
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        let image_url = match msg_h.image_url {
+            Some(path) if !is_processed => {
+                format!(" - Image: {} \n", state.storage.get_full_url(&path))
+            }
+            _ => "".to_string(),
+        };
+        let video_url = match msg_h.video_url {
+            Some(path) if !is_processed => {
+                format!("- Video: {} \n", state.storage.get_full_url(&path))
+            }
+            _ => "".to_string(),
+        };
+        let audio_url = match msg_h.audio_url {
+            Some(path) if !is_processed => {
+                format!(" - Audio: {} \n", state.storage.get_full_url(&path))
+            }
+            _ => "".to_string(),
+        };
+        let document_url = match msg_h.document_url {
+            Some(path) if !is_processed => {
+                format!("- Document: {} \n", state.storage.get_full_url(&path))
+            }
+            _ => "".to_string(),
+        };
+
+        let sticker_url = match msg_h.sticker_url {
+            Some(path) if !is_processed => {
+                format!("- Sticker: {} \n", state.storage.get_full_url(&path))
+            }
+            _ => "".to_string(),
+        };
+        let role_label = match msg_h.role.as_str() {
+            "user" => match msg_h.display_name {
+                None => "User".to_string(),
+                Some(ref user) => user.clone(),
+            },
+            "assistant" => "Nomi".to_string(),
+            _ => "System".to_string(),
+        };
+        history_text.push_str(&format!(
+            "-[{}] {}: {}.\n {}{}{}{}{}",
+            msg_h.created_at
+                .unwrap_or(Utc::now())
+                .format("%Y-%m-%d %H:%M")
+                .to_string(),
+            role_label,
+            msg_h.content,
+            image_url,
+            video_url,
+            audio_url,
+            document_url,
+            sticker_url
+        ));
+    }
+
+    let mut intents = classify_intent(state.gemini.as_ref(), &augmented_text, &history_text).await;
+    
+    // Fallback Logic: override GENERAL if imperative verbs or URLs are present
+    let msg_lower = augmented_text.to_lowercase();
+    if intents.contains(&"GENERAL".to_string()) && intents.len() == 1 {
+        if msg_lower.contains("http://") || msg_lower.contains("https://") 
+            || msg_lower.contains("check") || msg_lower.contains("log") 
+            || msg_lower.contains("find") || msg_lower.contains("search") 
+            || msg_lower.contains("save") {
+            intents = vec!["FULL_REGISTRY".to_string()];
+            info!("Scout overridden: Fallback to FULL_REGISTRY due to keywords");
+        }
+    }
+    
+    info!("Scout Intents Detected: {:?}", intents);
+
     let dispatcher = ToolDispatcher::new(
         state.pool.clone(),
         std::env::current_dir().unwrap_or_default(),
@@ -275,16 +430,28 @@ async fn process_v2_message_with_intent(
     .fetch_one(&state.pool)
     .await?;
 
-    let system_prompt = {
-        let boot = conversation.bootstrap_content.unwrap_or_default();
-        let soul = conversation.soul_content.unwrap_or_default();
-        let mut combined = boot;
+    let old_system_prompt_len = {
+        let boot = conversation.bootstrap_content.clone().unwrap_or_default();
+        let soul = conversation.soul_content.clone().unwrap_or_default();
+        boot.len() + soul.len() + crate::prompts::PromptRegistry::orchestrator_instructions().len() + crate::prompts::PromptRegistry::tool_usage_guidelines().len()
+    };
+
+    let build_system_prompt = |intents_val: &[String]| -> String {
+        let mut combined = String::new();
+        combined.push_str(crate::prompts::PromptRegistry::CORE_RULES);
+        combined.push_str(crate::prompts::PromptRegistry::BOUNDARIES);
+        
+        let boot = conversation.bootstrap_content.clone().unwrap_or_default();
+        let soul = conversation.soul_content.clone().unwrap_or_default();
+
+        combined.push_str("\n### Identity Layer\n");
+        combined.push_str(&boot);
         if !soul.is_empty() {
             combined.push_str("\n### Current Personality/Soul\n");
             combined.push_str(&soul);
         }
 
-        let timezone_str = "Asia/Jakarta"; // Default to Trian's timezone
+        let timezone_str = "Asia/Jakarta"; 
         let tz: chrono_tz::Tz = timezone_str.parse().unwrap_or(chrono_tz::UTC);
         let now_local = Utc::now().with_timezone(&tz);
 
@@ -310,100 +477,27 @@ async fn process_v2_message_with_intent(
             combined.push_str("\n[SYSTEM: The user has activated you with a short mention. Look back at the last 3-5 messages in the 'Recent History' to find the intent (URL, Image, Question) and act on it immediately.]\n");
         }
 
-        combined.push_str("");
-        combined.push_str(crate::prompts::PromptRegistry::tool_usage_guidelines());
+        if !intents_val.contains(&"GENERAL".to_string()) || intents_val.len() > 1 {
+            let domain_rules = crate::prompts::PromptRegistry::domain_logic(intents_val);
+            combined.push_str(&domain_rules);
+        }
+
+        if intents_val.contains(&"FULL_REGISTRY".to_string()) {
+            combined.push_str(crate::prompts::PromptRegistry::tool_usage_guidelines());
+        }
+
         combined
     };
 
-    let history = sqlx::query!(
-        "SELECT
-                users.display_name as display_name,
-                messages.created_at,
-                messages.role,
-                messages.content,
-                messages.image_url,
-                messages.video_url,
-                messages.audio_url,
-                messages.document_url,
-                messages.sticker_url,
-                messages.metadata
-            FROM messages LEFT JOIN users ON users.id = messages.user_id
-            WHERE conversation_id = $1
-            ORDER BY created_at
-        DESC LIMIT 15",
-        conversation_id
-    )
-    .fetch_all(&state.pool)
-    .await?;
-
-    let mut history_text = String::new();
-    for msg in history.into_iter().rev() {
-        let is_processed = if let Some(meta) = msg.metadata {
-            meta.get("is_processed")
-                .and_then(|v| v.as_bool())
-                .or_else(|| {
-                    meta.get("is_processed")
-                        .and_then(|v| v.as_str().map(|s| s == "true"))
-                })
-                .unwrap_or(false)
-        } else {
-            false
-        };
-
-        let image_url = match msg.image_url {
-            Some(path) if !is_processed => {
-                format!(" - Image: {} \n", state.storage.get_full_url(&path))
-            }
-            _ => "".to_string(),
-        };
-        let video_url = match msg.video_url {
-            Some(path) if !is_processed => {
-                format!("- Video: {} \n", state.storage.get_full_url(&path))
-            }
-            _ => "".to_string(),
-        };
-        let audio_url = match msg.audio_url {
-            Some(path) if !is_processed => {
-                format!(" - Audio: {} \n", state.storage.get_full_url(&path))
-            }
-            _ => "".to_string(),
-        };
-        let document_url = match msg.document_url {
-            Some(path) if !is_processed => {
-                format!("- Document: {} \n", state.storage.get_full_url(&path))
-            }
-            _ => "".to_string(),
-        };
-
-        let sticker_url = match msg.sticker_url {
-            Some(path) if !is_processed => {
-                format!("- Sticker: {} \n", state.storage.get_full_url(&path))
-            }
-            _ => "".to_string(),
-        };
-        let role_label = match msg.role.as_str() {
-            "user" => match msg.display_name {
-                None => "User".to_string(),
-                Some(ref user) => user.clone(),
-            },
-            "assistant" => "Nomi".to_string(),
-            _ => "System".to_string(),
-        };
-        history_text.push_str(&format!(
-            "-[{}] {}: {}.\n {}{}{}{}{}",
-            msg.created_at
-                .unwrap_or(Utc::now())
-                .format("%Y-%m-%d %H:%M")
-                .to_string(),
-            role_label,
-            msg.content,
-            image_url,
-            video_url,
-            audio_url,
-            document_url,
-            sticker_url
-        ));
-    }
+    let mut system_prompt = build_system_prompt(&intents);
+    
+    let new_system_prompt_len = system_prompt.len();
+    let saved_percent = if old_system_prompt_len > 0 {
+        ((old_system_prompt_len as f64 - new_system_prompt_len as f64) / old_system_prompt_len as f64 * 100.0).max(0.0)
+    } else {
+        0.0
+    };
+    info!("Tokens saved by modular assembly: {:.2}%", saved_percent);
 
     let embedding = rag::get_embedding(&state.gemini_api_key, &augmented_text).await;
     let memories_text = if embedding.is_ok() {
@@ -434,6 +528,7 @@ async fn process_v2_message_with_intent(
     let mut total_prompt_tokens = 0;
     let mut total_answer_tokens = 0;
     let mut total_tokens = 0;
+    let mut has_retried = false;
 
     while loop_count < max_loops {
         loop_count += 1;
@@ -460,7 +555,7 @@ async fn process_v2_message_with_intent(
             );
         }
 
-        let result = crate::common::agent::send_prompt(state.gemini.as_ref(), current_actor).await;
+        let result = crate::common::agent::send_prompt(state.gemini.as_ref(), current_actor, &intents).await;
 
         match result {
             Ok((response, chunk)) => {
@@ -511,13 +606,17 @@ async fn process_v2_message_with_intent(
                 {
                     // Synthesis Turn check: If we have tool results but haven't written a conversational response yet,
                     // we might need to force the model to synthesize.
-                    let content_is_empty =
-                        strip_thinking_tags(&accumulated_content).trim().is_empty();
-                    if !tool_turns.is_empty() && content_is_empty && loop_count < max_loops {
+                    let current_content_is_empty =
+                        strip_thinking_tags(&chunk.content).trim().is_empty();
+                    if !tool_turns.is_empty() && current_content_is_empty && loop_count < max_loops {
                         info!(
                             "Synthesis Turn: Model tried to stop after tools without content. Forcing synthesis turn."
                         );
                         // Force history update to reflect tool results were seen
+                        history_text.push_str(&format!(
+                            "-[{}] System: Please synthesize the tool results into a final response for the user. Do not call the same tools again.",
+                            Utc::now().format("%Y-%m-%d %H:%M").to_string()
+                        ));
                         continue;
                     }
 
@@ -567,6 +666,23 @@ async fn process_v2_message_with_intent(
                     Some(state.sse.clone()),
                 )
                 .await;
+
+                let mut unknown_tool_called = false;
+                for (_, res) in &tool_results {
+                    if res.error.starts_with("Unknown tool") {
+                        unknown_tool_called = true;
+                        break;
+                    }
+                }
+
+                if unknown_tool_called && !has_retried {
+                    info!("Scout error detected: Unknown tool called. Retrying with FULL_REGISTRY");
+                    has_retried = true;
+                    intents = vec!["FULL_REGISTRY".to_string()];
+                    system_prompt = build_system_prompt(&intents);
+                    loop_count -= 1; // Retry this iteration
+                    continue;
+                }
 
                 // Append Tool Responses to history_text to enforce memory management persistence
                 for (name, result) in &tool_results {
@@ -926,7 +1042,7 @@ pub fn send_message_to_subscriber(
                                     is_group: false,
                                     sender_id: channel.external_id.clone(),
                                     conversation_id: channel.external_chat_id.clone(),
-                                    text: bubble_text.clone(),
+                                    text: parse_llm_output(bubble_text.clone().as_str()).response,
                                     channel: channel.channel_type.clone(),
                                     // Attach media only to the first bubble
                                     video_url: if i == 0 {
@@ -994,7 +1110,7 @@ pub fn send_message_to_subscriber(
                                     is_group: false,
                                     sender_id: "".to_string(),
                                     conversation_id: channel.external_group_id.clone(),
-                                    text: bubble_text.clone(),
+                                    text: parse_llm_output(bubble_text.clone().as_str()).response,
                                     channel: channel.channel.clone(),
                                     // Attach media only to the first bubble
                                     video_url: if i == 0 {
