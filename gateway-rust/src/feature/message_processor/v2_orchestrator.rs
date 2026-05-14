@@ -511,6 +511,7 @@ async fn process_v2_message_with_intent(
                 members.iter().map(|v| v.user_id).collect(),
                 conversation_id,
                 msg.source.clone(),
+                msg.is_group,
                 "thought".to_string(),
                 crate::prompts::StatusRegistry::random_thinking_phrase(),
             );
@@ -632,6 +633,7 @@ async fn process_v2_message_with_intent(
                         members.iter().map(|v| v.user_id).collect(),
                         conversation_id,
                         msg.source.clone(),
+                        msg.is_group,
                         "tool_start".to_string(),
                         crate::prompts::StatusRegistry::random_action_phrase(&call.name),
                     );
@@ -788,7 +790,6 @@ async fn process_v2_message_with_intent(
                     status: "idle".to_string(),
                 };
                 let _ = state.publish_presence(&presence).await;
-
             }
         }
         return Ok(());
@@ -802,11 +803,12 @@ fn strip_thinking_tags(text: &str) -> String {
     re.replace_all(&healed, "").trim().to_string()
 }
 
-pub fn send_status_update(
+pub fn  send_status_update(
     state: &AppState,
     members: Vec<Uuid>,
     conversation_id: Uuid,
     source: MessageSource,
+    is_group: bool,
     event: String,
     text: String,
 ) {
@@ -859,34 +861,36 @@ pub fn send_status_update(
                         );
                     }
                     _ => {
-                        info!("send_status_update channel:{}", ch_name);
-                        let channel_info = sqlx::query!(
-                            "SELECT c.channel_type, c.external_id, c.external_chat_id
-                                    FROM channels c
-                                    JOIN conversation_members cm ON c.user_id = cm.user_id
-                                    WHERE cm.conversation_id = $1 AND c.channel_type = $2",
-                            conversation_id,
-                            ch_name
-                        )
-                        .fetch_all(&pool)
-                        .await
-                        .unwrap_or(Vec::new());
+                        info!("send_status_update channel:{} skip:{}", ch_name, is_group);
+                        if !is_group {
+                            let channel_info = sqlx::query!(
+                                "SELECT c.channel_type, c.external_id, c.external_chat_id
+                                        FROM channels c
+                                        JOIN conversation_members cm ON c.user_id = cm.user_id
+                                        WHERE cm.conversation_id = $1 AND c.channel_type = $2",
+                                conversation_id,
+                                ch_name
+                            )
+                            .fetch_all(&pool)
+                            .await
+                            .unwrap_or(Vec::new());
 
-                        for channel in channel_info {
-                            let outbound = OutboundMessage {
-                                is_group: false,
-                                sender_id: channel.external_id.clone(),
-                                conversation_id: channel.external_chat_id.clone(),
-                                text: text.clone(),
-                                channel: channel.channel_type.clone(),
-                                video_url: None,
-                                image_url: None,
-                                audio_url: None,
-                                doc_url: None,
-                                sticker_url: None,
-                                metadata: None,
-                            };
-                            let _ = state.publish_outbond(&outbound).await;
+                            for channel in channel_info {
+                                let outbound = OutboundMessage {
+                                    is_group,
+                                    sender_id: channel.external_id.clone(),
+                                    conversation_id: channel.external_chat_id.clone(),
+                                    text: text.clone(),
+                                    channel: channel.channel_type.clone(),
+                                    video_url: None,
+                                    image_url: None,
+                                    audio_url: None,
+                                    doc_url: None,
+                                    sticker_url: None,
+                                    metadata: None,
+                                };
+                                let _ = state.publish_outbond(&outbound).await;
+                            }
                         }
                     }
                 }
@@ -915,33 +919,36 @@ pub fn send_status_update(
                         );
                     }
                     _ => {
-                        info!("send_status_update channel:{}", ch_name);
-                        let channel_info = sqlx::query!(
-                            "SELECT c.conversation_id, c.channel, c.external_group_id
-                            FROM channel_group c
-                            WHERE c.conversation_id = $1 AND c.channel = $2",
-                            conversation_id,
-                            ch_name
-                        )
-                        .fetch_all(&pool)
-                        .await
-                        .unwrap_or(Vec::new());
+                        info!("send_status_update channel:{} skip:{}", ch_name, is_group);
+                        if !is_group {
+                            info!("send_status_update channel:{}", ch_name);
+                            let channel_info = sqlx::query!(
+                                "SELECT c.conversation_id, c.channel, c.external_group_id
+                                FROM channel_group c
+                                WHERE c.conversation_id = $1 AND c.channel = $2",
+                                conversation_id,
+                                ch_name
+                            )
+                            .fetch_all(&pool)
+                            .await
+                            .unwrap_or(Vec::new());
 
-                        for channel in channel_info {
-                            let outbound = OutboundMessage {
-                                is_group: false,
-                                sender_id: "".to_string(),
-                                conversation_id: channel.external_group_id.clone(),
-                                text: text.clone(),
-                                channel: channel.channel.clone(),
-                                video_url: None,
-                                image_url: None,
-                                audio_url: None,
-                                doc_url: None,
-                                sticker_url: None,
-                                metadata: None,
-                            };
-                            let _ = state.publish_outbond(&outbound).await;
+                            for channel in channel_info {
+                                let outbound = OutboundMessage {
+                                    is_group: false,
+                                    sender_id: "".to_string(),
+                                    conversation_id: channel.external_group_id.clone(),
+                                    text: text.clone(),
+                                    channel: channel.channel.clone(),
+                                    video_url: None,
+                                    image_url: None,
+                                    audio_url: None,
+                                    doc_url: None,
+                                    sticker_url: None,
+                                    metadata: None,
+                                };
+                                let _ = state.publish_outbond(&outbound).await;
+                            }
                         }
                     }
                 }

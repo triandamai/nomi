@@ -36,6 +36,7 @@ pub async fn classification(
                 members.clone(),
                 conversation_id,
                 msg.source.clone(),
+                msg.is_group,
                 "tool_start".to_string(),
                 StatusRegistry::random_action_phrase("analyze_media"),
             );
