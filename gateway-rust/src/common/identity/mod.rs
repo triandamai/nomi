@@ -27,25 +27,46 @@ pub async fn resolve_identity(
             return Err(anyhow::anyhow!("Db trx failed"));
         }
     };
+    // Split by ':' to get the prefix, and by '@' to get the domain
+    let mut sender_id = String::new();
+
+    if let Some((id, rest)) = external_sender_id.split_once(':') {
+        if let Some((_, domain)) = rest.split_once('@') {
+            let clean_id = format!("{}@{}", id, domain);
+            sender_id = clean_id;
+        }
+    }
+
+    if sender_id.contains(":"){
+        info!("External sender id: {} cannot contains :", external_sender_id);
+        return Err(anyhow::anyhow!("External sender_id contains ':'"));
+    }
     // Basic resolution: upsert user by external_id
     if is_group {
-        info!("User from group, check existing, if user doesnt exist create new one external_sender_id:{} external_chat_id:{} channel:{}",external_sender_id,external_chat_id,channel_type);
+        info!(
+            "User from group, check existing, if user doesnt exist create new one external_sender_id:{} external_chat_id:{} channel:{}",
+            external_sender_id, external_chat_id, channel_type
+        );
         let existing_channel_of_user = sqlx::query!(
-            "SELECT c.user_id FROM channels c WHERE c.external_chat_id = $1 AND c.channel_type = $2",
-            external_sender_id,
-            channel_type
+            "
+            SELECT c.user_id, u.display_name  FROM channels as c
+            RIGHT JOIN users as u ON u.id = c.user_id
+            WHERE c.channel_type = $1 AND c.external_chat_id = $2",
+            channel_type,
+            external_sender_id
         )
         .fetch_one(&mut *tx)
         .await;
 
         if let Err(e) = existing_channel_of_user {
-            info!("User doesnt exist, since user from group, we create user directly, err:{}",e);
+            info!(
+                "User doesnt exist, since user from group, we create user directly, err:{}",
+                e
+            );
             let save_new_user = sqlx::query!(
-                "INSERT INTO users (external_id, display_name)
-                VALUES ($1, $2)
-                ON CONFLICT (external_id)
-                DO UPDATE SET display_name = EXCLUDED.display_name
-                RETURNING id, display_name",
+                "
+                INSERT INTO users (external_id, display_name)
+                VALUES ($1, $2) RETURNING id, display_name",
                 external_sender_id,
                 display_name
             )
@@ -54,12 +75,11 @@ pub async fn resolve_identity(
 
             if let Err(e) = save_new_user {
                 info!(
-                    "User doesnt exist, since user from group create new one, but failed:{}",
-                    e
+                    "Create User in group failed:{}",e
                 );
                 let _ = tx.rollback().await;
                 return Err(anyhow::anyhow!(
-                    "User doesnt exist, since user from group create new one, but attempt failed"
+                    "Create User in group failed"
                 ));
             }
             let new_user = save_new_user.unwrap();
@@ -110,41 +130,62 @@ pub async fn resolve_identity(
                 ));
             }
 
-            if let Err(err) = tx.commit().await{
-                info!("Db trx commit failed {}",err);
+            if let Err(err) = tx.commit().await {
+                info!("Db trx commit failed {}", err);
                 return Err(anyhow::anyhow!("Failed to commit transaction: {}", err));
             }
-
 
             return Ok(UserIdentity {
                 id: new_user.id,
                 display_name,
             });
         }
-    }
 
-    let row = sqlx::query!(
-        "INSERT INTO users (external_id, display_name) 
-         VALUES ($1, $2) 
-         ON CONFLICT (external_id) 
-         DO UPDATE SET display_name = EXCLUDED.display_name 
-         RETURNING id, display_name",
-        external_chat_id,
-        display_name
-    )
-    .fetch_one(&mut *tx)
-    .await;
+        let row = existing_channel_of_user.unwrap();
+        if let None = row.user_id {
+            info!("Record not exist, user doesnt exist");
+            return Err(anyhow::anyhow!("User doesnt exist"));
+        }
+        if let Err(e) = tx.commit().await {
+            info!("Db trx commit failed {}", e);
+            return Err(anyhow::anyhow!("Failed to commit transaction: {}", e));
+        }
+        let id = row.user_id.unwrap();
+        Ok(UserIdentity {
+            id,
+            display_name: row.display_name.unwrap_or_else(|| display_name.to_string()),
+        })
+    } else {
+        let find_user = sqlx::query!(
+            "
+            SELECT c.user_id, u.display_name  FROM channels as c
+            RIGHT JOIN users as u ON u.id = c.user_id
+            WHERE c.channel_type = $1 AND c.external_chat_id = $2",
+            channel_type,
+            external_sender_id
+        )
+        .fetch_one(&mut *tx)
+        .await;
 
-    if let Err(e) = row {
-        info!("Failed getting identity:{}", e);
-        let _ = tx.rollback().await;
-        return Err(anyhow::anyhow!("Failed getting identity:"));
+        if let Err(e) = find_user {
+            info!("failed getting information identity private dm:{}", e);
+            let _ = tx.rollback().await;
+            return Err(anyhow::anyhow!("Failed getting information identity:"));
+        }
+
+        if let Err(e) = tx.commit().await {
+            info!("Db trx commit failed:{}", e);
+            return Err(anyhow::anyhow!("Failed to commit transaction"));
+        }
+        let row = find_user?;
+        if let None = row.user_id {
+            info!("User doesnt exist");
+            return Err(anyhow::anyhow!("User not found"));
+        }
+        let id = row.user_id.unwrap();
+        Ok(UserIdentity {
+            id,
+            display_name: row.display_name.unwrap_or_else(|| display_name.to_string()),
+        })
     }
-    let row = row.unwrap();
-    Ok(UserIdentity {
-        id: row.id,
-        display_name: row
-            .display_name
-            .unwrap_or_else(|| external_chat_id.to_string()),
-    })
 }

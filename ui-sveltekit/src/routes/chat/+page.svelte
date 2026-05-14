@@ -35,6 +35,9 @@
         chatStore.currentThought;
         chatStore.isTyping;
         chatStore.activeTool;
+        isUploading
+        isNearBottom
+
 
         tick().then(() => {
             if (scrollContainer && isNearBottom) {
@@ -105,6 +108,9 @@
     }
 
     onMount(()=>{
+        eventBus.subscribe("",()=>{
+
+        })
         eventBus.emit("load",{})
     })
 </script>

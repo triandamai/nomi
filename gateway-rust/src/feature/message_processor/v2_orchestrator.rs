@@ -102,69 +102,6 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         process_v2_message_with_intent(state.clone(), msg, text_content, None).await
     }
 }
-
-async fn classify_intent(
-    gemini: &gemini_rust::Gemini,
-    user_msg: &str,
-    history: &str,
-) -> Vec<String> {
-    let prompt = format!(
-        "Analyze the user request and history. Classify into one or more categories: [FINANCE, VITALITY, STORAGE, REMINDER, WEB, DASHBOARD, COMMUNICATION, GENERAL]. If multiple apply, return them as a comma-separated list (e.g., REMINDER, WEB). Return ONLY the keywords.\n\n\
-        Rules:\n\
-        1. If the user uses an imperative verb (Check, Log, Save, Find, Search) followed by a noun that relates to a tool (DMs, Expense, Health, File), it is NEVER General. Map it to the most relevant functional category.\n\
-        2. Explicit Mapping: 'DMs', 'Messages', 'Email', and 'Inbox' are explicitly linked to COMMUNICATION or WEB.\n\
-        3. Examples:\n\
-        User: \"nom check my dms\" -> COMMUNICATION\n\
-        User: \"nom what's the news?\" -> WEB\n\
-        User: \"nom save this receipt\" -> FINANCE\n\n\
-        History:\n{}\n\nUser Message: {}",
-        history, user_msg
-    );
-    let result = gemini
-        .generate_content()
-        .with_message(gemini_rust::Message {
-            role: gemini_rust::Role::User,
-            content: gemini_rust::Content {
-                parts: Some(vec![gemini_rust::Part::Text {
-                    text: prompt,
-                    thought: None,
-                    thought_signature: None,
-                }]),
-                role: Some(gemini_rust::Role::User),
-            },
-        })
-        .with_max_output_tokens(20)
-        .execute()
-        .await;
-
-    match result {
-        Ok(res) => {
-            let valid_intents = [
-                "FINANCE",
-                "VITALITY",
-                "STORAGE",
-                "REMINDER",
-                "WEB",
-                "DASHBOARD",
-                "COMMUNICATION",
-            ];
-            let intents: Vec<String> = res
-                .text()
-                .split(',')
-                .map(|s| s.trim().to_uppercase())
-                .filter(|s| valid_intents.contains(&s.as_str()))
-                .collect();
-
-            if intents.is_empty() {
-                vec!["GENERAL".to_string()]
-            } else {
-                intents
-            }
-        }
-        Err(_) => vec!["GENERAL".to_string()],
-    }
-}
-
 async fn process_v2_message_with_intent(
     state: AppState,
     msg: UnifiedMessage,
@@ -1193,4 +1130,66 @@ pub fn send_message_to_subscriber(
             }
         }
     });
+}
+
+async fn classify_intent(
+    gemini: &gemini_rust::Gemini,
+    user_msg: &str,
+    history: &str,
+) -> Vec<String> {
+    let prompt = format!(
+        "Analyze the user request and history. Classify into one or more categories: [FINANCE, VITALITY, STORAGE, REMINDER, WEB, DASHBOARD, COMMUNICATION, GENERAL]. If multiple apply, return them as a comma-separated list (e.g., REMINDER, WEB). Return ONLY the keywords.\n\n\
+        Rules:\n\
+        1. If the user uses an imperative verb (Check, Log, Save, Find, Search) followed by a noun that relates to a tool (DMs, Expense, Health, File), it is NEVER General. Map it to the most relevant functional category.\n\
+        2. Explicit Mapping: 'DMs', 'Messages', 'Email', and 'Inbox' are explicitly linked to COMMUNICATION or WEB.\n\
+        3. Examples:\n\
+        User: \"nom check my dms\" -> COMMUNICATION\n\
+        User: \"nom what's the news?\" -> WEB\n\
+        User: \"nom save this receipt\" -> FINANCE\n\n\
+        History:\n{}\n\nUser Message: {}",
+        history, user_msg
+    );
+    let result = gemini
+        .generate_content()
+        .with_message(gemini_rust::Message {
+            role: gemini_rust::Role::User,
+            content: gemini_rust::Content {
+                parts: Some(vec![gemini_rust::Part::Text {
+                    text: prompt,
+                    thought: None,
+                    thought_signature: None,
+                }]),
+                role: Some(gemini_rust::Role::User),
+            },
+        })
+        .with_max_output_tokens(20)
+        .execute()
+        .await;
+
+    match result {
+        Ok(res) => {
+            let valid_intents = [
+                "FINANCE",
+                "VITALITY",
+                "STORAGE",
+                "REMINDER",
+                "WEB",
+                "DASHBOARD",
+                "COMMUNICATION",
+            ];
+            let intents: Vec<String> = res
+                .text()
+                .split(',')
+                .map(|s| s.trim().to_uppercase())
+                .filter(|s| valid_intents.contains(&s.as_str()))
+                .collect();
+
+            if intents.is_empty() {
+                vec!["GENERAL".to_string()]
+            } else {
+                intents
+            }
+        }
+        Err(_) => vec!["GENERAL".to_string()],
+    }
 }
