@@ -1,6 +1,10 @@
 pub mod tools_model;
+pub mod plugin_trait;
+pub mod plugins;
 
 use crate::Arc;
+use crate::common::tools::plugin_trait::NomiToolPlugin;
+use crate::common::tools::plugins::dice::DicePlugin;
 use crate::common::tools::tools_model::{
     EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters,
     ExecuteReadQueryResponse, GetInboxSummaryParameters, GetInboxSummaryResponse,
@@ -22,6 +26,7 @@ use gemini_rust::{FunctionDeclaration, Tool, UsageMetadata};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sqlx::{Column, Pool, Postgres, Row};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tracing::info;
@@ -151,14 +156,15 @@ pub enum ArtaTool {
 
 #[derive(Clone)]
 pub struct ToolDispatcher {
-    pool: Pool<Postgres>,
-    workspace_root: PathBuf,
-    user_id: Option<Uuid>,
-    conversation_id: Option<Uuid>,
-    gemini: Arc<gemini_rust::Gemini>,
-    gemini_api_key: String,
-    sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
-    storage: crate::common::storage::StorageClient,
+    pub pool: Pool<Postgres>,
+    pub workspace_root: PathBuf,
+    pub user_id: Option<Uuid>,
+    pub conversation_id: Option<Uuid>,
+    pub gemini: Arc<gemini_rust::Gemini>,
+    pub gemini_api_key: String,
+    pub sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
+    pub storage: crate::common::storage::StorageClient,
+    pub plugins: HashMap<&'static str, Arc<dyn NomiToolPlugin>>,
 }
 
 impl ToolDispatcher {
@@ -172,6 +178,9 @@ impl ToolDispatcher {
         sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
         storage: crate::common::storage::StorageClient,
     ) -> Self {
+        let mut plugins: HashMap<&'static str, Arc<dyn NomiToolPlugin>> = HashMap::new();
+        plugins.insert("roll_dice", Arc::new(DicePlugin));
+
         Self {
             pool,
             workspace_root,
@@ -181,6 +190,7 @@ impl ToolDispatcher {
             gemini_api_key,
             sse,
             storage,
+            plugins,
         }
     }
 
@@ -283,7 +293,7 @@ impl ToolDispatcher {
         }
     }
 
-    pub fn generate_tool_for_prompt(intents: &[String]) -> Tool {
+    pub fn generate_tool_for_prompt(&self, intents: &[String]) -> Tool {
         let mut tools = Vec::new();
 
         let read_workspace_file = FunctionDeclaration::new(
@@ -535,6 +545,40 @@ impl ToolDispatcher {
                 update_conversation_title,
             ];
         }
+
+        // Plugable Tools Interception
+        for plugin in self.plugins.values() {
+            let plugin_intents = plugin.matching_intents();
+            let is_matched = intents.iter().any(|i| plugin_intents.contains(&i.as_str()))
+                || intents.contains(&"FULL_REGISTRY".to_string());
+
+            if is_matched {
+                let mut schema = plugin.schema();
+                // STRICT ENFORCEMENT: Shield against Gemini API 400 validation drops by removing additionalProperties
+                if let Some(obj) = schema.as_object_mut() {
+                    if let Some(params) = obj.get_mut("parameters") {
+                        if let Some(params_obj) = params.as_object_mut() {
+                            params_obj.remove("additionalProperties");
+                            // Recurse into properties if they exist
+                            if let Some(properties) = params_obj.get_mut("properties") {
+                                if let Some(props_obj) = properties.as_object_mut() {
+                                    for (_, prop_val) in props_obj.iter_mut() {
+                                        if let Some(prop_obj) = prop_val.as_object_mut() {
+                                            prop_obj.remove("additionalProperties");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Ok(func_decl) = serde_json::from_value::<FunctionDeclaration>(schema) {
+                    tools.push(func_decl);
+                }
+            }
+        }
+
         // De-duplicate tools based on name if multiple intents added the same tool
         let mut unique_tools = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
@@ -546,6 +590,7 @@ impl ToolDispatcher {
 
         Tool::with_functions(unique_tools)
     }
+
 
     async fn schedule_task(
         &self,

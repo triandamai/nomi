@@ -611,7 +611,7 @@ async fn process_v2_message_with_intent(
         }
 
         let result =
-            crate::common::agent::send_prompt(state.gemini.as_ref(), current_actor, &intents).await;
+            crate::common::agent::send_prompt(&dispatcher, current_actor, &intents).await;
 
         match result {
             Ok((response, chunk)) => {

@@ -4,28 +4,26 @@ pub mod classification;
 use crate::common::agent::agent_model::{ChatResponse, PromptActor};
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::common::sse::sse_emitter::SseBroadcaster;
-use crate::common::tools::tools_model::{
-    ExecuteReadQueryParameters, ReadWorkSpaceParameters, SearchWebParameters, ToolResult,
-    UpdateConversationSoulParameters,
-};
+use crate::common::tools::tools_model::ToolResult;
 use crate::common::tools::{ArtaTool, ToolDispatcher};
 use crate::feature::conversation::model::ChatStreamChunk;
 use crate::prompts::PromptRegistry;
 use chrono::Utc;
 use gemini_rust::{
-    Content, FunctionCall, FunctionCallingMode, Gemini, GenerationResponse, Message, Role,
-    UsageMetadata,
+    Content, FunctionCall, FunctionCallingMode, GenerationResponse, Message, Role, UsageMetadata,
 };
 use std::sync::Arc;
-use tracing::{error, info};
 use tokio_stream::StreamExt;
+use tracing::{error, info};
 
 pub async fn send_prompt(
-    gemini: &Gemini,
+    dispatcher: &ToolDispatcher,
     actor: PromptActor,
     intents: &[String],
 ) -> Result<(GenerationResponse, ChatStreamChunk), String> {
     info!("\n ==== sending message to llm ==== \n");
+
+    let gemini = dispatcher.gemini.as_ref();
 
     let gemini_builder = match actor {
         PromptActor::User {
@@ -63,11 +61,11 @@ pub async fn send_prompt(
                 });
             if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
                 builder = builder
-                    .with_tool(ToolDispatcher::generate_tool_for_prompt(intents))
+                    .with_tool(dispatcher.generate_tool_for_prompt(intents))
                     .with_function_calling_mode(FunctionCallingMode::Auto);
-            }else{
+            } else {
                 builder = builder
-                    .with_tool(ToolDispatcher::generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]))
+                    .with_tool(dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]))
                     .with_function_calling_mode(FunctionCallingMode::Auto);
             }
             builder.with_max_output_tokens(4096)
@@ -150,11 +148,11 @@ pub async fn send_prompt(
 
             if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
                 builder = builder
-                    .with_tool(ToolDispatcher::generate_tool_for_prompt(intents))
+                    .with_tool(dispatcher.generate_tool_for_prompt(intents))
                     .with_function_calling_mode(FunctionCallingMode::Auto);
-            }else{
+            } else {
                 builder = builder
-                    .with_tool(ToolDispatcher::generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]))
+                    .with_tool(dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]))
                     .with_function_calling_mode(FunctionCallingMode::Auto);
             }
             builder.with_max_output_tokens(4096)
@@ -203,20 +201,20 @@ pub async fn send_prompt(
     // Aggregate everything into the final response object
     if let Some(candidate) = s.candidates.first_mut() {
         let content = &mut candidate.content;
-       // if let Some(content) = &mut candidate.content {
-            let mut new_parts = vec![gemini_rust::Part::Text {
-                text: accumulated_text.clone(),
-                thought: None,
+        // if let Some(content) = &mut candidate.content {
+        let mut new_parts = vec![gemini_rust::Part::Text {
+            text: accumulated_text.clone(),
+            thought: None,
+            thought_signature: None,
+        }];
+
+        for call in all_function_calls {
+            new_parts.push(gemini_rust::Part::FunctionCall {
+                function_call: call.clone(),
                 thought_signature: None,
-            }];
-            
-            for call in all_function_calls {
-                new_parts.push(gemini_rust::Part::FunctionCall {
-                    function_call: call.clone(),
-                    thought_signature: None,
-                });
-            }
-            content.parts = Some(new_parts);
+            });
+        }
+        content.parts = Some(new_parts);
         //}
     }
 
@@ -244,7 +242,7 @@ pub async fn send_prompt(
             || parse.response.contains("<thinking>"))
     {
         if let Ok(refined_text) =
-            crate::common::format::refine_output(&raw_text, gemini).await
+            crate::common::format::refine_output(&raw_text, dispatcher.gemini.as_ref()).await
         {
             healed_text = refined_text;
             parse = parse_llm_output(&healed_text);
@@ -314,226 +312,63 @@ pub async fn execute_tools(
                     .await;
             }
 
-            let result = match call_name.as_str() {
-                "read_workspace_file" => {
-                    let param: ReadWorkSpaceParameters = serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::ReadWorkspaceFile {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
+            // Check if it's a plugin tool
+            if let Some(plugin) = dispatcher.plugins.get(call_name.as_str()) {
+                let plugin_res = plugin.execute(&dispatcher, args).await;
+
+                let tz: chrono_tz::Tz = "Asia/Jakarta".parse().unwrap_or(chrono_tz::UTC);
+                let now_wib = Utc::now().with_timezone(&tz);
+                let timestamp = format!("**WIB: {}**", now_wib.format("%Y-%m-%d %H:%M"));
+
+                let result = match plugin_res {
+                    Ok(content) => ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content: format!("{} \n {}", timestamp, content),
+                        follow_up_prompt: "".to_string(),
+                    },
+                    Err(e) => ToolResult {
+                        error: format!("Plugin Execution Error: {}", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                    },
+                };
+
+                if let Some(sse) = sse.as_ref() {
+                    let _ = sse
+                        .send(SseBuilder::new(
+                            SseTarget::broadcast("tool_end".to_string()),
+                            serde_json::json!({ "name": call_name, "success": result.success }),
+                        ))
+                        .await;
                 }
-                "execute_read_query" => {
-                    let param: ExecuteReadQueryParameters = serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::ExecuteSqlQuery {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
+
+                return (call_name, result);
+            }
+
+            // Legacy & Dynamic Dispatch
+            // Normalize tool names to match the ArtaTool enum variants
+            let normalized_name = match call_name.as_str() {
+                "update_conversation_soul" => "update_nomi_soul",
+                "execute_read_query" => "execute_sql_query",
+                "parse_to_json" => "parse_string_to_json",
+                _ => call_name.as_str(),
+            }
+            .to_string();
+
+            let tool_json = serde_json::json!({
+                "tool": normalized_name,
+                "args": {
+                    "params": args,
+                    "user_message": user_message
                 }
-                "web_search" => {
-                    let param: SearchWebParameters = serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::WebSearch {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "read_web_page" => {
-                    let param: crate::common::tools::tools_model::ReadWebPageParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::ReadWebPage {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "update_nomi_soul" | "update_conversation_soul" => {
-                    let param: UpdateConversationSoulParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::UpdateConversationSoul {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "update_knowledge_base" => {
-                    let param: crate::common::tools::tools_model::UpdateKnowledgeBaseParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::UpdateKnowledgeBase {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "evolve_bootstrap_content" => {
-                    let param: crate::common::tools::tools_model::EvolveBootstrapParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::EvolveBootstrap {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "schedule_task" => {
-                    let param: crate::common::tools::tools_model::ScheduleTaskParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::ScheduleTask {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "modify_reminder" => {
-                    let param: crate::common::tools::tools_model::ModifyReminderParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::ModifyReminder {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "get_inbox_summary" => {
-                    let param: crate::common::tools::tools_model::GetInboxSummaryParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::GetInboxSummary {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "get_reminder_stats" => {
-                    let param: crate::common::tools::tools_model::GetReminderStatsParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::GetReminderStats {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "search_users" => {
-                    let param: crate::common::tools::tools_model::SearchUsersParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::SearchUsers {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "update_user_profile" => {
-                    let param: crate::common::tools::tools_model::UpdateUserProfileParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::UpdateUserProfile {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "send_direct_message" => {
-                    let param: crate::common::tools::tools_model::SendDirectMessageParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::SendDirectMessage {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "make_sticker" => {
-                    let param: crate::common::tools::tools_model::MakeStickerParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::MakeSticker {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "log_expense" => {
-                    let param: crate::common::tools::tools_model::LogExpenseParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::LogExpense {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "get_expense_summary" => {
-                    let param: crate::common::tools::tools_model::GetExpenseSummaryParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::GetExpenseSummary {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "analyze_media" => {
-                    let param: crate::common::tools::tools_model::AnalyzeMediaParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::AnalyzeMedia {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "get_latest_media_context" => {
-                    let param: crate::common::tools::tools_model::GetLatestMediaContextParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::GetLatestMediaContext {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "retrieve_knowledge" => {
-                    let param: crate::common::tools::tools_model::RetrieveKnowledgeParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::RetrieveKnowledge {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "get_transaction_details" => {
-                    let param: crate::common::tools::tools_model::GetTransactionDetailsParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::GetTransactionDetails {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                "update_conversation_title" => {
-                    let param: crate::common::tools::tools_model::UpdateConversationTitleParameters =
-                        serde_json::from_value(args).unwrap();
-                    dispatcher
-                        .dispatch(ArtaTool::UpdateConversationTitle {
-                            params: param,
-                            user_message: user_message.clone(),
-                        })
-                        .await
-                }
-                _ => ToolResult {
-                    error: format!("Unknown tool: {}", call_name),
+            });
+
+            let result = match serde_json::from_value::<ArtaTool>(tool_json) {
+                Ok(arta_tool) => dispatcher.dispatch(arta_tool).await,
+                Err(e) => ToolResult {
+                    error: format!("Failed to parse tool {}: {}", call_name, e),
                     success: false,
                     content: "".to_string(),
                     follow_up_prompt: "".to_string(),
@@ -541,7 +376,6 @@ pub async fn execute_tools(
             };
 
             // Send tool_end SSE event
-
             if let Some(sse) = sse.as_ref() {
                 let _ = sse
                     .send(SseBuilder::new(
@@ -554,7 +388,6 @@ pub async fn execute_tools(
             (call_name, result)
         }));
     }
-
     let results = futures::future::join_all(futures).await;
     results.into_iter().map(|r| r.unwrap()).collect()
 }
