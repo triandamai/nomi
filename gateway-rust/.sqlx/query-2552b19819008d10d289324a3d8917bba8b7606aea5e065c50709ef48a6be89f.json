@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT c.conversation_id, c.channel, c.external_group_id\n                                FROM channel_group c\n                                WHERE c.conversation_id = $1 AND c.channel = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "conversation_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "channel",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "external_group_id",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2552b19819008d10d289324a3d8917bba8b7606aea5e065c50709ef48a6be89f"
+}
