@@ -115,6 +115,7 @@ pub struct ChatStreamChunk {
     pub answer_tokens: i32,
     pub total_tokens: i32,
     pub finish_reason: Option<String>,
+    pub error: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

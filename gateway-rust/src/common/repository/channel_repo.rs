@@ -1,13 +1,18 @@
+use rust_decimal::prelude::ToPrimitive;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 pub struct ChannelInfo {
     pub user_id: Uuid,
     pub conversation_id: Uuid,
+    pub cumulative_tokens: i64,
+    pub max_token_usage: f64,
 }
 
 pub struct ChannelGroupInfo {
     pub conversation_id: Uuid,
+    pub cumulative_tokens: i64,
+    pub max_token_usage: f64,
 }
 
 pub async fn get_channel_info(
@@ -16,7 +21,8 @@ pub async fn get_channel_info(
     external_chat_id: &str,
 ) -> anyhow::Result<Option<ChannelInfo>> {
     let row = sqlx::query!(
-        "SELECT user_id, conversation_id FROM channels 
+        "SELECT channels.user_id, channels.conversation_id, conversations.cumulative_tokens, conversations.max_token_usage FROM channels
+         JOIN conversations ON conversations.id = channels.conversation_id
          WHERE channel_type = $1 AND external_chat_id = $2",
         channel_type,
         external_chat_id
@@ -29,6 +35,8 @@ pub async fn get_channel_info(
             return Ok(Some(ChannelInfo {
                 user_id: u,
                 conversation_id: c,
+                cumulative_tokens: r.cumulative_tokens.map_or_else(||0, |v|v.to_i64().unwrap_or(0)),
+                max_token_usage: r.max_token_usage.map_or_else(|| 700000.0, |v| v.to_f64().unwrap_or(700000.0)),
             }));
         }
     }
@@ -41,7 +49,8 @@ pub async fn get_channel_group_info(
     external_chat_id: &str,
 ) -> anyhow::Result<Option<ChannelGroupInfo>> {
     let row = sqlx::query!(
-        "SELECT conversation_id FROM channel_group
+        "SELECT channel_group.conversation_id, conversations.cumulative_tokens, conversations.max_token_usage FROM channel_group
+         JOIN conversations ON conversations.id = channel_group.conversation_id
          WHERE channel = $1 AND external_group_id = $2",
         channel,
         external_chat_id
@@ -50,7 +59,13 @@ pub async fn get_channel_group_info(
     .await?;
 
     if let Some(r) = row {
-        return Ok(Some(ChannelGroupInfo { conversation_id: r.conversation_id }));
+        return Ok(Some(ChannelGroupInfo {
+            conversation_id: r.conversation_id,
+            cumulative_tokens: r
+                .cumulative_tokens
+                .map_or_else(|| 0, |v| v.to_i64().unwrap_or(0)),
+            max_token_usage: r.max_token_usage.map_or_else(|| 700000.0, |v| v.to_f64().unwrap_or(700000.0)),
+        }));
     }
     Ok(None)
 }
@@ -123,8 +138,8 @@ pub async fn is_group_registered(pool: &sqlx::PgPool, external_id: &str, channel
         external_id,
         channel
     )
-        .fetch_optional(pool)
-        .await
-        .map(|r| r.map(|row| row.is_active.unwrap_or(true)).unwrap_or(false))
-        .unwrap_or(false)
+    .fetch_optional(pool)
+    .await
+    .map(|r| r.map(|row| row.is_active.unwrap_or(true)).unwrap_or(false))
+    .unwrap_or(false)
 }

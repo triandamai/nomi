@@ -1,6 +1,6 @@
 use crate::common::api_response::ApiResponse;
 use crate::feature::conversation::model::{
-    ChannelStatus, ChatRequest, ConversationResponse, CreateConversationRequest, MessageItem,
+    ChannelStatus, ChatRequest, ChatStreamChunk, ConversationResponse, CreateConversationRequest, MessageItem,
     MessageListParams, MessageListResponse, PairingResponse, RestoreSoulRequest,
     RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest, UserChannelsResponse,
 };
@@ -11,7 +11,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use chrono::Utc;
-use serde_json::Value;
+use serde_json::{json, Value};
 use sqlx::Row;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -664,12 +664,50 @@ pub async fn handle_chat_stream(
 ) -> ApiResponse<String> {
     info!(conversation_id = %payload.conversation_id, "Received chat stream request");
 
+    // Resolve user_id from JWT claims
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => Some(id),
+        Err(_) => None,
+    };
+
+    let conv_info = sqlx::query!(
+        "SELECT cumulative_tokens, max_token_usage FROM conversations WHERE id = $1",
+        payload.conversation_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    if let Ok(Some(row)) = conv_info {
+        let cumulative_tokens = row.cumulative_tokens.map_or(0, |v| v);
+        let max_token_usage = row.max_token_usage.map_or(700000, |v| v);
+
+        if cumulative_tokens as f64 >= max_token_usage as f64 {
+            let error_msg = format!("Token limit reached ({}/{:.0})", cumulative_tokens, max_token_usage);
+            if let Some(uid) = user_id {
+                let _ = state.send_sse_to_user(
+                    uid.to_string().as_str(),
+                    "chat_stream",
+                    json!(ChatStreamChunk {
+                        content: "".to_string(),
+                        thought: "".to_string(),
+                        code_block: "".to_string(),
+                        tool_call: None,
+                        prompt_tokens: 0,
+                        answer_tokens: 0,
+                        total_tokens: 0,
+                        finish_reason: Some("error".to_string()),
+                        error: Some(error_msg.clone()),
+                    }),
+                )
+                .await;
+            }
+            return ApiResponse::failed(&error_msg);
+        }
+    }
+
     let state_clone = state.clone();
     let conversation_id = payload.conversation_id;
     let user_message = payload.message.clone();
-
-    // Resolve user_id from JWT claims
-    let user_id = Uuid::parse_str(&claims.sub).ok();
 
     tokio::spawn(async move {
         let unified_msg = UnifiedMessage {

@@ -276,6 +276,7 @@ pub async fn send_prompt(
         answer_tokens,
         total_tokens,
         finish_reason,
+        error: None,
     };
     Ok((s, payload))
 }

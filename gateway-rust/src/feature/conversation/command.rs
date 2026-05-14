@@ -153,9 +153,9 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
     if msg.is_group {
         return process_group_registration(state, msg).await;
     }
-    let channel_exists = sqlx::query!("SELECT u.id as user_id FROM channels c JOIN users u ON u.id = c.user_id WHERE c.channel_type = $1 AND c.external_chat_id = $2",msg.channel,msg.conversation_id)
-        .fetch_optional(&state.pool)
-        .await;
+    let channel_exists =
+        channel_repo::get_channel_info(&state.pool, msg.channel.as_str(), msg.sender_id.as_str())
+            .await;
     if let Err(err) = channel_exists {
         info!("failed register because error getting information: {}", err);
         let _ = send_message(
@@ -167,8 +167,8 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
         .await;
         return Ok(());
     }
-    let channel_result = channel_exists?;
-    if let Some(value) = channel_result {
+
+    if let Some(value) = channel_exists.unwrap() {
         info!("failed register because user exist: {}", value.user_id);
         let _ = send_message(
             state,
@@ -250,6 +250,30 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
         return Ok(());
     }
     let conv = create_convo?;
+
+    let create_member = sqlx::query!("
+        INSERT INTO conversation_members
+        (conversation_id, user_id)
+        VALUES ($1, $2) RETURNING conversation_id,user_id",
+        conv.id,
+        create_user.id
+    )
+    .fetch_one(&mut *tx)
+    .await;
+
+    if let Err(e) = create_member {
+        error!("Failed to add member: {}", e);
+        let _ = tx.rollback().await;
+        let _ = send_message(
+            state,
+            msg,
+            "Failed to join conversation.".to_string(),
+            msg.metadata.clone(),
+        )
+        .await;
+        return Ok(());
+    }
+
     info!("begin create channels");
     let create_channel = sqlx::query!(
             "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id, user_id) VALUES ($1, $2, $3, $4, $5)",
@@ -270,21 +294,6 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
         )
         .await;
 
-        return Ok(());
-    }
-
-    let create_member = sqlx::query!("INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",conv.id,create_user.id).execute(&mut *tx).await;
-
-    if let Err(e) = create_member {
-        error!("Failed to add member: {}", e);
-        let _ = tx.rollback().await;
-        let _ = send_message(
-            state,
-            msg,
-            "Failed to join conversation.".to_string(),
-            msg.metadata.clone(),
-        )
-        .await;
         return Ok(());
     }
 

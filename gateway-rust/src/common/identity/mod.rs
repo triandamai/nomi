@@ -20,15 +20,6 @@ pub async fn resolve_identity(
     is_group: bool,
     display_name: String,
 ) -> anyhow::Result<UserIdentity> {
-    let mut tx = match state.pool.begin().await {
-        Ok(tx) => tx,
-        Err(e) => {
-            error!("Failed to start transaction: {}", e);
-            return Err(anyhow::anyhow!("Db trx failed"));
-        }
-    };
-    // Split by ':' to get the prefix, and by '@' to get the domain
-
     if external_sender_id.contains(":") {
         info!(
             "External sender id: {} cannot contains :",
@@ -39,9 +30,17 @@ pub async fn resolve_identity(
     // Basic resolution: upsert user by external_id
     if is_group {
         info!(
-            "User from group, check existing, if user doesnt exist create new one external_sender_id:{} external_chat_id:{} channel:{}",
+            "User from group, create new one if not exist external_sender_id:{} external_chat_id:{} channel:{}",
             external_sender_id, external_chat_id, channel_type
         );
+        let mut tx = match state.pool.begin().await {
+            Ok(tx) => tx,
+            Err(e) => {
+                error!("Failed to start transaction: {}", e);
+                return Err(anyhow::anyhow!("Db trx failed"));
+            }
+        };
+
         let existing_channel_of_user = sqlx::query!(
             "
             SELECT c.user_id, u.display_name  FROM channels as c
@@ -54,7 +53,7 @@ pub async fn resolve_identity(
         .await;
 
         if let Err(e) = existing_channel_of_user {
-            info!("User Channel doesnt exist create new one, but error:{}", e);
+            info!("Failed getting existing channels:{}", e);
             let save_new_user = sqlx::query!(
                 "
                 INSERT INTO users (display_name)
@@ -83,16 +82,25 @@ pub async fn resolve_identity(
                 .fetch_one(&mut *tx)
                 .await;
             if let Err(e) = save_new_conv {
-                info!(
-                    "User Convo doesnt exist, since user from group create new one, but failed:{}",
-                    e
-                );
+                info!("Create convo failed:{}", e);
                 let _ = tx.rollback().await;
-                return Err(anyhow::anyhow!(
-                    "User Convo doesnt exist, since user from group create new one, but attempt failed"
-                ));
+                return Err(anyhow::anyhow!("Create User in group failed"));
             }
-            let new_convo = save_new_conv.unwrap();
+            let new_convo = save_new_conv?;
+            let save_members = sqlx::query!(
+                "INSERT INTO conversation_members (conversation_id,user_id,joined_at)
+                VALUES ($1,$2,now()) RETURNING conversation_id,user_id",
+                new_convo.id,
+                new_user.id
+            )
+            .fetch_one(&mut *tx)
+            .await;
+
+            if let Err(e) = save_members {
+                info!("Failed create members:{}", e);
+                let _ = tx.rollback().await;
+                return Err(anyhow::anyhow!("Faield create member :{e}"));
+            }
             let linked_channels = sqlx::query!(
                 "INSERT INTO channels(channel_type,external_id,external_chat_id, conversation_id,user_id,created_at)
                  VALUES ($1,$2,$3,$4,$5,now()) RETURNING id
@@ -107,14 +115,9 @@ pub async fn resolve_identity(
             .await;
 
             if let Err(e) = linked_channels {
-                info!(
-                    "User Channels doesnt exist, since user from group create new one, but failed:{}",
-                    e
-                );
+                info!("Failed linking channels:{}", e);
                 let _ = tx.rollback().await;
-                return Err(anyhow::anyhow!(
-                    "User Channels doesnt exist, since user from group create new one, but attempt failed"
-                ));
+                return Err(anyhow::anyhow!("Failed linking channels"));
             }
 
             if let Err(err) = tx.commit().await {
@@ -128,7 +131,7 @@ pub async fn resolve_identity(
             });
         }
 
-        let row = existing_channel_of_user.unwrap();
+        let row = existing_channel_of_user?;
         if let None = row.user_id {
             info!("Record not exist, user doesnt exist");
             return Err(anyhow::anyhow!("User doesnt exist"));
@@ -143,6 +146,13 @@ pub async fn resolve_identity(
             display_name: row.display_name.unwrap_or_else(|| display_name.to_string()),
         })
     } else {
+        let mut tx = match state.pool.begin().await {
+            Ok(tx) => tx,
+            Err(e) => {
+                error!("Failed to start transaction: {}", e);
+                return Err(anyhow::anyhow!("Db trx failed"));
+            }
+        };
         let find_user = sqlx::query!(
             "
             SELECT c.user_id, u.display_name  FROM channels as c
@@ -164,6 +174,8 @@ pub async fn resolve_identity(
             info!("Db trx commit failed:{}", e);
             return Err(anyhow::anyhow!("Failed to commit transaction"));
         }
+
+        //======//
         let row = find_user?;
         if let None = row.user_id {
             info!("User doesnt exist");

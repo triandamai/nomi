@@ -62,7 +62,7 @@ pub async fn start_redis_listener(state: AppState) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_inbound_message(state: AppState,mut msg: InboundMessage) -> anyhow::Result<()> {
+async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> anyhow::Result<()> {
     info!(
         "Handling inbound from {} in chat {}: {}",
         msg.sender_id, msg.conversation_id, msg.text
@@ -82,7 +82,7 @@ async fn handle_inbound_message(state: AppState,mut msg: InboundMessage) -> anyh
         }
     }
 
-    if msg.sender_id.contains(":"){
+    if msg.sender_id.contains(":") {
         info!("User {} has ':' skiped", msg.sender_id);
         return Ok(());
     }
@@ -106,23 +106,47 @@ async fn handle_inbound_message(state: AppState,mut msg: InboundMessage) -> anyh
     }
 
     // 2. Resolve Identity and Channel Info
-    let conversation_id = if msg.is_group {
+    let (conversation_id, cumulative_tokens, max_token_usage) = if msg.is_group {
         // For groups, we look up the channel_group table instead of the regular channels table
         match channel_repo::get_channel_group_info(&state.pool, &msg.channel, &msg.conversation_id)
             .await
         {
-            Ok(value) => value.map_or_else(|| Uuid::nil(), |v| v.conversation_id),
-            Err(_) => Uuid::nil(),
+            Ok(value) => value.map_or_else(
+                || (Uuid::nil(), 0, 700000.0),
+                |v| (v.conversation_id, v.cumulative_tokens, v.max_token_usage),
+            ),
+            Err(_) => (Uuid::nil(), 0, 700000.0),
         }
     } else {
         match channel_repo::get_channel_info(&state.pool, &msg.channel, &msg.conversation_id).await
         {
-            Ok(value) => value.map_or_else(|| Uuid::nil(), |v| v.conversation_id),
-            Err(_) => Uuid::nil(),
+            Ok(value) => value.map_or_else(
+                || (Uuid::nil(), 0, 700000.0),
+                |v| (v.conversation_id, v.cumulative_tokens, v.max_token_usage),
+            ),
+            Err(_) => (Uuid::nil(), 0, 700000.0),
         }
     };
 
-    info!("Conversation id {}",conversation_id);
+    if cumulative_tokens as f64 >= max_token_usage {
+        info!("Conversation {} has reached max token usage", conversation_id);
+        let _ = state.publish_outbond(&OutboundMessage {
+            is_group: msg.is_group,
+            sender_id: "nomi_auth".to_string(),
+            conversation_id: msg.conversation_id.clone(),
+            text: format!("⚠️ **Token Usage Limit Reached** ⚠️\n\nThis conversation has reached its maximum token usage limit of **{:.0}** tokens (Current: **{}**).\n\nPlease contact Trian to increase the limit or start a new conversation. Thank you!", max_token_usage, cumulative_tokens),
+            channel: msg.channel.clone(),
+            video_url: None,
+            image_url: None,
+            audio_url: None,
+            doc_url: None,
+            sticker_url: None,
+            metadata: msg.metadata.clone(),
+        });
+        return Ok(());
+    }
+
+    info!("Conversation id {}", conversation_id);
     let display_name = match &msg.metadata {
         None => msg.sender_id.clone(),
         Some(meta) => meta
