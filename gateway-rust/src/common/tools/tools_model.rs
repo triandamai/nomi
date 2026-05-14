@@ -109,6 +109,12 @@ pub struct EvolveBootstrapResponse {
 pub struct ScheduleTaskParameters {
     pub task_type: String,     // "REMINDER", "SEND_DM", "TRIGGER_AGENT"
     pub due_at: String,        // ISO 8601 absolute timestamp string
+    #[schemars(description = "You must populate it according to these rules:
+    1. If task_type is 'REMINDER': Must contain exactly { \"message\": \"The reminder text to send to the user\" }.
+    2. If task_type is 'SEND_DM': Must contain exactly { \"recipient_jid\": \"The destination user ID/JID string\", \"content\": \"The message text to send\" }.
+    3. If task_type is 'TRIGGER_AGENT': Must contain exactly { \"task_prompt\": \"The instruction string for the background routine execution\" }.
+    
+    CRITICAL: Do not invent or add extra keys outside of these specifications.")]
     pub payload: serde_json::Value, // Flexible execution variables
     pub frequency: Option<String>,
     pub max_repeats: Option<i32>,

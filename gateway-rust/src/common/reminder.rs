@@ -35,13 +35,18 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
         let task_type = task.task_type.as_deref().unwrap_or("REMINDER");
         info!("Processing due task: {} of type {}", task.id, task_type);
 
-        match task_type {
+        match task_type.to_uppercase().as_str() {
             "REMINDER" => {
                 if let Some(payload) = task.payload {
+                    let content = payload
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("No Content");
+
                     let message = payload
                         .get("message")
                         .and_then(|v| v.as_str())
-                        .unwrap_or("No content");
+                        .unwrap_or(content);
 
                     if let Some(conversation_id) = task.conversation_id {
                         let tz: Tz = "Asia/Jakarta".parse().unwrap_or(chrono_tz::UTC);
@@ -92,7 +97,6 @@ async fn process_reminders(state: &AppState) -> anyhow::Result<()> {
                         "SELECT channel_type, external_chat_id, external_id FROM channels WHERE user_id = $1 ORDER BY created_at DESC",
                         task.user_id
                     ).fetch_all(&state.pool).await.unwrap_or_default();
-
                         for channel in channels {
                             let outbound = OutboundMessage {
                                 is_group: false,
@@ -205,7 +209,9 @@ pub async fn handle_get_reminders(
     axum::extract::Extension(claims): axum::extract::Extension<
         crate::feature::conversation::auth::Claims,
     >,
-    axum::extract::Query(params): axum::extract::Query<crate::feature::conversation::model::MessageListParams>,
+    axum::extract::Query(params): axum::extract::Query<
+        crate::feature::conversation::model::MessageListParams,
+    >,
 ) -> crate::common::api_response::ApiResponse<
     Vec<crate::feature::conversation::model::ReminderResponse>,
 > {
@@ -218,7 +224,9 @@ pub async fn handle_get_reminders(
 
     let limit = params.limit.unwrap_or(20);
     // Use a very far future date as default cursor for DESC sort
-    let cursor = params.cursor.unwrap_or_else(|| Utc::now() + chrono::Duration::days(365 * 10));
+    let cursor = params
+        .cursor
+        .unwrap_or_else(|| Utc::now() + chrono::Duration::days(365 * 10));
 
     let result = sqlx::query!(
         r#"

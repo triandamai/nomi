@@ -270,7 +270,7 @@ async fn main() -> anyhow::Result<()> {
         loop {
             info!("Running pending_media cleanup...");
             if let Err(e) =
-                crate::common::repository::pending_media_repo::cleanup_old_pending_media(
+                common::repository::pending_media_repo::cleanup_old_pending_media(
                     &cleanup_state.pool,
                 )
                 .await

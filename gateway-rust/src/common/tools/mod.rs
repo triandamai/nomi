@@ -349,7 +349,7 @@ impl ToolDispatcher {
 
         let schedule_task = FunctionDeclaration::new(
             "schedule_task",
-            "Schedule a background task. Supports personal reminders, automated direct messages (delayed messages), and background agent actions. Supports natural language descriptions and recurrence (daily, weekly, monthly). The absolute execution time. Format: 'YYYY-MM-DD HH:MM'. The user is in WIB (UTC+7). If the user says 'in 30 minutes', calculate the time based on the current WIB time provided in the system prompt.",
+            "Schedule a background task (Reminders, DMs, or Agent actions). Recurrence (daily, weekly, monthly) is supported. The `due_at` field has a STRICT FORMAT: 'YYYY-MM-DD HH:MM'. Explicitly calculate this timestamp relative to the [SYSTEM TIME ANCHOR] provided in the system prompt. For example, if current time is 2026-05-14 20:27 WIB and the user says 'in 10 minutes', you MUST output exactly '2026-05-14 20:37'. Never include trailing 'Z', offsets, or seconds. The user is in WIB (UTC+7).",
             None,
         )
             .with_parameters::<ScheduleTaskParameters>()
@@ -592,13 +592,10 @@ impl ToolDispatcher {
             }
         };
 
-        // WIB Conversion for output confirmation
         let due_at_wib = due_at_utc.with_timezone(&tz_wib);
-        let time_str = due_at_wib.format("%Y-%m-%d %H:%M WIB").to_string();
-
         let frequency = params.frequency.unwrap_or_else(|| "once".to_string());
 
-        let task_description = match params.task_type.as_str() {
+        let task_description = match params.task_type.to_uppercase().as_str() {
             "REMINDER" => format!(
                 "reminder: '{}'",
                 params
@@ -646,8 +643,8 @@ impl ToolDispatcher {
                 .unwrap_or_else(|_| "Trian".to_string());
 
                 let content = format!(
-                    "Got it, {}! 🚀 I've scheduled that **{}** to be triggered on **{}** sharp! 📩✨",
-                    display_name, task_description, time_str
+                    "Got it, {}! I've scheduled your {} for {}.",
+                    display_name, task_description, due_at_wib.format("%H:%M WIB").to_string()
                 );
 
                 ToolResult {
