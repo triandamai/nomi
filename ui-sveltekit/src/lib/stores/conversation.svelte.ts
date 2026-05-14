@@ -78,9 +78,9 @@ function createConversationStore() {
                 goto("/chat")
             })
         },
-        async addConversation(name: string) {
+        async addConversation(name: string, type: string = 'private') {
             try {
-                const response = await chatApi.createConversation(name);
+                const response = await chatApi.createConversation(name, type);
                 if(response.data) {
                     // For now, if response is dummy, we generate a local one
                     const newConv: Conversation = {

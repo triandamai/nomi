@@ -18,6 +18,7 @@
 
     function handleAddConversation() {
         sidebarStore.newConvName = '';
+        sidebarStore.newConvType = 'private';
         popupStore.open({
             title: 'Create Conversation',
             width: 'max-w-md',
@@ -48,8 +49,9 @@
 
     async function createConversation() {
         if (sidebarStore.newConvName.trim()) {
-            await conversationStore.addConversation(sidebarStore.newConvName.trim());
+            await conversationStore.addConversation(sidebarStore.newConvName.trim(), sidebarStore.newConvType);
             sidebarStore.newConvName = '';
+            sidebarStore.newConvType = 'private';
             popupStore.closeLast();
         }
     }
@@ -135,16 +137,50 @@
 </script>
 
 {#snippet createConvContent()}
-    <div class="space-y-4">
-        <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest">Conversation Name</p>
-        <input
-            type="text"
-            bind:value={sidebarStore.newConvName}
-            placeholder="e.g. general-chat"
-            class="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all placeholder:text-slate-800"
-            onkeydown={(e) => e.key === 'Enter' && createConversation()}
-            autofocus
-        />
+    <div class="space-y-6">
+        <div class="space-y-2">
+            <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest">Conversation Name</p>
+            <input
+                type="text"
+                bind:value={sidebarStore.newConvName}
+                placeholder="e.g. general-chat"
+                class="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all placeholder:text-slate-800"
+                onkeydown={(e) => e.key === 'Enter' && createConversation()}
+                autofocus
+            />
+        </div>
+
+        <div class="space-y-2">
+            <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest">Conversation Type</p>
+            <div class="grid grid-cols-2 gap-3">
+                <button 
+                    onclick={() => sidebarStore.newConvType = 'private'}
+                    class="flex flex-col items-center gap-3 p-4 rounded-2xl border transition-all {sidebarStore.newConvType === 'private' ? 'bg-blue-500/10 border-blue-500/50 text-blue-400' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700'}"
+                >
+                    <div class="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center">
+                        <User size={20} class={sidebarStore.newConvType === 'private' ? 'text-blue-400' : 'text-slate-600'} />
+                    </div>
+                    <div class="text-center">
+                        <p class="text-xs font-bold">Private</p>
+                        <p class="text-[9px] opacity-60">Single soul session</p>
+                    </div>
+                </button>
+
+                <button 
+                    onclick={() => sidebarStore.newConvType = 'group'}
+                    class="flex flex-col items-center gap-3 p-4 rounded-2xl border transition-all {sidebarStore.newConvType === 'group' ? 'bg-purple-500/10 border-purple-500/50 text-purple-400' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700'}"
+                >
+                    <div class="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center">
+                        <Database size={20} class={sidebarStore.newConvType === 'group' ? 'text-purple-400' : 'text-slate-600'} />
+                    </div>
+                    <div class="text-center">
+                        <p class="text-xs font-bold">Group</p>
+                        <p class="text-[9px] opacity-60">Multi-user workspace</p>
+                    </div>
+                </button>
+            </div>
+        </div>
+
         <p class="text-[11px] text-slate-500 leading-relaxed">
             By creating a conversation, you can organize your AI interactions into different intelligent souls.
         </p>
@@ -234,10 +270,10 @@
                 <p class="text-xs text-slate-600 mt-1">Ask Nomi to set a reminder for you!</p>
             </div>
         {:else}
-            <div class="space-y-3">
+            <div class="space-y-4">
                 {#each sidebarStore.reminders as reminder}
                     <div class="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4 transition-all hover:bg-slate-900 group">
-                        <div class="flex items-center gap-2 mb-2">
+                        <div class="flex items-center gap-2 mb-3">
                             {#if reminder.task_type === 'REMINDER'}
                                 <div class="p-1 rounded bg-amber-500/20 text-amber-400">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
@@ -260,11 +296,28 @@
                             {/if}
                         </div>
 
-                        <div class="flex justify-between items-start gap-4">
-                            <p class="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{reminder.content}</p>
+                        <div class="flex justify-between items-start gap-4 mb-3">
+                            <p class="text-sm text-slate-200 font-medium leading-relaxed whitespace-pre-wrap">{reminder.content}</p>
                         </div>
                         
-                        <div class="flex items-center justify-between mt-3 text-xs text-slate-500">
+                        <div class="grid grid-cols-2 gap-2 mb-3">
+                            <div class="flex flex-col gap-1">
+                                <span class="text-[9px] font-black uppercase tracking-widest text-slate-600">User</span>
+                                <div class="flex items-center gap-1.5 text-xs text-slate-400">
+                                    <User size={10} class="text-slate-500" />
+                                    <span class="truncate">{reminder.user_display_name || 'Anonymous'}</span>
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-[9px] font-black uppercase tracking-widest text-slate-600">Conversation</span>
+                                <div class="flex items-center gap-1.5 text-xs text-slate-400">
+                                    <MessageSquare size={10} class="text-slate-500" />
+                                    <span class="truncate">{reminder.conversation_title || 'Private Session'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-3 border-t border-slate-800/50 text-xs text-slate-500">
                             <div class="flex items-center gap-1.5 font-mono bg-black/20 px-2 py-1 rounded">
                                 <span class="text-blue-500/70">
                                     {new Date(reminder.due_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -286,6 +339,25 @@
                     </div>
                 {/each}
             </div>
+
+            {#if sidebarStore.hasMoreReminders}
+                <div class="pt-4 flex justify-center">
+                    <button
+                        onclick={() => sidebarStore.loadMoreReminders()}
+                        disabled={sidebarStore.isLoadingReminders}
+                        class="px-6 py-2 text-[10px] font-black uppercase tracking-widest bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all disabled:opacity-50"
+                    >
+                        {#if sidebarStore.isLoadingReminders}
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin"></div>
+                                Loading...
+                            </div>
+                        {:else}
+                            Load More Reminders
+                        {/if}
+                    </button>
+                </div>
+            {/if}
         {/if}
     </div>
 {/snippet}

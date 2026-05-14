@@ -46,6 +46,8 @@ pub struct MoneyHistoryItem {
     pub total_amount: Decimal,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub items: sqlx::types::JsonValue,
+    pub user_display_name: Option<String>,
+    pub conversation_title: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -179,6 +181,8 @@ pub async fn handle_get_money_history(
     let mut qb = QueryBuilder::new(r#"
         SELECT 
             mt.id, mt.merchant_name, mt.category, mt.description, mt.total_amount, mt.created_at,
+            u.display_name as user_display_name,
+            c.title as conversation_title,
             COALESCE(
                 jsonb_agg(
                     jsonb_build_object(
@@ -191,6 +195,8 @@ pub async fn handle_get_money_history(
             ) as items
         FROM money_tracking mt
         LEFT JOIN money_tracking_items mti ON mt.id = mti.money_tracking_id
+        LEFT JOIN users u ON mt.user_id = u.id
+        LEFT JOIN conversations c ON mt.conversation_id = c.id
         WHERE 1=1 
     "#);
     
@@ -203,11 +209,19 @@ pub async fn handle_get_money_history(
             qb.push_bind(search_term.clone());
             qb.push(" OR mt.description ILIKE ");
             qb.push_bind(search_term.clone());
+            qb.push(" OR u.display_name ILIKE ");
+            qb.push_bind(search_term.clone());
+            qb.push(" OR c.title ILIKE ");
+            qb.push_bind(search_term.clone());
             qb.push(") ");
             
             count_qb.push(" AND (mt.merchant_name ILIKE ");
             count_qb.push_bind(search_term.clone());
             count_qb.push(" OR mt.description ILIKE ");
+            count_qb.push_bind(search_term.clone());
+            count_qb.push(" OR u.display_name ILIKE ");
+            count_qb.push_bind(search_term.clone());
+            count_qb.push(" OR c.title ILIKE ");
             count_qb.push_bind(search_term.clone());
             count_qb.push(") ");
         }
@@ -222,7 +236,7 @@ pub async fn handle_get_money_history(
         }
     }
 
-    qb.push(" GROUP BY mt.id ORDER BY mt.created_at DESC LIMIT ");
+    qb.push(" GROUP BY mt.id, u.display_name, c.title ORDER BY mt.created_at DESC LIMIT ");
     qb.push_bind(limit);
     qb.push(" OFFSET ");
     qb.push_bind(offset);

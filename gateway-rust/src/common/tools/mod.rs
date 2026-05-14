@@ -624,7 +624,7 @@ impl ToolDispatcher {
              VALUES ($1, $2, $3, $4, $5, $6, $7,$8) RETURNING id",
             user_id,
             self.conversation_id,
-            params.task_type,
+            params.task_type.to_uppercase(),
             params.payload,
             due_at_utc,
             frequency,

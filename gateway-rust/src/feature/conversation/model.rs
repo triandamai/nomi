@@ -19,6 +19,7 @@ pub struct CreateConversationRequest {
     pub name: Option<String>, // Frontend uses 'name'
     pub soul_content: Option<String>,
     pub bootstrap_content: Option<String>,
+    pub conversation_type: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -125,5 +126,7 @@ pub struct ReminderResponse {
     pub due_at: DateTime<Utc>,
     pub frequency: Option<String>,
     pub status: String,
+    pub user_display_name: Option<String>,
+    pub conversation_title: Option<String>,
     pub created_at: DateTime<Utc>,
 }

@@ -205,6 +205,7 @@ pub async fn handle_get_reminders(
     axum::extract::Extension(claims): axum::extract::Extension<
         crate::feature::conversation::auth::Claims,
     >,
+    axum::extract::Query(params): axum::extract::Query<crate::feature::conversation::model::MessageListParams>,
 ) -> crate::common::api_response::ApiResponse<
     Vec<crate::feature::conversation::model::ReminderResponse>,
 > {
@@ -215,22 +216,33 @@ pub async fn handle_get_reminders(
         }
     };
 
+    let limit = params.limit.unwrap_or(20);
+    // Use a very far future date as default cursor for DESC sort
+    let cursor = params.cursor.unwrap_or_else(|| Utc::now() + chrono::Duration::days(365 * 10));
+
     let result = sqlx::query!(
         r#"
         SELECT 
-            id,
-            task_type as "task_type!",
-            payload as "payload!",
-            COALESCE(payload->>'message', content) as "content!",
-            (due_at AT TIME ZONE 'Asia/Jakarta') as due_at,
-            frequency,
-            status,
-            created_at
-        FROM reminders
-        WHERE user_id = $1
-        ORDER BY due_at ASC
+            r.id,
+            r.task_type as "task_type!",
+            r.payload as "payload!",
+            COALESCE(r.payload->>'message', r.content) as "content!",
+            (r.due_at AT TIME ZONE 'Asia/Jakarta') as due_at,
+            r.frequency,
+            r.status,
+            u.display_name as "user_display_name",
+            c.title as "conversation_title",
+            r.created_at
+        FROM reminders r
+        LEFT JOIN users u ON r.user_id = u.id
+        LEFT JOIN conversations c ON r.conversation_id = c.id
+        WHERE r.user_id = $1 AND r.due_at < $2
+        ORDER BY r.due_at DESC
+        LIMIT $3
         "#,
-        user_id
+        user_id,
+        cursor,
+        limit
     )
     .fetch_all(&state.pool)
     .await;
@@ -245,8 +257,6 @@ pub async fn handle_get_reminders(
                     task_type: r.task_type,
                     payload: r.payload,
                     content: r.content,
-                    // Convert NaiveDateTime (from AT TIME ZONE) back to DateTime<Utc>
-                    // We use the timezone to correctly interpret the naive datetime as Jakarta time, then convert to UTC
                     due_at: tz
                         .from_local_datetime(&r.due_at.unwrap())
                         .single()
@@ -254,6 +264,8 @@ pub async fn handle_get_reminders(
                         .with_timezone(&Utc),
                     frequency: r.frequency,
                     status: r.status.unwrap_or_default(),
+                    user_display_name: r.user_display_name,
+                    conversation_title: r.conversation_title,
                     created_at: r.created_at.unwrap_or_else(Utc::now),
                 })
                 .collect();

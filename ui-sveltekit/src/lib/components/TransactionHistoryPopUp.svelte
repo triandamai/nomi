@@ -144,9 +144,17 @@
             <div class="flex justify-between items-start gap-4">
                 <div>
                     <h3 class="font-black text-xl text-slate-100">{selectedDetailTransaction.merchant_name || 'Unknown Merchant'}</h3>
-                    {#if selectedDetailTransaction.category}
-                        <span class="inline-block mt-1 px-2.5 py-1 text-[10px] rounded-full bg-slate-800 text-slate-300 uppercase font-black tracking-widest border border-slate-700">{selectedDetailTransaction.category}</span>
-                    {/if}
+                    <div class="flex flex-wrap items-center gap-2 mt-2">
+                        {#if selectedDetailTransaction.category}
+                            <span class="px-2.5 py-1 text-[10px] rounded-full bg-slate-800 text-slate-300 uppercase font-black tracking-widest border border-slate-700">{selectedDetailTransaction.category}</span>
+                        {/if}
+                        {#if selectedDetailTransaction.user_display_name}
+                            <span class="px-2.5 py-1 text-[10px] rounded-full bg-blue-500/10 text-blue-400 uppercase font-black tracking-widest border border-blue-500/20 italic">@{selectedDetailTransaction.user_display_name}</span>
+                        {/if}
+                        {#if selectedDetailTransaction.conversation_title}
+                            <span class="px-2.5 py-1 text-[10px] rounded-full bg-slate-800 text-slate-500 uppercase font-black tracking-widest border border-slate-700 truncate max-w-[200px]">{selectedDetailTransaction.conversation_title}</span>
+                        {/if}
+                    </div>
                 </div>
                 <div class="text-right shrink-0">
                     <p class="font-bold text-rose-400 text-xl font-mono">
@@ -260,6 +268,14 @@
                                     <span class="font-bold text-slate-200 truncate">{t.merchant_name || 'Unknown Merchant'}</span>
                                     {#if t.category}
                                         <span class="px-2 py-0.5 text-[9px] rounded-full bg-slate-800 text-slate-400 uppercase font-black tracking-widest border border-slate-700">{t.category}</span>
+                                    {/if}
+                                </div>
+                                <div class="flex items-center gap-2 mb-1.5">
+                                    {#if t.user_display_name}
+                                        <span class="text-[10px] text-blue-400 font-bold bg-blue-500/10 px-1.5 py-0.5 rounded italic">@{t.user_display_name}</span>
+                                    {/if}
+                                    {#if t.conversation_title}
+                                        <span class="text-[10px] text-slate-500 truncate">• {t.conversation_title}</span>
                                     {/if}
                                 </div>
                                 <p class="text-xs text-slate-500 truncate mb-1.5">{t.description || 'No description'}</p>

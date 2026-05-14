@@ -307,12 +307,15 @@ pub async fn handle_create_conversation(
     let result: Result<ConversationResponse, sqlx::Error> = async {
         let mut tx = state.pool.begin().await?;
 
+        let conv_type = payload.conversation_type.unwrap_or_else(|| "private".to_string());
+
         let row = sqlx::query!(
-            "INSERT INTO conversations (id, title, soul_content, bootstrap_content,cumulative_tokens) VALUES ($1, $2, $3, $4,0) RETURNING id, title, created_at, updated_at,cumulative_tokens",
+            "INSERT INTO conversations (id, title, soul_content, bootstrap_content, cumulative_tokens, conversation_type) VALUES ($1, $2, $3, $4, 0, $5) RETURNING id, title, created_at, updated_at, cumulative_tokens",
             id,
             title,
             payload.soul_content,
-            payload.bootstrap_content
+            payload.bootstrap_content,
+            conv_type
         )
         .fetch_one(&mut *tx)
         .await?;

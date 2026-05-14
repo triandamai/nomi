@@ -3,13 +3,16 @@ import { conversationStore, type Conversation } from './conversation.svelte';
 import { popupStore } from './popup.svelte';
 import { eventBus } from '$lib/utils';
 
-function createSidebarStore() {
+export function createSidebarStore(){
     let showUserMenu = $state(false);
     let reminders = $state<any[]>([]);
+    let isLoadingReminders = $state(false);
+    let hasMoreReminders = $state(true);
     let isPaired = $state(false);
     let pairingCode = $state('');
     let copied = $state(false);
     let newConvName = $state('');
+    let newConvType = $state('private');
     let editingConv = $state<Conversation | null>(null);
     let channels = $state<any[]>([]);
     let whatsappQr = $state('');
@@ -27,11 +30,15 @@ function createSidebarStore() {
         get showUserMenu() { return showUserMenu; },
         set showUserMenu(value: boolean) { showUserMenu = value; },
         get reminders() { return reminders; },
+        get isLoadingReminders() { return isLoadingReminders; },
+        get hasMoreReminders() { return hasMoreReminders; },
         get isPaired() { return isPaired; },
         get pairingCode() { return pairingCode; },
         get copied() { return copied; },
         get newConvName() { return newConvName; },
         set newConvName(value: string) { newConvName = value; },
+        get newConvType() { return newConvType; },
+        set newConvType(value: string) { newConvType = value; },
         get editingConv() { return editingConv; },
         get channels() { return channels; },
         get whatsappQr() { return whatsappQr; },
@@ -71,13 +78,37 @@ function createSidebarStore() {
         },
 
         async fetchReminders() {
+            isLoadingReminders = true;
             try {
                 const response = await chatApi.getReminders();
                 if (response.data) {
                     reminders = response.data;
+                    hasMoreReminders = response.data.length === 20;
                 }
             } catch (e) {
                 console.error('Failed to fetch reminders', e);
+            } finally {
+                isLoadingReminders = false;
+            }
+        },
+
+        async loadMoreReminders() {
+            if (isLoadingReminders || !hasMoreReminders) return;
+            isLoadingReminders = true;
+            try {
+                const lastReminder = reminders[reminders.length - 1];
+                const cursor = lastReminder ? lastReminder.due_at : null;
+                const response = await chatApi.getReminders(cursor);
+                if (response.data && response.data.length > 0) {
+                    reminders = [...reminders, ...response.data];
+                    hasMoreReminders = response.data.length === 20;
+                } else {
+                    hasMoreReminders = false;
+                }
+            } catch (e) {
+                console.error('Failed to load more reminders', e);
+            } finally {
+                isLoadingReminders = false;
             }
         },
 
@@ -173,6 +204,7 @@ function createSidebarStore() {
             this.fetchWhatsappQr();
         }
     };
+
 }
 
 export const sidebarStore = createSidebarStore();

@@ -211,10 +211,10 @@ export const chatApi = {
         return () => sse.close();
     },
 
-    createConversation: (name: string) => {
+    createConversation: (name: string, type: string = 'private') => {
         return apiFetch<Conversation>('/conversations', {
             method: 'POST',
-            body: JSON.stringify({name})
+            body: JSON.stringify({name, conversation_type: type})
         });
     },
 
@@ -248,8 +248,11 @@ export const chatApi = {
     getSoulHistory: (conversationId: string) => {
         return apiFetch<any[]>(`/conversations/${conversationId}/soul-history`);
     },
-    getReminders: () => {
-        return apiFetch<any[]>('/reminders');
+    getReminders: (cursor?: string, limit: number = 20) => {
+        const url = new URL(`${BASE_URL}/reminders`);
+        if (cursor) url.searchParams.append('cursor', cursor);
+        url.searchParams.append('limit', limit.toString());
+        return apiFetch<any[]>(url.pathname.replace("/api", "") + url.search);
     },
     restoreSoul: (conversationId: string, version: number) => {
         return apiFetch<any>(`/conversations/${conversationId}/restore-soul`, {
