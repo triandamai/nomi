@@ -9,3 +9,4 @@ pub mod storage;
 pub mod stock;
 pub mod reminder;
 pub mod splitter;
+pub mod format;

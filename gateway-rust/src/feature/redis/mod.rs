@@ -62,14 +62,19 @@ pub async fn start_redis_listener(state: AppState) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow::Result<()> {
+async fn handle_inbound_message(state: AppState,mut msg: InboundMessage) -> anyhow::Result<()> {
     info!(
         "Handling inbound from {} in chat {}: {}",
         msg.sender_id, msg.conversation_id, msg.text
     );
 
-    let text = msg.text.trim();
+    let mut text = msg.text.trim().to_string();
 
+    if text.contains("@42078516064356") {
+        info!("native mentioned detected {}", text);
+        text = text.replace("@42078516064356", "Nomi");
+        msg.is_mentioned = true;
+    }
     // 1. Group Filtering & Registration Check
     if msg.is_group {
         let registered = is_group_registered(&state.pool, &msg.conversation_id, &msg.channel).await;
@@ -125,11 +130,11 @@ async fn handle_inbound_message(state: AppState, msg: InboundMessage) -> anyhow:
         info!("User not exist:{}", err);
     }
 
-    let user_id = user_id.unwrap().id;
+    let user_id = user_id?.id;
     // ================================== BEGIN COMMAND ============================//
     // 3. Check for Pairing/Register/Login
     if text.to_uppercase().starts_with("/pair ") {
-        return process_pairing(&state, &msg, text, user_id.clone()).await;
+        return process_pairing(&state, &msg, &text, user_id.clone()).await;
     } else if text.starts_with("/linkapp") {
         return process_generate_pairing(&state, &msg, user_id.clone()).await;
     } else if text.starts_with("/register") {

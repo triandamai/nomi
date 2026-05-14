@@ -35,7 +35,7 @@ pub async fn send_prompt(
         } => {
             info!("\n ==== sending user prompt ===== \n");
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-            info!("system prompt\n ${}\n ========",build_prompt);
+            // info!("system prompt\n ${}\n ========",build_prompt);
             let mut user_parts = vec![gemini_rust::Part::Text {
                 text: message,
                 thought: None,
@@ -76,7 +76,7 @@ pub async fn send_prompt(
         } => {
             info!("\n ==== sending tool prompt ===== \n");
             let build_prompt = build_system_prompt(history, memories, system_prompt);
-            info!("system prompt\n ${}\n ========",build_prompt);
+            // info!("system prompt\n ${}\n ========",build_prompt);
             let mut user_parts = vec![gemini_rust::Part::Text {
                 text: message,
                 thought: None,
@@ -154,9 +154,25 @@ pub async fn send_prompt(
     // D. Streaming Egress
     match gemini_builder.execute().await {
         Ok(s) => {
-            let text = s.text();
-            info!("===== response ===== \n {} \n ================ \n", text);
-            let parse = parse_llm_output(&text);
+            let raw_text = s.text();
+            info!("===== raw response ===== \n {} \n ================ \n", raw_text);
+            
+            // Task 1: Heal tags if broken
+            let mut healed_text = crate::common::format::heal_thinking_tags(&raw_text);
+            if healed_text != raw_text {
+                info!("===== healed response ===== \n {} \n ================ \n", healed_text);
+            }
+
+            let mut parse = parse_llm_output(&healed_text);
+
+            // Task 2: Refiner Utility
+            // If thought is empty OR response still looks like it contains 'thinking' at the start
+            if parse.thought.is_empty() && (parse.response.to_lowercase().starts_with("thinking") || parse.response.contains("<thinking>")) {
+                if let Ok(refined_text) = crate::common::format::refine_output(&raw_text, gemini).await {
+                     healed_text = refined_text;
+                     parse = parse_llm_output(&healed_text);
+                }
+            }
 
             let finish_reason = s
                 .candidates

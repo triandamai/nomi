@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO conversations (id, title,soul_content,bootstrap_content) VALUES ($1, $2,$3,$4) RETURNING id",
+  "query": "INSERT INTO conversations (id, title,soul_content,bootstrap_content,conversation_type) VALUES ($1, $2,$3,$4,'group') RETURNING id",
   "describe": {
     "columns": [
       {
@@ -21,5 +21,5 @@
       false
     ]
   },
-  "hash": "7f9941ebfd78caa0c47941f50ccd4d8ec6efb2ba8e9b7cccde6fc0d5e1c616a4"
+  "hash": "17d22dc470fe690236fdd348e68335f1c05610ddff5bf099673df0e59619fe55"
 }

@@ -87,7 +87,7 @@ pub async fn process_generate_pairing(
 pub async fn process_pairing(
     state: &AppState,
     msg: &InboundMessage,
-    text: &str,
+    text: &String,
     user_id: Uuid,
 ) -> anyhow::Result<()> {
     let parts: Vec<&str> = text.split_whitespace().collect();

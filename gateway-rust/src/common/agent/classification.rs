@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 pub async fn classification(
     state: &AppState,
+    members:Vec<Uuid>,
     conversation_id: Uuid,
     msg: &UnifiedMessage,
     text_content: String,
@@ -32,6 +33,7 @@ pub async fn classification(
 
             send_status_update(
                 &state,
+                members.clone(),
                 conversation_id,
                 msg.source.clone(),
                 "tool_start".to_string(),

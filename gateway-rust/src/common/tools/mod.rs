@@ -854,10 +854,19 @@ impl ToolDispatcher {
             Ok(response) => {
                 let mut content = response.text().await.unwrap_or_default();
 
-                // Safety & Token Budget: Limit to roughly 4000 tokens (~16000 chars)
-                if content.len() > 16000 {
-                    content.truncate(16000);
+                // Safety & Token Budget: Limit to roughly 1250 tokens (~5000 chars)
+                if content.len() > 5000 {
+                    content = content.chars().take(5000).collect::<String>();
                     content.push_str("\n\n[Content truncated for token budget...]");
+                }
+
+                if content.trim().is_empty() {
+                    return ToolResult {
+                        error: "I checked the link, but I couldn't find any readable text there! 🏔️".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                    };
                 }
 
                 ToolResult {

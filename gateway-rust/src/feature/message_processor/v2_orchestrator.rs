@@ -12,8 +12,8 @@ use uuid::Uuid;
 use crate::common::agent::classification::{classification, fetch_media_from_storage};
 use crate::common::repository::message_repo::save_message;
 use crate::feature::conversation::model::MessageItem;
-use tracing::{error, info};
 use crate::rag::trigger_memory_consolidation;
+use tracing::{error, info};
 
 pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow::Result<()> {
     let conversation_id = msg.conversation_id;
@@ -136,37 +136,9 @@ async fn process_v2_message_with_intent(
         None,
     )
     .await;
-    if let Err(e) = save_user_message{
-        info!("Saving message failed :{}",e);
+    if let Err(e) = save_user_message {
+        info!("Saving message failed :{}", e);
         return Ok(());
-    }
-    let saved_message = save_user_message.unwrap();
-
-    // Group is registered, only respond if mentioned
-    if msg.is_group && !msg.is_mentioned
-        && (msg.image_url.is_none()
-        && msg.video_url.is_none()
-        && msg.audio_url.is_none()
-        && msg.doc_url.is_none()
-        && msg.sticker_url.is_none())
-    {
-        info!("Message is from registered group, but not mentioned or image, ignoring. but immediate save for beter context history");
-
-        return Ok(());
-    }
-
-    // Fetch updated total tokens and broadcast
-    if let Ok(row) = sqlx::query!(
-        "SELECT cumulative_tokens FROM conversations WHERE id = $1",
-        conversation_id
-    ).fetch_one(&state.pool).await {
-        let _ = state.broadcast_sse(
-            "token_update",
-            json!({
-                "conversation_id": conversation_id,
-                "cumulative_tokens": row.cumulative_tokens
-            })
-        ).await;
     }
 
     let members = sqlx::query!(
@@ -177,22 +149,55 @@ async fn process_v2_message_with_intent(
     .await
     .unwrap_or(Vec::new());
 
-    for member in members {
+    let saved_message = save_user_message?;
+
+    for member in members.iter().map(|v|v.user_id.clone()) {
+        let _ = state.send_sse_to_user(
+            member.to_string().as_str(),
+            "message",
+            json!({
+                    "id": saved_message.id,
+                    "conversation_id":conversation_id,
+                    "role": saved_message.role,
+                    "content": saved_message.content.clone(),
+                    "thought": saved_message.thought,
+                    "user_id": saved_message.user_id,
+                    "total_tokens": 0,
+                    "image_url": saved_message.image_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
+                    "created_at": saved_message.created_at
+        })).await;
+    }
+    // Group is registered, only respond if mentioned
+    if msg.is_group
+        && !msg.is_mentioned
+        && (msg.image_url.is_none()
+            && msg.video_url.is_none()
+            && msg.audio_url.is_none()
+            && msg.doc_url.is_none()
+            && msg.sticker_url.is_none())
+    {
+        info!(
+            "Message is from registered group, but not mentioned or image, ignoring. but immediate save for beter context history"
+        );
+
+        return Ok(());
+    }
+
+    // Fetch updated total tokens and broadcast
+    if let Ok(row) = sqlx::query!(
+        "SELECT cumulative_tokens FROM conversations WHERE id = $1",
+        conversation_id
+    )
+    .fetch_one(&state.pool)
+    .await
+    {
         let _ = state
-            .send_sse_to_user(
-                member.user_id.to_string().as_str(),
-                "message",
+            .broadcast_sse(
+                "token_update",
                 json!({
-                        "id": saved_message.id,
-                        "conversation_id":conversation_id,
-                        "role": saved_message.role,
-                        "content": saved_message.content.clone(),
-                        "thought": saved_message.thought,
-                        "user_id": saved_message.user_id,
-                        "total_tokens": 0,
-                        "image_url": saved_message.image_url.as_ref().map(|path| state.storage.get_full_url( path)),
-                        "created_at": saved_message.created_at
-            })
+                    "conversation_id": conversation_id,
+                    "cumulative_tokens": row.cumulative_tokens
+                }),
             )
             .await;
     }
@@ -205,26 +210,6 @@ async fn process_v2_message_with_intent(
         )
         .await;
     }
-
-    let payload = json!({
-        "id": saved_message.id,
-        "conversation_id": conversation_id,
-        "role": saved_message.role,
-        "content": saved_message.content,
-        "thought": saved_message.thought,
-        "user_id": saved_message.user_id,
-        "image_url": saved_message.image_url.as_ref().map(|path| state.storage.get_full_url(path)),
-        "created_at": saved_message.created_at,
-        "total_tokens": 0,
-    });
-    let _ = match user_id {
-        None => state.broadcast_sse("message", payload).await,
-        Some(ref id) => {
-            state
-                .send_sse_to_user(id.to_string().as_str(), "message", payload)
-                .await
-        }
-    };
 
     let presence_payload = json!({
         "conversation_id": conversation_id,
@@ -257,6 +242,7 @@ async fn process_v2_message_with_intent(
 
     let (augmented_text, _media_context) = classification(
         &state,
+        members.iter().map(|v| v.user_id.clone()).collect(),
         conversation_id,
         &msg,
         text_content.clone(),
@@ -319,6 +305,11 @@ async fn process_v2_message_with_intent(
 
         combined.push_str("\n### Orchestrator Instructions \n");
         combined.push_str(crate::prompts::PromptRegistry::orchestrator_instructions());
+
+        if msg.is_mentioned && augmented_text.len() < 10 {
+            combined.push_str("\n[SYSTEM: The user has activated you with a short mention. Look back at the last 3-5 messages in the 'Recent History' to find the intent (URL, Image, Question) and act on it immediately.]\n");
+        }
+
         combined.push_str("");
         combined.push_str(crate::prompts::PromptRegistry::tool_usage_guidelines());
         combined
@@ -360,24 +351,34 @@ async fn process_v2_message_with_intent(
         };
 
         let image_url = match msg.image_url {
-            Some(path) if !is_processed => format!(" - Image: {} \n", state.storage.get_full_url(&path)),
+            Some(path) if !is_processed => {
+                format!(" - Image: {} \n", state.storage.get_full_url(&path))
+            }
             _ => "".to_string(),
         };
         let video_url = match msg.video_url {
-            Some(path) if !is_processed => format!("- Video: {} \n", state.storage.get_full_url(&path)),
+            Some(path) if !is_processed => {
+                format!("- Video: {} \n", state.storage.get_full_url(&path))
+            }
             _ => "".to_string(),
         };
         let audio_url = match msg.audio_url {
-            Some(path) if !is_processed =>  format!(" - Audio: {} \n", state.storage.get_full_url(&path)),
+            Some(path) if !is_processed => {
+                format!(" - Audio: {} \n", state.storage.get_full_url(&path))
+            }
             _ => "".to_string(),
         };
         let document_url = match msg.document_url {
-            Some(path) if !is_processed => format!("- Document: {} \n", state.storage.get_full_url(&path)),
+            Some(path) if !is_processed => {
+                format!("- Document: {} \n", state.storage.get_full_url(&path))
+            }
             _ => "".to_string(),
         };
 
         let sticker_url = match msg.sticker_url {
-            Some(path) if !is_processed => format!("- Sticker: {} \n", state.storage.get_full_url(&path)),
+            Some(path) if !is_processed => {
+                format!("- Sticker: {} \n", state.storage.get_full_url(&path))
+            }
             _ => "".to_string(),
         };
         let role_label = match msg.role.as_str() {
@@ -423,7 +424,7 @@ async fn process_v2_message_with_intent(
 
     // --- V2 Autonomous Loop ---
     let mut loop_count = 0;
-    let max_loops = 5;
+    let max_loops = 10;
 
     let mut final_response = None;
     let mut tool_turns = Vec::new();
@@ -451,6 +452,7 @@ async fn process_v2_message_with_intent(
         if loop_count <= 1 {
             send_status_update(
                 &state,
+                members.iter().map(|v| v.user_id).collect(),
                 conversation_id,
                 msg.source.clone(),
                 "thought".to_string(),
@@ -465,16 +467,10 @@ async fn process_v2_message_with_intent(
                 let mut turn_text = String::new();
                 if !chunk.thought.is_empty() {
                     turn_text.push_str(&chunk.thought);
-                    turn_text.push_str(
-                        "
-",
-                    );
+                    turn_text.push_str("");
 
                     accumulated_thought.push_str(&chunk.thought);
-                    accumulated_thought.push_str(
-                        "
-",
-                    );
+                    accumulated_thought.push_str("");
 
                     let payload =
                         json!({ "thought": chunk.thought, "conversation_id": conversation_id });
@@ -491,11 +487,7 @@ async fn process_v2_message_with_intent(
                     turn_text.push_str(&chunk.content);
 
                     accumulated_content.push_str(&chunk.content);
-                    accumulated_content.push_str(
-                        "
-
-",
-                    );
+                    accumulated_content.push_str("");
                 }
 
                 // Append model's output to history_text to ensure context persists across the loop turns
@@ -515,7 +507,7 @@ async fn process_v2_message_with_intent(
                 let finish_reason = chunk.finish_reason.clone().unwrap_or_default();
 
                 if tool_calls.is_empty()
-                    && (finish_reason.contains("Stop") || finish_reason.is_empty())
+                    && (finish_reason.eq_ignore_ascii_case("stop") || finish_reason.is_empty())
                 {
                     // Synthesis Turn check: If we have tool results but haven't written a conversational response yet,
                     // we might need to force the model to synthesize.
@@ -525,6 +517,7 @@ async fn process_v2_message_with_intent(
                         info!(
                             "Synthesis Turn: Model tried to stop after tools without content. Forcing synthesis turn."
                         );
+                        // Force history update to reflect tool results were seen
                         continue;
                     }
 
@@ -559,6 +552,7 @@ async fn process_v2_message_with_intent(
                 for call in &current_calls {
                     send_status_update(
                         &state,
+                        members.iter().map(|v| v.user_id).collect(),
                         conversation_id,
                         msg.source.clone(),
                         "tool_start".to_string(),
@@ -577,8 +571,7 @@ async fn process_v2_message_with_intent(
                 // Append Tool Responses to history_text to enforce memory management persistence
                 for (name, result) in &tool_results {
                     history_text.push_str(&format!(
-                        "-[{}] System (Tool {} Result): {}. [STATUS: {}]
-",
+                        "-[{}] System (Tool {} Result): {}. [STATUS: {}]",
                         Utc::now().format("%Y-%m-%d %H:%M").to_string(),
                         name,
                         if result.success {
@@ -637,6 +630,7 @@ async fn process_v2_message_with_intent(
 
             send_message_to_subscriber(
                 &state,
+                members.iter().map(|v| v.user_id).collect(),
                 conversation_id,
                 msg.source.clone(),
                 payload,
@@ -647,14 +641,19 @@ async fn process_v2_message_with_intent(
             if let Ok(row) = sqlx::query!(
                 "SELECT cumulative_tokens FROM conversations WHERE id = $1",
                 conversation_id
-            ).fetch_one(&state.pool).await {
-                let _ = state.broadcast_sse(
-                    "token_update",
-                    json!({
-                        "conversation_id": conversation_id,
-                        "cumulative_tokens": row.cumulative_tokens
-                    })
-                ).await;
+            )
+            .fetch_one(&state.pool)
+            .await
+            {
+                let _ = state
+                    .broadcast_sse(
+                        "token_update",
+                        json!({
+                            "conversation_id": conversation_id,
+                            "cumulative_tokens": row.cumulative_tokens
+                        }),
+                    )
+                    .await;
             }
         }
 
@@ -663,7 +662,9 @@ async fn process_v2_message_with_intent(
         let gemini_api_key = state.gemini_api_key.clone();
         let sse = state.sse.clone();
         tokio::spawn(async move {
-            let _ = trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id, sse).await;
+            let _ =
+                trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id, sse)
+                    .await;
         });
 
         let payload = json!({
@@ -685,7 +686,6 @@ async fn process_v2_message_with_intent(
         "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
             conversation_id
         ).fetch_all(&state.pool).await {
-
             for channel in channel_info {
                 let presence = PresenceMessage {
                     sender_id: channel.external_id.clone(),
@@ -703,25 +703,17 @@ async fn process_v2_message_with_intent(
 }
 
 fn strip_thinking_tags(text: &str) -> String {
+    let healed = crate::common::format::heal_thinking_tags(text);
     let re = regex::Regex::new(r"(?s)<thinking>.*?</thinking>|<thinking>.*").unwrap();
-    let stripped = re.replace_all(text, "").trim().to_string();
-
-    // Refined logic: If the message starts with "thinking" (case insensitive) but lacked tags,
-    // attempt to strip the first paragraph which is likely leaked monologue.
-    if stripped.to_lowercase().starts_with("thinking") {
-        let paragraphs: Vec<&str> = stripped.split("\n\n").collect();
-        if paragraphs.len() > 1 {
-            return paragraphs[1..].join("\n\n").trim().to_string();
-        }
-    }
-    stripped
+    re.replace_all(&healed, "").trim().to_string()
 }
 
 pub fn send_status_update(
     state: &AppState,
+    members: Vec<Uuid>,
     conversation_id: Uuid,
     source: MessageSource,
-    event:String,
+    event: String,
     text: String,
 ) {
     info!("send_status_update start");
@@ -748,20 +740,12 @@ pub fn send_status_update(
         }
 
         if let Ok(data) = convo {
-            let members = sqlx::query!(
-                "SELECT m.user_id FROM conversation_members as m WHERE m.conversation_id = $1",
-                data.id
-            )
-            .fetch_all(&pool)
-            .await
-            .unwrap_or(Vec::new());
-
             if data.conversation_type.eq_ignore_ascii_case("private") {
                 info!("send_status_update web");
                 for member in members {
                     let _ = state
                         .send_sse_to_user(
-                            member.user_id.to_string().as_str(),
+                            member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({
                                 "conversation_id": conversation_id,
@@ -816,7 +800,7 @@ pub fn send_status_update(
                 for member in members {
                     let _ = state
                         .send_sse_to_user(
-                            member.user_id.to_string().as_str(),
+                            member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({
                                 "conversation_id": conversation_id,
@@ -874,6 +858,7 @@ pub fn send_status_update(
 
 pub fn send_message_to_subscriber(
     state: &AppState,
+    members: Vec<Uuid>,
     conversation_id: Uuid,
     source: MessageSource,
     sse_data: serde_json::Value,
@@ -902,21 +887,9 @@ pub fn send_message_to_subscriber(
         }
 
         if let Ok(data) = convo {
-            let members = sqlx::query!(
-                "SELECT m.user_id FROM conversation_members as m WHERE m.conversation_id = $1",
-                data.id
-            )
-            .fetch_all(&pool)
-            .await
-            .unwrap_or(Vec::new());
-
             for member in members {
                 let _ = state
-                    .send_sse_to_user(
-                        member.user_id.to_string().as_str(),
-                        "message",
-                        sse_data.clone(),
-                    )
+                    .send_sse_to_user(member.to_string().as_str(), "message", sse_data.clone())
                     .await;
             }
 
@@ -956,15 +929,35 @@ pub fn send_message_to_subscriber(
                                     text: bubble_text.clone(),
                                     channel: channel.channel_type.clone(),
                                     // Attach media only to the first bubble
-                                    video_url: if i == 0 { outbound_message.video_url.clone() } else { None },
-                                    image_url: if i == 0 { outbound_message.image_url.clone() } else { None },
-                                    audio_url: if i == 0 { outbound_message.audio_url.clone() } else { None },
-                                    doc_url: if i == 0 { outbound_message.document_url.clone() } else { None },
-                                    sticker_url: if i == 0 { outbound_message.sticker_url.clone() } else { None },
+                                    video_url: if i == 0 {
+                                        outbound_message.video_url.clone()
+                                    } else {
+                                        None
+                                    },
+                                    image_url: if i == 0 {
+                                        outbound_message.image_url.clone()
+                                    } else {
+                                        None
+                                    },
+                                    audio_url: if i == 0 {
+                                        outbound_message.audio_url.clone()
+                                    } else {
+                                        None
+                                    },
+                                    doc_url: if i == 0 {
+                                        outbound_message.document_url.clone()
+                                    } else {
+                                        None
+                                    },
+                                    sticker_url: if i == 0 {
+                                        outbound_message.sticker_url.clone()
+                                    } else {
+                                        None
+                                    },
                                     metadata: None,
                                 };
                                 let _ = state.publish_outbond(&outbound).await;
-                                
+
                                 if i < bubbles.len() - 1 {
                                     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                                 }
@@ -1004,11 +997,31 @@ pub fn send_message_to_subscriber(
                                     text: bubble_text.clone(),
                                     channel: channel.channel.clone(),
                                     // Attach media only to the first bubble
-                                    video_url: if i == 0 { outbound_message.video_url.clone() } else { None },
-                                    image_url: if i == 0 { outbound_message.image_url.clone() } else { None },
-                                    audio_url: if i == 0 { outbound_message.audio_url.clone() } else { None },
-                                    doc_url: if i == 0 { outbound_message.document_url.clone() } else { None },
-                                    sticker_url: if i == 0 { outbound_message.sticker_url.clone() } else { None },
+                                    video_url: if i == 0 {
+                                        outbound_message.video_url.clone()
+                                    } else {
+                                        None
+                                    },
+                                    image_url: if i == 0 {
+                                        outbound_message.image_url.clone()
+                                    } else {
+                                        None
+                                    },
+                                    audio_url: if i == 0 {
+                                        outbound_message.audio_url.clone()
+                                    } else {
+                                        None
+                                    },
+                                    doc_url: if i == 0 {
+                                        outbound_message.document_url.clone()
+                                    } else {
+                                        None
+                                    },
+                                    sticker_url: if i == 0 {
+                                        outbound_message.sticker_url.clone()
+                                    } else {
+                                        None
+                                    },
                                     metadata: None,
                                 };
                                 let _ = state.publish_outbond(&outbound).await;
