@@ -119,7 +119,9 @@ pub struct ChatStreamChunk {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ReminderResponse {
     pub id: Uuid,
-    pub content: String,
+    pub task_type: String,
+    pub payload: serde_json::Value,
+    pub content: String, // Fallback/Legacy content or display string
     pub due_at: DateTime<Utc>,
     pub frequency: Option<String>,
     pub status: String,

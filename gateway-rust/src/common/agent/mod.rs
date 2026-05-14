@@ -382,11 +382,11 @@ pub async fn execute_tools(
                         })
                         .await
                 }
-                "create_reminder" => {
-                    let param: crate::common::tools::tools_model::CreateReminderParameters =
+                "schedule_task" => {
+                    let param: crate::common::tools::tools_model::ScheduleTaskParameters =
                         serde_json::from_value(args).unwrap();
                     dispatcher
-                        .dispatch(ArtaTool::CreateReminder {
+                        .dispatch(ArtaTool::ScheduleTask {
                             params: param,
                             user_message: user_message.clone(),
                         })
@@ -517,6 +517,16 @@ pub async fn execute_tools(
                         serde_json::from_value(args).unwrap();
                     dispatcher
                         .dispatch(ArtaTool::GetTransactionDetails {
+                            params: param,
+                            user_message: user_message.clone(),
+                        })
+                        .await
+                }
+                "update_conversation_title" => {
+                    let param: crate::common::tools::tools_model::UpdateConversationTitleParameters =
+                        serde_json::from_value(args).unwrap();
+                    dispatcher
+                        .dispatch(ArtaTool::UpdateConversationTitle {
                             params: param,
                             user_message: user_message.clone(),
                         })

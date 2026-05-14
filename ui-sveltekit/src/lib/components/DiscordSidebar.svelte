@@ -236,15 +236,34 @@
         {:else}
             <div class="space-y-3">
                 {#each sidebarStore.reminders as reminder}
-                    <div class="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4 transition-all hover:bg-slate-900">
-                        <div class="flex justify-between items-start gap-4">
-                            <p class="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{reminder.content}</p>
+                    <div class="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4 transition-all hover:bg-slate-900 group">
+                        <div class="flex items-center gap-2 mb-2">
+                            {#if reminder.task_type === 'REMINDER'}
+                                <div class="p-1 rounded bg-amber-500/20 text-amber-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                                </div>
+                            {:else if reminder.task_type === 'SEND_DM'}
+                                <div class="p-1 rounded bg-blue-500/20 text-blue-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                </div>
+                            {:else if reminder.task_type === 'TRIGGER_AGENT'}
+                                <div class="p-1 rounded bg-purple-500/20 text-purple-400">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+                                </div>
+                            {/if}
+                            <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">{reminder.task_type || 'REMINDER'}</span>
+                            
                             {#if reminder.frequency && reminder.frequency !== 'once'}
-                                <span class="shrink-0 text-[10px] px-2 py-1 bg-slate-800/80 text-slate-400 rounded-md uppercase font-black tracking-widest">
+                                <span class="shrink-0 text-[10px] px-2 py-0.5 bg-slate-800/80 text-slate-400 rounded-md uppercase font-black tracking-widest ml-auto">
                                     {reminder.frequency}
                                 </span>
                             {/if}
                         </div>
+
+                        <div class="flex justify-between items-start gap-4">
+                            <p class="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{reminder.content}</p>
+                        </div>
+                        
                         <div class="flex items-center justify-between mt-3 text-xs text-slate-500">
                             <div class="flex items-center gap-1.5 font-mono bg-black/20 px-2 py-1 rounded">
                                 <span class="text-blue-500/70">
@@ -254,11 +273,14 @@
                                 <span class="text-blue-500">
                                     {new Date(reminder.due_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                                 </span>
+                                <span class="text-[9px] text-slate-600">WIB</span>
                             </div>
                             {#if reminder.status === 'completed'}
                                 <span class="text-emerald-500 font-bold uppercase text-[10px] tracking-widest">Completed</span>
                             {:else if reminder.status === 'archived'}
-                                <span class="text-slate-600 font-bold uppercase text-[10px] tracking-widest">Archived</span>
+                                <span class="text-rose-500 font-bold uppercase text-[10px] tracking-widest">Archived</span>
+                            {:else}
+                                <span class="text-amber-500 font-bold uppercase text-[10px] tracking-widest">Pending</span>
                             {/if}
                         </div>
                     </div>

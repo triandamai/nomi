@@ -2,17 +2,17 @@ pub mod tools_model;
 
 use crate::Arc;
 use crate::common::tools::tools_model::{
-    CreateReminderParameters, CreateReminderResponse, EvolveBootstrapParameters,
-    EvolveBootstrapResponse, ExecuteReadQueryParameters, ExecuteReadQueryResponse,
-    GetInboxSummaryParameters, GetInboxSummaryResponse, GetLatestMediaContextParameters,
-    GetReminderStatsParameters, GetReminderStatsResponse, MakeStickerParameters,
-    MakeStickerResponse, ModifyReminderParameters, ModifyReminderResponse, ParseToJsonParameters,
-    ReadWebPageParameters, ReadWebPageResponse, ReadWorkSpaceParameters, ReadWorkSpaceResponse,
-    SearchUsersParameters, SearchUsersResponse, SearchWebParameters, SearchWebResponse,
-    SendDirectMessageParameters, SendDirectMessageResponse, ToolResult,
-    UpdateConversationSoulParameters, UpdateConversationSoulResponse,
-    UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse, UpdateUserProfileParameters,
-    UpdateUserProfileResponse,
+    EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters,
+    ExecuteReadQueryResponse, GetInboxSummaryParameters, GetInboxSummaryResponse,
+    GetLatestMediaContextParameters, GetReminderStatsParameters, GetReminderStatsResponse,
+    MakeStickerParameters, MakeStickerResponse, ModifyReminderParameters, ModifyReminderResponse,
+    ParseToJsonParameters, ReadWebPageParameters, ReadWebPageResponse, ReadWorkSpaceParameters,
+    ReadWorkSpaceResponse, ScheduleTaskParameters, ScheduleTaskResponse, SearchUsersParameters,
+    SearchUsersResponse, SearchWebParameters, SearchWebResponse, SendDirectMessageParameters,
+    SendDirectMessageResponse, ToolResult, UpdateConversationSoulParameters,
+    UpdateConversationSoulResponse, UpdateConversationTitleParameters,
+    UpdateConversationTitleResponse, UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse,
+    UpdateUserProfileParameters, UpdateUserProfileResponse,
 };
 use crate::prompts::PromptRegistry;
 use chrono::{Utc, TimeZone};
@@ -77,9 +77,9 @@ pub enum ArtaTool {
         params: EvolveBootstrapParameters,
         user_message: String,
     },
-    #[serde(rename = "create_reminder")]
-    CreateReminder {
-        params: CreateReminderParameters,
+    #[serde(rename = "schedule_task")]
+    ScheduleTask {
+        params: ScheduleTaskParameters,
         user_message: String,
     },
     #[serde(rename = "modify_reminder")]
@@ -140,6 +140,11 @@ pub enum ArtaTool {
     #[serde(rename = "get_transaction_details")]
     GetTransactionDetails {
         params: tools_model::GetTransactionDetailsParameters,
+        user_message: String,
+    },
+    #[serde(rename = "update_conversation_title")]
+    UpdateConversationTitle {
+        params: tools_model::UpdateConversationTitleParameters,
         user_message: String,
     },
 }
@@ -219,10 +224,10 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.evolve_bootstrap(params, user_message).await,
-            ArtaTool::CreateReminder {
+            ArtaTool::ScheduleTask {
                 params,
                 user_message,
-            } => self.create_reminder(params, user_message).await,
+            } => self.schedule_task(params, user_message).await,
             ArtaTool::ModifyReminder {
                 params,
                 user_message,
@@ -271,6 +276,10 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.get_transaction_details(params, user_message).await,
+            ArtaTool::UpdateConversationTitle {
+                params,
+                user_message,
+            } => self.update_conversation_title(params, user_message).await,
         }
     }
 
@@ -338,13 +347,13 @@ impl ToolDispatcher {
         .with_parameters::<EvolveBootstrapParameters>()
         .with_response::<EvolveBootstrapResponse>();
 
-        let create_reminder = FunctionDeclaration::new(
-            "create_reminder",
-            "Schedule a new reminder for the user. Supports natural language descriptions and recurrence (daily, weekly, monthly). ALWAYS use the format YYYY-MM-DDTHH:MM:SSZ for due_at. Do not use milliseconds or offsets unless explicitly required. Always convert relative times (e.g., 'in 2 minutes') into an absolute ISO 8601 UTC timestamp based on the current time provided in the system prompt.",
+        let schedule_task = FunctionDeclaration::new(
+            "schedule_task",
+            "Schedule a background task. Supports personal reminders, automated direct messages (delayed messages), and background agent actions. Supports natural language descriptions and recurrence (daily, weekly, monthly). ALWAYS use the format YYYY-MM-DDTHH:MM:SSZ for due_at. Always convert relative times (e.g., 'in 2 minutes') into an absolute ISO 8601 UTC timestamp based on the current time provided in the system prompt.",
             None,
         )
-            .with_parameters::<CreateReminderParameters>()
-            .with_response::<CreateReminderResponse>();
+            .with_parameters::<ScheduleTaskParameters>()
+            .with_response::<ScheduleTaskResponse>();
 
         let modify_reminder = FunctionDeclaration::new(
             "modify_reminder",
@@ -434,6 +443,14 @@ impl ToolDispatcher {
             .with_parameters::<tools_model::GetTransactionDetailsParameters>()
             .with_response::<tools_model::GetTransactionDetailsResponse>();
 
+        let update_conversation_title = FunctionDeclaration::new(
+            "update_conversation_title",
+            "Updates the display title or topic name of the current conversation thread or group context inside the database dynamically.",
+            None,
+        )
+            .with_parameters::<UpdateConversationTitleParameters>()
+            .with_response::<UpdateConversationTitleResponse>();
+
         for intent in intents {
             match intent.as_str() {
                 "FINANCE" => {
@@ -451,7 +468,7 @@ impl ToolDispatcher {
                     tools.push(execute_read_query.clone());
                 }
                 "REMINDER" => {
-                    tools.push(create_reminder.clone());
+                    tools.push(schedule_task.clone());
                     tools.push(modify_reminder.clone());
                     tools.push(get_reminder_stats.clone());
                 }
@@ -463,20 +480,35 @@ impl ToolDispatcher {
                     tools.push(get_reminder_stats.clone());
                     tools.push(get_inbox_summary.clone());
                     tools.push(get_expense_summary.clone());
+                    tools.push(update_conversation_title.clone());
+                    tools.push(retrieve_knowledge.clone());
+                    tools.push(update_user_profile.clone());
+                    tools.push(evolve_bootstrap_content.clone());
+                    tools.push(update_nomi_soul.clone());
                 }
                 "COMMUNICATION" => {
                     tools.push(get_inbox_summary.clone());
                     tools.push(search_users.clone());
                     tools.push(send_direct_message.clone());
+                    tools.push(update_conversation_title.clone());
+                    tools.push(schedule_task.clone());
+                }
+                "GENERAL" => {
+                    tools.push(update_conversation_title.clone());
+                    tools.push(retrieve_knowledge.clone());
+                    tools.push(update_user_profile.clone());
+                    tools.push(evolve_bootstrap_content.clone());
+                    tools.push(update_nomi_soul.clone());
+                    tools.push(schedule_task.clone());
                 }
                 _ => {}
             }
         }
-        
+
         // Let's add some generic tools that might always be needed for intent != GENERAL, or specifically requested tools.
         // The instructions state: "Filter Tools: Pass only the tools relevant to the identified Intent to the LLM. Example: If FINANCE, only pass the expense tracking tools. Critical: If GENERAL, pass ZERO tools."
         // We'll also add some core ones or just rely strictly on the switch.
-        
+
         // Wait, if fallback mode is triggered, intent could be set to "FULL_REGISTRY" or something.
         if intents.contains(&"FULL_REGISTRY".to_string()) {
             tools = vec![
@@ -488,7 +520,7 @@ impl ToolDispatcher {
                 update_knowledge_base,
                 retrieve_knowledge,
                 evolve_bootstrap_content,
-                create_reminder,
+                schedule_task,
                 modify_reminder,
                 get_inbox_summary,
                 get_reminder_stats,
@@ -500,9 +532,9 @@ impl ToolDispatcher {
                 analyze_media,
                 get_expense_summary,
                 get_transaction_details,
+                update_conversation_title,
             ];
         }
-
         // De-duplicate tools based on name if multiple intents added the same tool
         let mut unique_tools = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
@@ -515,12 +547,12 @@ impl ToolDispatcher {
         Tool::with_functions(unique_tools)
     }
 
-    async fn create_reminder(
+    async fn schedule_task(
         &self,
-        params: CreateReminderParameters,
+        params: ScheduleTaskParameters,
         _user_message: String,
     ) -> ToolResult {
-        info!("Creating reminder: {}", params.description);
+        info!("Scheduling task: {:?}", params.task_type);
 
         let user_id = match self.user_id {
             Some(id) => id,
@@ -534,7 +566,7 @@ impl ToolDispatcher {
             }
         };
 
-        let due_at = match chrono::DateTime::parse_from_rfc3339(&params.due_at) {
+        let due_at_utc = match chrono::DateTime::parse_from_rfc3339(&params.due_at) {
             Ok(dt) => dt.with_timezone(&chrono::Utc),
             Err(e) => {
                 return ToolResult {
@@ -546,31 +578,73 @@ impl ToolDispatcher {
             }
         };
 
+        // WIB Conversion for output
+        let tz_wib: Tz = "Asia/Jakarta".parse().unwrap();
+        let due_at_wib = due_at_utc.with_timezone(&tz_wib);
+        let time_str = due_at_wib.format("%Y-%m-%d %H:%M WIB").to_string();
+
         let frequency = params.frequency.unwrap_or_else(|| "once".to_string());
 
+        let task_description = match params.task_type.as_str() {
+            "REMINDER" => format!(
+                "reminder: '{}'",
+                params
+                    .payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("No description")
+            ),
+            "SEND_DM" => {
+                let recipient = params
+                    .payload
+                    .get("recipient_jid")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("someone");
+                format!("automated DM to be sent to {}", recipient)
+            }
+            "TRIGGER_AGENT" => "background agent execution".to_string(),
+            _ => format!("task of type {}", params.task_type),
+        };
+
         let result = sqlx::query!(
-            "INSERT INTO reminders (user_id, conversation_id, content, due_at, frequency, max_repeats) 
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+            "INSERT INTO reminders (user_id, conversation_id, task_type, payload, due_at, frequency, max_repeats) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
             user_id,
             self.conversation_id,
-            params.description,
-            due_at,
+            params.task_type,
+            params.payload,
+            due_at_utc,
             frequency,
             params.max_repeats
         )
             .fetch_one(&self.pool)
             .await;
 
-        info!("Created reminder: {:?}", result);
         match result {
-            Ok(row) => ToolResult {
-                error: "".to_string(),
-                success: true,
-                content: format!("Reminder created successfully with ID: {}", row.id),
-                follow_up_prompt: "".to_string(),
-            },
+            Ok(_) => {
+                // Get user name for personalized response
+                let display_name: String = sqlx::query_scalar(
+                    "SELECT COALESCE(display_name, 'Trian') FROM users WHERE id = $1",
+                )
+                .bind(user_id)
+                .fetch_one(&self.pool)
+                .await
+                .unwrap_or_else(|_| "Trian".to_string());
+
+                let content = format!(
+                    "Got it, {}! 🚀 I've scheduled that **{}** to be triggered on **{}** sharp! 📩✨",
+                    display_name, task_description, time_str
+                );
+
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content,
+                    follow_up_prompt: "".to_string(),
+                }
+            }
             Err(e) => ToolResult {
-                error: format!("Failed to create reminder: {}", e),
+                error: format!("Failed to schedule task: {}", e),
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
@@ -1518,7 +1592,6 @@ impl ToolDispatcher {
         struct InboxRow {
             conversation_id: Option<Uuid>,
             display_name: Option<String>,
-            phone_number: String,
             last_message: String,
             created_at: Option<chrono::DateTime<chrono::Utc>>,
             is_verified: Option<bool>,
@@ -1530,7 +1603,6 @@ impl ToolDispatcher {
                 SELECT
                     c.id as "conversation_id?",
                     u.display_name as "display_name?",
-                    u.external_id as "phone_number!",
                     m.content as "last_message!",
                     m.created_at as "created_at?",
                     COALESCE(u.is_verified, false) as "is_verified?"
@@ -1642,13 +1714,14 @@ impl ToolDispatcher {
             r#"
             SELECT 
                 id,
-                content,
+                COALESCE(payload->>'message', content) as "content!",
                 (due_at AT TIME ZONE 'Asia/Jakarta') as due_at,
                 status,
                 frequency,
                 current_runs
             FROM reminders
             WHERE user_id = $1
+              AND task_type = 'REMINDER'
               AND ($2::TIMESTAMPTZ IS NULL OR due_at >= $2)
               AND ($3::TIMESTAMPTZ IS NULL OR due_at <= $3)
               AND ($4::TEXT IS NULL OR status = $4)
@@ -2121,9 +2194,8 @@ impl ToolDispatcher {
     async fn get_latest_media_context(
         &self,
         _params: GetLatestMediaContextParameters,
-        user_message: String,
+        _user_message: String,
     ) -> ToolResult {
-        info!("Retrieving latest media context");
         let conversation_id = match self.conversation_id {
             Some(id) => id,
             None => {
@@ -2143,33 +2215,36 @@ impl ToolDispatcher {
         .await
         {
             Ok(Some(media)) => {
-                let full_url = self.storage.get_full_url(&media.media_url);
+                let tz_wib: Tz = "Asia/Jakarta".parse().unwrap();
+                let created_at_wib = media.created_at.with_timezone(&tz_wib);
+                let time_str = created_at_wib.format("%Y-%m-%d %H:%M WIB").to_string();
+
                 let content = format!(
-                    "Latest media in conversation: URL: {}, Type: {}, Classification: {}, Created At: {}",
-                    full_url,
-                    media.media_type,
-                    media.classification.as_deref().unwrap_or("None"),
-                    media.created_at
+                    "I've retrieved the latest media from our 'Visual Buffer':\n\n\
+                    - **Type:** {}\n\
+                    - **Buffered At:** **{}**\n\
+                    - **Status:** Pending Analysis 🔍\n\n\
+                    What would you like me to do with this? I can log it as an expense, turn it into a sticker, or analyze its content for you! ✨",
+                    media.media_type.to_uppercase(),
+                    time_str
                 );
+
                 ToolResult {
                     error: "".to_string(),
                     success: true,
-                    content: content.clone(),
-                    follow_up_prompt: build_follow_up_prompt(
-                        user_message,
-                        content,
-                        "get_latest_media_context".to_string(),
-                    ),
+                    content,
+                    follow_up_prompt: "".to_string(),
                 }
             }
             Ok(None) => ToolResult {
                 error: "".to_string(),
                 success: true,
-                content: "No pending media found for this conversation.".to_string(),
+                content: "Our 'Visual Buffer' is currently empty. No silent media has been captured recently! 🏔️"
+                    .to_string(),
                 follow_up_prompt: "".to_string(),
             },
             Err(e) => ToolResult {
-                error: format!("Database error: {}", e),
+                error: format!("Database error retrieving media: {}", e),
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
@@ -2609,6 +2684,57 @@ impl ToolDispatcher {
                 content_json,
                 "get_transaction_details".to_string(),
             ),
+        }
+    }
+
+    async fn update_conversation_title(
+        &self,
+        params: UpdateConversationTitleParameters,
+        user_message: String,
+    ) -> ToolResult {
+        let conversation_id = match self.conversation_id {
+            Some(id) => id,
+            None => {
+                return ToolResult {
+                    error: "No active conversation context found.".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                };
+            }
+        };
+
+        let result = sqlx::query!(
+            "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2",
+            params.new_title,
+            conversation_id
+        )
+        .execute(&self.pool)
+        .await;
+
+        match result {
+            Ok(_) => {
+                let msg = format!(
+                    "Successfully changed workspace topic heading to '{}'",
+                    params.new_title
+                );
+                ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: msg.clone(),
+                    follow_up_prompt: build_follow_up_prompt(
+                        user_message,
+                        msg,
+                        "update_conversation_title".to_string(),
+                    ),
+                }
+            }
+            Err(e) => ToolResult {
+                error: format!("Database error updating conversation title: {}", e),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            },
         }
     }
 

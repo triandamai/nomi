@@ -23,7 +23,6 @@ pub struct AuthResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserProfile {
     pub id: String,
-    pub external_id: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub role: Option<String>,

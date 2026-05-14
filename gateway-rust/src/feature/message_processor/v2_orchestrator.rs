@@ -26,16 +26,18 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
         "Processing unified message v2"
     );
 
-    // 0. Zero-Intent Guard: Media with EMPTY text
+    // 0. Silent Media Buffer: Media with EMPTY text and NO trigger
     let has_media = msg.image_url.is_some()
         || msg.video_url.is_some()
         || msg.audio_url.is_some()
         || msg.doc_url.is_some()
         || msg.sticker_url.is_some();
 
-    let is_skip = text_content.trim().eq_ignore_ascii_case("skip");
+    let text_trimmed = text_content.trim();
+    let has_only_trigger = text_trimmed.to_lowercase() == "nom" || text_trimmed == "/cmd";
+    let is_skip = text_trimmed.eq_ignore_ascii_case("skip");
 
-    if has_media && text_content.trim().is_empty() {
+    if has_media && text_trimmed.is_empty() {
         let media_url = msg
             .image_url
             .as_ref()
@@ -57,35 +59,66 @@ pub async fn process_v2_message(state: AppState, msg: UnifiedMessage) -> anyhow:
             "sticker"
         };
 
-        info!("Zero-intent {} detected: {}", media_type, media_url);
+        info!("[Orchestrator] 🖼️ Media buffered silently for context. No LLM turn triggered. Type: {}, URL: {}", media_type, media_url);
 
         // Save to pending_media table for Media Checkpoint System
-        let pool = state.pool.clone();
-        let m_url = media_url.to_string();
-        let m_type = media_type.to_string();
-        tokio::spawn(async move {
-            let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
-                &pool,
-                conversation_id,
-                &m_url,
-                &m_type,
-                None,
-            )
-            .await;
-        });
+        let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
+            &state.pool,
+            conversation_id,
+            media_url,
+            media_type,
+            None,
+        )
+        .await;
 
-        // Instead of hardcoded clarification, we inject a system prompt to the LLM to ask for clarification.
-        // This will be passed to process_v2_message_with_intent but NOT saved as a message.
+        // STRICT ACTION: Terminate the orchestrator execution loop immediately for this event.
+        return Ok(());
+    }
+
+    if has_media && has_only_trigger {
+        let media_url = msg
+            .image_url
+            .as_ref()
+            .or(msg.video_url.as_ref())
+            .or(msg.audio_url.as_ref())
+            .or(msg.doc_url.as_ref())
+            .or(msg.sticker_url.as_ref())
+            .unwrap();
+
+        let media_type = if msg.image_url.is_some() {
+            "image"
+        } else if msg.video_url.is_some() {
+            "video"
+        } else if msg.audio_url.is_some() {
+            "audio"
+        } else if msg.doc_url.is_some() {
+            "document"
+        } else {
+            "sticker"
+        };
+
+        info!("Triggered media clarification (poke detected) for {}: {}", media_type, media_url);
+
+        // Save to pending_media
+        let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
+            &state.pool,
+            conversation_id,
+            media_url,
+            media_type,
+            None,
+        )
+        .await;
+
         let injected_system_prompt =
             crate::prompts::PromptRegistry::zero_intent_clarification().to_string();
 
-        process_v2_message_with_intent(
+        return process_v2_message_with_intent(
             state.clone(),
             msg,
-            format!("[User uploaded a {}]", media_type),
+            format!("[User poked about this {}]", media_type),
             Some(injected_system_prompt),
         )
-        .await
+        .await;
     } else if has_media && !is_skip {
         // Task 1: If message.text is NOT empty: Do not ask for clarification.
         // Combine the text and the image into a single multi-part prompt for Gemini.

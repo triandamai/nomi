@@ -75,6 +75,18 @@ async fn handle_inbound_message(state: AppState,mut msg: InboundMessage) -> anyh
         text = text.replace("@42078516064356", "Nomi");
         msg.is_mentioned = true;
     }
+    if let Some((id, rest)) = msg.sender_id.split_once(':') {
+        if let Some((_, domain)) = rest.split_once('@') {
+            let clean_id = format!("{}@{}", id, domain);
+            msg.sender_id = clean_id;
+        }
+    }
+
+    if msg.sender_id.contains(":"){
+        info!("User {} has ':' skiped", msg.sender_id);
+        return Ok(());
+    }
+
     // 1. Group Filtering & Registration Check
     if msg.is_group {
         let registered = is_group_registered(&state.pool, &msg.conversation_id, &msg.channel).await;

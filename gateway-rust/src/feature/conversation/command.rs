@@ -1,11 +1,11 @@
-use rand::RngExt;
-use serde_json::json;
-use tracing::{error, info};
-use uuid::Uuid;
 use crate::AppState;
 use crate::common::repository::{channel_repo, pairing_repo};
 use crate::feature::{InboundMessage, OutboundMessage};
 use crate::prompts::PromptRegistry;
+use rand::RngExt;
+use serde_json::json;
+use tracing::{error, info};
+use uuid::Uuid;
 
 pub async fn process_generate_pairing(
     state: &AppState,
@@ -21,9 +21,9 @@ pub async fn process_generate_pairing(
             msg.conversation_id,
             msg.channel
         )
-            .fetch_one(&state.pool)
-            .await
-            .map_or_else(|_| Uuid::nil(), |result| result.id)
+        .fetch_one(&state.pool)
+        .await
+        .map_or_else(|_| Uuid::nil(), |result| result.id)
     } else {
         sqlx::query!(
             "SELECT c.id
@@ -33,9 +33,9 @@ pub async fn process_generate_pairing(
             msg.conversation_id,
             msg.channel
         )
-            .fetch_one(&state.pool)
-            .await
-            .map_or_else(|_| Uuid::nil(), |result| result.id)
+        .fetch_one(&state.pool)
+        .await
+        .map_or_else(|_| Uuid::nil(), |result| result.id)
     };
     if conv_id.is_nil() {
         info!("Failed get conversation_id");
@@ -46,7 +46,7 @@ pub async fn process_generate_pairing(
             "Whoops! 🏍️💨 Only a registered Nomi user can pair me with a group.".to_string(),
             msg.metadata.clone(),
         )
-            .await;
+        .await;
         return Ok(());
     }
     match pairing_repo::create_pairing_code(&state, conv_id, user_id).await {
@@ -57,7 +57,7 @@ pub async fn process_generate_pairing(
                 format!("/pair {}", code.pairing_code),
                 msg.metadata.clone(),
             )
-                .await;
+            .await;
 
             let _ = send_message(
                 state,
@@ -68,7 +68,7 @@ pub async fn process_generate_pairing(
                 ),
                 msg.metadata.clone(),
             )
-                .await;
+            .await;
             Ok(())
         }
         Err(err) => {
@@ -79,7 +79,7 @@ pub async fn process_generate_pairing(
                 "Whoops! 🏍️💨 Only a registered Nomi user can pair me with a group.".to_string(),
                 msg.metadata.clone(),
             )
-                .await;
+            .await;
             Ok(())
         }
     }
@@ -111,7 +111,7 @@ pub async fn process_pairing(
                 user_id,
                 display_name,
             )
-                .await?;
+            .await?;
 
             let _ = state
                 .send_to_user(
@@ -164,7 +164,7 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
             PromptRegistry::error_general_trouble().to_string(),
             msg.metadata.clone(),
         )
-            .await;
+        .await;
         return Ok(());
     }
     let channel_result = channel_exists?;
@@ -176,7 +176,7 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
             PromptRegistry::error_account_exists().to_string(),
             msg.metadata.clone(),
         )
-            .await;
+        .await;
         return Ok(());
     }
 
@@ -190,7 +190,7 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
                 "Something wrong happen, try again later.".to_string(),
                 msg.metadata.clone(),
             )
-                .await;
+            .await;
             return Ok(());
         }
     };
@@ -204,66 +204,87 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
             .map_or_else(|| msg.sender_id.clone(), |v| v.to_string()),
     };
 
-    let u_id = match sqlx::query!(
-            "INSERT INTO users (external_id, display_name) VALUES ($1, $2) ON CONFLICT (external_id) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id",
-            msg.sender_id,
-            display_name
-        ).fetch_one(&mut *tx).await {
-        Ok(r) => r.id,
-        Err(e) => {
-            error!("Failed to resolve user: {}", e);
-            let _ = tx.rollback().await;
-            let _ = send_message(state, msg, "Failed resolver user account..".to_string(),  msg.metadata.clone()).await;
-            return Ok(());
-        }
-    };
+    let create_user = sqlx::query!(
+        "INSERT INTO users (display_name,role) VALUES ($1,'user') RETURNING id",
+        display_name
+    )
+    .fetch_one(&mut *tx)
+    .await;
+    if let Err(err) = create_user {
+        error!("Failed to resolve user: {}", err);
+        let _ = tx.rollback().await;
+        let _ = send_message(
+            state,
+            msg,
+            "Failed resolver user account..".to_string(),
+            msg.metadata.clone(),
+        )
+        .await;
+        return Ok(());
+    }
 
+    let create_user = create_user?;
     info!("begin create conversation \n");
     // Create new conversation
-    let conv_id = Uuid::new_v4();
     let title = format!("{} via {}", msg.conversation_id, msg.channel);
 
-    if let Err(e) = sqlx::query!(
-        "INSERT INTO conversations (id, title,soul_content,bootstrap_content) VALUES ($1, $2,$3,$4)",
-        conv_id,
+    let create_convo = sqlx::query!(
+        "INSERT INTO conversations (title,soul_content,bootstrap_content,conversation_type) VALUES ($1, $2,$3,'private') RETURNING id",
         title,
         PromptRegistry::default_soul_prompts(),
         PromptRegistry::default_bootstrap_content()
     )
-        .execute(&mut *tx)
-        .await
-    {
+        .fetch_one(&mut *tx)
+        .await;
+    if let Err(e) = create_convo {
         error!("Failed to create conversation: {}", e);
         let _ = tx.rollback().await;
-        let _ = send_message(state, msg, "Failed to create conversation.".to_string(),  msg.metadata.clone(),).await;
+        let _ = send_message(
+            state,
+            msg,
+            "Failed to create conversation.".to_string(),
+            msg.metadata.clone(),
+        )
+        .await;
 
         return Ok(());
     }
-
+    let conv = create_convo?;
     info!("begin create channels");
-    if let Err(e) = sqlx::query!(
+    let create_channel = sqlx::query!(
             "INSERT INTO channels (channel_type, external_id, external_chat_id, conversation_id, user_id) VALUES ($1, $2, $3, $4, $5)",
             msg.channel,
             msg.sender_id,
-            msg.conversation_id,
-            conv_id,
-            u_id
-        ).execute(&mut *tx).await {
+            msg.sender_id,
+            conv.id,
+            create_user.id
+        ).execute(&mut *tx).await;
+    if let Err(e) = create_channel {
         error!("Failed to link channel: {}", e);
         let _ = tx.rollback().await;
-        let _ = send_message(state, msg, "Failed link channel..".to_string(),  msg.metadata.clone(),).await;
+        let _ = send_message(
+            state,
+            msg,
+            "Failed link channel..".to_string(),
+            msg.metadata.clone(),
+        )
+        .await;
 
         return Ok(());
     }
 
-    if let Err(e) = sqlx::query!(
-            "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            conv_id,
-            u_id
-        ).execute(&mut *tx).await {
+    let create_member = sqlx::query!("INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",conv.id,create_user.id).execute(&mut *tx).await;
+
+    if let Err(e) = create_member {
         error!("Failed to add member: {}", e);
         let _ = tx.rollback().await;
-        let _ = send_message(state, msg, "Failed to join conversation.".to_string(),  msg.metadata.clone(),).await;
+        let _ = send_message(
+            state,
+            msg,
+            "Failed to join conversation.".to_string(),
+            msg.metadata.clone(),
+        )
+        .await;
         return Ok(());
     }
 
@@ -275,7 +296,7 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
             "Failed register".to_string(),
             msg.metadata.clone(),
         )
-            .await;
+        .await;
         return Ok(());
     }
 
@@ -285,7 +306,7 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
         "Success register account, you can now /login for access dashboard".to_string(),
         msg.metadata.clone(),
     )
-        .await;
+    .await;
     Ok(())
 }
 
@@ -335,7 +356,7 @@ pub async fn process_group_registration(
                 &msg.conversation_id,
                 existing_group_channel.conversation_id,
             )
-                .await;
+            .await;
             let _ = send_message(
                 state,
                 msg,
@@ -343,7 +364,7 @@ pub async fn process_group_registration(
                     .to_string(),
                 None,
             )
-                .await;
+            .await;
             return Ok(());
         }
     }
@@ -451,7 +472,7 @@ pub async fn process_login(state: &AppState, msg: &InboundMessage) -> anyhow::Re
             "Login from channel {} sender_id {} failed: {}",
             msg.channel, msg.sender_id, err
         );
-        let _ = send_message(state, msg, "Channel not registered, Use /register for new user use, if you already had account, get pairing code from dashboard and use /pair <PAIRING CODE>".to_string(),  msg.metadata.clone()).await;
+        let _ = send_message(state, msg, "Channel not registered, Use /register for new user use, if you already had account, get pairing code from dashboard and use /pair <PAIRING CODE>".to_string(), msg.metadata.clone()).await;
         return Ok(());
     }
     if let Ok(None) = channel_exists {
@@ -476,7 +497,7 @@ pub async fn process_login(state: &AppState, msg: &InboundMessage) -> anyhow::Re
             "I'm having trouble, please try again later.".to_string(),
             msg.metadata.clone(),
         )
-            .await;
+        .await;
         return Ok(());
     }
 

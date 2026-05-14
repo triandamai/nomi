@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT r.id, r.user_id, r.conversation_id, r.content, r.due_at, \n               r.frequency, r.interval_count, r.max_repeats, r.current_runs\n        FROM reminders r\n        WHERE r.status = 'pending' AND r.due_at <= NOW()\n        LIMIT 20\n        ",
+  "query": "\n        SELECT r.id, r.user_id, r.conversation_id, r.task_type, r.payload, r.due_at, \n               r.frequency, r.interval_count, r.max_repeats, r.current_runs\n        FROM reminders r\n        WHERE r.status = 'pending' AND r.due_at <= NOW()\n        LIMIT 20\n        ",
   "describe": {
     "columns": [
       {
@@ -20,31 +20,36 @@
       },
       {
         "ordinal": 3,
-        "name": "content",
-        "type_info": "Text"
+        "name": "task_type",
+        "type_info": "Varchar"
       },
       {
         "ordinal": 4,
+        "name": "payload",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
         "name": "due_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "frequency",
         "type_info": "Text"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "interval_count",
         "type_info": "Int4"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "max_repeats",
         "type_info": "Int4"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "current_runs",
         "type_info": "Int4"
       }
@@ -56,7 +61,8 @@
       false,
       false,
       true,
-      false,
+      true,
+      true,
       false,
       true,
       true,
@@ -64,5 +70,5 @@
       true
     ]
   },
-  "hash": "29387e82021a9fc7671d9b9c51a043ce25f6951e5f3d1653da799c7682586f8b"
+  "hash": "9591f8810e76773806a7e0cab456bff7e0f576b9962fd12d79e5f3dbb0cac8f4"
 }

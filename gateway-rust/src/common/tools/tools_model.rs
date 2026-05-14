@@ -106,17 +106,17 @@ pub struct EvolveBootstrapResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct CreateReminderParameters {
-    pub description: String,
-    pub due_at: String, // ISO 8601 string
-    pub frequency: Option<String>, // 'once', 'daily', 'weekly', 'monthly'
+pub struct ScheduleTaskParameters {
+    pub task_type: String,     // "REMINDER", "SEND_DM", "TRIGGER_AGENT"
+    pub due_at: String,        // ISO 8601 absolute timestamp string
+    pub payload: serde_json::Value, // Flexible execution variables
+    pub frequency: Option<String>,
     pub max_repeats: Option<i32>,
-    pub timezone: Option<String>, // Optional timezone (e.g., 'Asia/Jakarta')
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct CreateReminderResponse {
-    pub reminder_id: String,
+pub struct ScheduleTaskResponse {
+    pub task_id: String,
     pub content: String,
 }
 
@@ -288,4 +288,14 @@ pub struct TransactionItem {
     pub name: String,
     pub quantity: i32,
     pub total_amount: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateConversationTitleParameters {
+    pub new_title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateConversationTitleResponse {
+    pub updated_title: String,
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO users (external_id, display_name) VALUES ($1, $2) ON CONFLICT (external_id) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id",
+  "query": "INSERT INTO conversations (title,soul_content,bootstrap_content,conversation_type) VALUES ($1, $2,$3,'private') RETURNING id",
   "describe": {
     "columns": [
       {
@@ -12,6 +12,7 @@
     "parameters": {
       "Left": [
         "Text",
+        "Text",
         "Text"
       ]
     },
@@ -19,5 +20,5 @@
       false
     ]
   },
-  "hash": "a0677396fa3486f5b3e897b2bbf909cc8e048317d42608e7eb98e81f94fc7310"
+  "hash": "d9a1a9269d369763821236d947ce0c205bcab185886011d1685d6c88fd05914a"
 }

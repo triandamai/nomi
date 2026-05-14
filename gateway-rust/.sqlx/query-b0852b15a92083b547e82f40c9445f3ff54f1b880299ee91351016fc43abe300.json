@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT channel_type, external_chat_id, external_id,conversation_id FROM channels WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+  "query": "SELECT channel_type, external_chat_id, external_id FROM channels WHERE user_id = $1 ORDER BY created_at DESC",
   "describe": {
     "columns": [
       {
@@ -17,11 +17,6 @@
         "ordinal": 2,
         "name": "external_id",
         "type_info": "Text"
-      },
-      {
-        "ordinal": 3,
-        "name": "conversation_id",
-        "type_info": "Uuid"
       }
     ],
     "parameters": {
@@ -32,9 +27,8 @@
     "nullable": [
       false,
       false,
-      false,
-      true
+      false
     ]
   },
-  "hash": "162fa80f19c3392461b2a08e39e59c602db7573316354065cfe95b197b4c355d"
+  "hash": "b0852b15a92083b547e82f40c9445f3ff54f1b880299ee91351016fc43abe300"
 }

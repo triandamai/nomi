@@ -28,17 +28,12 @@ pub async fn resolve_identity(
         }
     };
     // Split by ':' to get the prefix, and by '@' to get the domain
-    let mut sender_id = String::new();
 
-    if let Some((id, rest)) = external_sender_id.split_once(':') {
-        if let Some((_, domain)) = rest.split_once('@') {
-            let clean_id = format!("{}@{}", id, domain);
-            sender_id = clean_id;
-        }
-    }
-
-    if sender_id.contains(":"){
-        info!("External sender id: {} cannot contains :", external_sender_id);
+    if external_sender_id.contains(":") {
+        info!(
+            "External sender id: {} cannot contains :",
+            external_sender_id
+        );
         return Err(anyhow::anyhow!("External sender_id contains ':'"));
     }
     // Basic resolution: upsert user by external_id
@@ -59,28 +54,20 @@ pub async fn resolve_identity(
         .await;
 
         if let Err(e) = existing_channel_of_user {
-            info!(
-                "User doesnt exist, since user from group, we create user directly, err:{}",
-                e
-            );
+            info!("User Channel doesnt exist create new one, but error:{}", e);
             let save_new_user = sqlx::query!(
                 "
-                INSERT INTO users (external_id, display_name)
-                VALUES ($1, $2) RETURNING id, display_name",
-                external_sender_id,
+                INSERT INTO users (display_name)
+                VALUES ($1) RETURNING id, display_name",
                 display_name
             )
             .fetch_one(&mut *tx)
             .await;
 
             if let Err(e) = save_new_user {
-                info!(
-                    "Create User in group failed:{}",e
-                );
+                info!("Create User in group failed:{}", e);
                 let _ = tx.rollback().await;
-                return Err(anyhow::anyhow!(
-                    "Create User in group failed"
-                ));
+                return Err(anyhow::anyhow!("Create User in group failed"));
             }
             let new_user = save_new_user.unwrap();
 

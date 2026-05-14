@@ -6,9 +6,6 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT,
-    wa_id TEXT,
-    tele_id TEXT,
-    external_id TEXT UNIQUE NOT NULL, -- WA JID or Telegram ID
     display_name TEXT,
     email TEXT,
     is_verified boolean DEFAULT false,
@@ -22,7 +19,6 @@ CREATE TABLE IF NOT EXISTS conversations (
     title TEXT,
     soul_content TEXT, -- Saved as Markdown
     bootstrap_content TEXT, -- Saved as Markdown
-    channel_group_id TEXT,
     conversation_type TEXT NOT NULL DEFAULT 'private',
     user_id UUID REFERENCES users(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),

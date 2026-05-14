@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                INSERT INTO users (external_id, display_name)\n                VALUES ($1, $2) RETURNING id, display_name",
+  "query": "\n                INSERT INTO users (display_name)\n                VALUES ($1) RETURNING id, display_name",
   "describe": {
     "columns": [
       {
@@ -16,7 +16,6 @@
     ],
     "parameters": {
       "Left": [
-        "Text",
         "Text"
       ]
     },
@@ -25,5 +24,5 @@
       true
     ]
   },
-  "hash": "bcd2fb3516561f058baa5ed8bffeba4fa61baf89d2cea843666c8c596b203025"
+  "hash": "baca91e54c66085c66aad479232a5bbaca290c72f5083021945328f6c8169bf6"
 }
