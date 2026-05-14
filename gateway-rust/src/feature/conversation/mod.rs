@@ -1,7 +1,7 @@
 use crate::common::api_response::ApiResponse;
 use crate::feature::conversation::model::{
-    ChannelStatus, ChatRequest, ChatStreamChunk, ConversationResponse, CreateConversationRequest, MessageItem,
-    MessageListParams, MessageListResponse, PairingResponse, RestoreSoulRequest,
+    ChannelStatus, ChatRequest, ChatStreamChunk, ConversationResponse, CreateConversationRequest,
+    MessageItem, MessageListParams, MessageListResponse, PairingResponse, RestoreSoulRequest,
     RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest, UserChannelsResponse,
 };
 use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
@@ -11,7 +11,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::Row;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -682,26 +682,30 @@ pub async fn handle_chat_stream(
         let max_token_usage = row.max_token_usage.map_or(700000, |v| v);
 
         if cumulative_tokens as f64 >= max_token_usage as f64 {
-            let error_msg = format!("Token limit reached ({}/{:.0})", cumulative_tokens, max_token_usage);
+            let error_msg = format!(
+                "Token limit reached ({}/{:.0})",
+                cumulative_tokens, max_token_usage
+            );
             if let Some(uid) = user_id {
-                let _ = state.send_sse_to_user(
-                    uid.to_string().as_str(),
-                    "chat_stream",
-                    json!(ChatStreamChunk {
-                        content: "".to_string(),
-                        thought: "".to_string(),
-                        code_block: "".to_string(),
-                        tool_call: None,
-                        prompt_tokens: 0,
-                        answer_tokens: 0,
-                        total_tokens: 0,
-                        finish_reason: Some("error".to_string()),
-                        error: Some(error_msg.clone()),
-                    }),
-                )
-                .await;
+                let _ = state
+                    .send_sse_to_user(
+                        uid.to_string().as_str(),
+                        "chat_stream",
+                        json!(ChatStreamChunk {
+                            content: "".to_string(),
+                            thought: "".to_string(),
+                            code_block: "".to_string(),
+                            tool_call: None,
+                            prompt_tokens: 0,
+                            answer_tokens: 0,
+                            total_tokens: 0,
+                            finish_reason: Some("error".to_string()),
+                            error: Some(error_msg.clone()),
+                        }),
+                    )
+                    .await;
             }
-            return ApiResponse::failed(&error_msg);
+            return ApiResponse::create(1000, "Failed".to_string(), &error_msg);
         }
     }
 

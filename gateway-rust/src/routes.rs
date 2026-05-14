@@ -23,6 +23,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/money/history", get(crate::feature::admin::handle_get_money_history))
         .route("/money/history/{id}", axum::routing::patch(crate::feature::admin::handle_update_money_history))
         .route("/money/history/{id}", delete(crate::feature::admin::handle_delete_money_history))
+        .route("/conversations", get(crate::feature::admin::handle_get_admin_conversations))
+        .route("/conversations/{id}", axum::routing::patch(crate::feature::admin::handle_update_admin_conversation))
+        .route("/users", get(crate::feature::admin::handle_get_users))
         .layer(middleware::from_fn_with_state(state.clone(), crate::feature::admin::admin_middleware))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 

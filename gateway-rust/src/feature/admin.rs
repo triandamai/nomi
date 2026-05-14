@@ -37,6 +37,51 @@ pub struct MoneyHistoryQuery {
     pub category: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct AdminConversationsQuery {
+    pub cursor: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Deserialize)]
+pub struct UserListQuery {
+    pub cursor: Option<String>,
+    pub limit: Option<i64>,
+    pub query: Option<String>,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct UserListItem {
+    pub id: Uuid,
+    pub name: Option<String>,
+    pub display_name: Option<String>,
+    pub email: Option<String>,
+    pub role: Option<String>,
+    pub is_verified: Option<bool>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Serialize)]
+pub struct UserListResponse {
+    pub items: Vec<UserListItem>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct AdminConversationItem {
+    pub id: Uuid,
+    pub title: Option<String>,
+    pub cumulative_tokens: Option<i32>,
+    pub max_token_usage: Option<i32>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Serialize)]
+pub struct AdminConversationsResponse {
+    pub items: Vec<AdminConversationItem>,
+    pub next_cursor: Option<String>,
+}
+
 #[derive(Serialize, sqlx::FromRow)]
 pub struct MoneyHistoryItem {
     pub id: Uuid,
@@ -61,6 +106,167 @@ pub struct UpdateMoneyRequest {
     pub amount: Option<Decimal>,
     pub merchant_name: Option<String>,
     pub category: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct UserDetailResponse {
+    pub user: UserListItem,
+    pub channels: Vec<UserChannelItem>,
+    pub conversations: Vec<UserConversationMemberItem>,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct UserChannelItem {
+    pub id: Uuid,
+    pub channel_type: String,
+    pub external_id: String,
+    pub external_chat_id: String,
+    pub conversation_title: Option<String>,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct UserConversationMemberItem {
+    pub conversation_id: Uuid,
+    pub title: Option<String>,
+    pub joined_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateUserRequest {
+    pub display_name: Option<String>,
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub role: Option<String>,
+    pub is_verified: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateConversationRequest {
+    pub max_token_usage: Option<i32>,
+    pub title: Option<String>,
+}
+
+pub async fn handle_get_user_detail(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    let user: UserListItem = match sqlx::query_as!(
+        UserListItem,
+        "SELECT id, name, display_name, email, role, is_verified, created_at FROM users WHERE id = $1",
+        id
+    )
+    .fetch_one(&state.pool)
+    .await
+    {
+        Ok(u) => u,
+        Err(e) => {
+            error!("Error fetching user: {}", e);
+            return Json(ApiResponse::create(404, None::<()>, "User not found")).into_response();
+        }
+    };
+
+    let channels: Vec<UserChannelItem> = match sqlx::query_as!(
+        UserChannelItem,
+        r#"
+        SELECT c.id, c.channel_type, c.external_id, c.external_chat_id, conv.title as conversation_title
+        FROM channels c
+        LEFT JOIN conversations conv ON c.conversation_id = conv.id
+        WHERE conv.user_id = $1 OR c.conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1)
+        "#,
+        id
+    )
+    .fetch_all(&state.pool)
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => {
+            error!("Error fetching channels: {}", e);
+            Vec::new()
+        }
+    };
+
+    let conversations: Vec<UserConversationMemberItem> = match sqlx::query_as!(
+        UserConversationMemberItem,
+        r#"
+        SELECT cm.conversation_id, conv.title, cm.joined_at
+        FROM conversation_members cm
+        JOIN conversations conv ON cm.conversation_id = conv.id
+        WHERE cm.user_id = $1
+        "#,
+        id
+    )
+    .fetch_all(&state.pool)
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => {
+            error!("Error fetching conversations: {}", e);
+            Vec::new()
+        }
+    };
+
+    Json(ApiResponse::ok(
+        UserDetailResponse {
+            user,
+            channels,
+            conversations,
+        },
+        "Success",
+    ))
+    .into_response()
+}
+
+pub async fn handle_update_user(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateUserRequest>,
+) -> impl IntoResponse {
+    let result = sqlx::query!(
+        r#"
+        UPDATE users
+        SET 
+            display_name = COALESCE($1, display_name),
+            name = COALESCE($2, name),
+            email = COALESCE($3, email),
+            role = COALESCE($4, role),
+            is_verified = COALESCE($5, is_verified)
+        WHERE id = $6
+        "#,
+        req.display_name,
+        req.name,
+        req.email,
+        req.role,
+        req.is_verified,
+        id
+    )
+    .execute(&state.pool)
+    .await;
+
+    match result {
+        Ok(_) => Json(ApiResponse::ok((), "User updated successfully")).into_response(),
+        Err(e) => {
+            error!("Error updating user: {}", e);
+            Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response()
+        }
+    }
+}
+
+pub async fn handle_delete_user(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    // Note: This might need careful handling of foreign keys if not set to CASCADE
+    let result = sqlx::query!("DELETE FROM users WHERE id = $1", id)
+        .execute(&state.pool)
+        .await;
+
+    match result {
+        Ok(_) => Json(ApiResponse::ok((), "User deleted successfully")).into_response(),
+        Err(e) => {
+            error!("Error deleting user: {}", e);
+            Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response()
+        }
+    }
 }
 
 pub async fn admin_middleware(
@@ -298,4 +504,119 @@ pub async fn handle_delete_money_history(
         Ok(_) => Json(ApiResponse::ok((), "Transaction deleted successfully")).into_response(),
         Err(e) => Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response(),
     }
+}
+
+pub async fn handle_get_admin_conversations(
+    State(state): State<AppState>,
+    Query(q): Query<AdminConversationsQuery>,
+) -> impl IntoResponse {
+    let limit = q.limit.unwrap_or(20).max(1).min(100);
+    
+    let mut qb = QueryBuilder::new(
+        r#"SELECT id, title, cumulative_tokens, max_token_usage, created_at FROM conversations WHERE 1=1 "#
+    );
+
+    if let Some(cursor) = q.cursor {
+        if let Ok(cursor_dt) = chrono::DateTime::parse_from_rfc3339(&cursor) {
+            qb.push(" AND created_at < ");
+            qb.push_bind(cursor_dt.with_timezone(&chrono::Utc));
+        }
+    }
+
+    qb.push(" ORDER BY created_at DESC LIMIT ");
+    qb.push_bind(limit);
+
+    let items: Vec<AdminConversationItem> = match qb.build_query_as().fetch_all(&state.pool).await {
+        Ok(items) => items,
+        Err(e) => {
+            error!("Database error fetching admin conversations: {}", e);
+            return Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response();
+        }
+    };
+
+    let next_cursor = items.last().map(|i| i.created_at.to_rfc3339());
+
+    Json(ApiResponse::ok(
+        AdminConversationsResponse {
+            items,
+            next_cursor,
+        },
+        "Success",
+    ))
+    .into_response()
+}
+
+pub async fn handle_update_admin_conversation(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateConversationRequest>,
+) -> impl IntoResponse {
+    let result = sqlx::query!(
+        r#"
+        UPDATE conversations 
+        SET 
+            max_token_usage = COALESCE($1, max_token_usage),
+            title = COALESCE($2, title)
+        WHERE id = $3
+        "#,
+        req.max_token_usage,
+        req.title,
+        id
+    )
+    .execute(&state.pool)
+    .await;
+
+    match result {
+        Ok(_) => Json(ApiResponse::ok((), "Conversation updated successfully")).into_response(),
+        Err(e) => {
+            error!("Error updating conversation: {}", e);
+            Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response()
+        }
+    }
+}
+
+pub async fn handle_get_users(
+    State(state): State<AppState>,
+    Query(q): Query<UserListQuery>,
+) -> impl IntoResponse {
+    let limit = q.limit.unwrap_or(20).max(1).min(100);
+
+    let mut qb = QueryBuilder::new(
+        "SELECT id, name, display_name, email, role, is_verified, created_at FROM users WHERE 1=1 ",
+    );
+
+    if let Some(ref search) = q.query {
+        if !search.trim().is_empty() {
+            let search_term = format!("%{}%", search);
+            qb.push(" AND (display_name ILIKE ");
+            qb.push_bind(search_term.clone());
+            qb.push(" OR email ILIKE ");
+            qb.push_bind(search_term.clone());
+            qb.push(" OR name ILIKE ");
+            qb.push_bind(search_term);
+            qb.push(") ");
+        }
+    }
+
+    if let Some(cursor) = q.cursor {
+        if let Ok(cursor_dt) = chrono::DateTime::parse_from_rfc3339(&cursor) {
+            qb.push(" AND created_at < ");
+            qb.push_bind(cursor_dt.with_timezone(&chrono::Utc));
+        }
+    }
+
+    qb.push(" ORDER BY created_at DESC LIMIT ");
+    qb.push_bind(limit);
+
+    let items: Vec<UserListItem> = match qb.build_query_as().fetch_all(&state.pool).await {
+        Ok(items) => items,
+        Err(e) => {
+            error!("Database error fetching admin users: {}", e);
+            return Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response();
+        }
+    };
+
+    let next_cursor = items.last().and_then(|i| i.created_at.map(|dt| dt.to_rfc3339()));
+
+    Json(ApiResponse::ok(UserListResponse { items, next_cursor }, "Success")).into_response()
 }

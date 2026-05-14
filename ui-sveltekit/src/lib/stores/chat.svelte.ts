@@ -9,7 +9,7 @@ export type Message = {
     image_url?: string;
     id: string;
     user_id?: string;
-    total_tokens:number;
+    total_tokens: number;
     toolCalls?: Array<{ tool: any, result?: string }>;
 };
 
@@ -27,8 +27,8 @@ function createChatStore() {
     // Subscribe to SSE events via EventBus
     eventBus.subscribe('sse-message', (data) => {
         if (data.id) {
-            const find = messages.findIndex(v=>v.id == data.id)
-            if(find > 0){
+            const find = messages.findIndex(v => v.id == data.id)
+            if (find > 0) {
                 messages[find] = ({
                     id: data.id || crypto.randomUUID(),
                     role: data.role || "assistant",
@@ -36,9 +36,9 @@ function createChatStore() {
                     thought: data.thought,
                     image_url: data.image_url,
                     user_id: data.user_id,
-                    total_tokens:data.total_tokens
+                    total_tokens: data.total_tokens
                 } as Message)
-            }else {
+            } else {
                 messages.push({
                     id: data.id || crypto.randomUUID(),
                     role: data.role || "assistant",
@@ -46,7 +46,7 @@ function createChatStore() {
                     thought: data.thought,
                     image_url: data.image_url,
                     user_id: data.user_id,
-                    total_tokens:data.total_tokens
+                    total_tokens: data.total_tokens
                 } as Message)
 
             }
@@ -119,7 +119,7 @@ function createChatStore() {
             try {
                 const cursor = loadMore ? nextCursor : undefined;
                 const response = await chatApi.getMessages(conversationId, cursor || undefined);
-                
+
                 // response structure is { data: { messages: [], next_cursor: string } }
                 const newMessages = response.data?.messages || [];
                 const nextC = response.data?.next_cursor || null;
@@ -143,23 +143,37 @@ function createChatStore() {
         },
 
 
-        async sendMessage(content: string, media?: { image_url?: string, audio_url?: string, video_url?: string, doc_url?: string }) {
+        async sendMessage(content: string, media?: {
+            image_url?: string,
+            audio_url?: string,
+            video_url?: string,
+            doc_url?: string
+        }): Promise<{
+            isLimit: boolean,
+            isSuccess: boolean
+        }> {
             conversationId = conversationStore.activeConversationId
             if (!conversationId) {
                 error = 'Conversation ID is missing';
-                return;
+                loading = true;
+                return {
+                    isSuccess: false,
+                    isLimit: false
+                };
             }
 
             loading = true;
             error = null;
 
-            try {
-                await chatApi.streamChat(content, conversationId, media);
-            } catch (err) {
+
+            const response = await chatApi.streamChat(content, conversationId, media).then((res) => res.json()).catch(err => {
                 error = err instanceof Error ? err.message : 'Failed to send message';
-                console.error('Chat Store Error:', err);
-            } finally {
+            }).finally(() => {
                 loading = false;
+            });
+            return {
+                isSuccess: response.meta.code >= 200 && response.meta.code <= 209,
+                isLimit: response.meta.code === 1000
             }
         },
 

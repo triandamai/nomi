@@ -32,7 +32,10 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
 
     if (!response.ok) {
         const error = await response.json().catch(() => ({message: 'An unknown error occurred'}));
-        throw new Error(error.message || response.statusText);
+        if (error.meta?.message && error.meta.message.toLowerCase().includes('token limit reached')) {
+            eventBus.emit('token-limit-reached', error.meta.message);
+        }
+        throw new Error(error.message || error.meta?.message || response.statusText);
     }
 
     return response.json();
@@ -326,6 +329,25 @@ export const chatApi = {
         return apiFetch<any>(`/v1/admin/money/history/${id}`, {
             method: 'DELETE'
         });
+    },
+    getAdminConversations: (cursor?: string, limit: number = 20) => {
+        const url = new URL(`${BASE_URL}/v1/admin/conversations`);
+        if (cursor) url.searchParams.append('cursor', cursor);
+        url.searchParams.append('limit', limit.toString());
+        return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
+    },
+    updateAdminConversation: (id: string, updates: { max_token_usage?: number, title?: string }) => {
+        return apiFetch<any>(`/v1/admin/conversations/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updates)
+        });
+    },
+    getAdminUsers: (cursor?: string, limit: number = 20, query?: string) => {
+        const url = new URL(`${BASE_URL}/v1/admin/users`);
+        if (cursor) url.searchParams.append('cursor', cursor);
+        url.searchParams.append('limit', limit.toString());
+        if (query) url.searchParams.append('query', query);
+        return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
     },
     logout: () => {
         return apiFetch<any>('/auth/logout', {
