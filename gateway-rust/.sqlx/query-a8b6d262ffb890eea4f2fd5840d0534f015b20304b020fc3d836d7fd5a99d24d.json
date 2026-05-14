@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT cumulative_tokens, max_token_usage FROM conversations WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "cumulative_tokens",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "max_token_usage",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "a8b6d262ffb890eea4f2fd5840d0534f015b20304b020fc3d836d7fd5a99d24d"
+}

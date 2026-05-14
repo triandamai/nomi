@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT channels.user_id, channels.conversation_id, conversations.cumulative_tokens, conversations.max_token_usage FROM channels\n         JOIN conversations ON conversations.id = channels.conversation_id\n         WHERE channel_type = $1 AND external_chat_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "conversation_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "cumulative_tokens",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "max_token_usage",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "7557ca474f9802f55256233cc9534e18e7278eda0696a244465263262a6564f3"
+}
