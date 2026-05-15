@@ -224,9 +224,22 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         return Ok(());
     }
     let user_id = user_id?;
-    let conv_info = sqlx::query!("SELECT * FROM conversations WHERE id = $1", conversation_id)
-        .fetch_one(&state.pool)
-        .await;
+    let conv_info = sqlx::query!(
+        "SELECT
+                id,
+                title,
+                conversation_type,
+                user_id,
+                created_at,
+                updated_at,
+                soul_content,
+                bootstrap_content
+            FROM conversations
+            WHERE id = $1",
+        conversation_id
+    )
+    .fetch_one(&state.pool)
+    .await;
     if let Err(err) = conv_info {
         info!("Conversation not exist:{}", err);
         let error_msg = "Workspace Conversation doesn exist".to_string();
