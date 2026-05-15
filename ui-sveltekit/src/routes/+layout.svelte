@@ -8,7 +8,7 @@
 	import Header from '$lib/components/Header.svelte';
 	import { conversationStore } from '$lib/stores/conversation.svelte';
 
-	import { goto, beforeNavigate } from '$app/navigation';
+	import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import {eventBus} from "$lib/utils";
 	import {ragStore} from "$lib/stores/rag.svelte";
@@ -16,8 +16,9 @@
 	let { children } = $props();
 
 	let closing: (() => void) | null = null;
+	let opening = false;
 
-	function open() {
+	async function open() {
 		const token = sessionStorage.getItem('auth_token');
 		const isPublicRoute = page.url.pathname === '/' || page.url.pathname === '/login';
 
@@ -27,13 +28,19 @@
 		}
 
 		if (token && !isPublicRoute) {
-			// Close existing connection if any
-			if (closing) closing();
+			if (opening) return;
+			opening = true;
 
-			conversationStore.loadConversations().finally(() => {
+			try {
+				await conversationStore.loadConversations();
 				ragStore.fetchGraph(conversationStore.activeConversationId);
+
+				// Close existing connection if any
+				if (closing) closing();
 				closing = chatApi.streamEvent();
-			});
+			} finally {
+				opening = false;
+			}
 		}
 	}
 
@@ -50,6 +57,12 @@
 		if (closing) {
 			closing();
 			closing = null;
+		}
+	});
+
+	afterNavigate(() => {
+		if (!closing) {
+			open();
 		}
 	});
 </script>

@@ -1,9 +1,14 @@
 use crate::common::agent::agent_model::PromptActor;
-use crate::common::agent::classification::{classification, classify_intent, fetch_media_from_storage};
+use crate::common::agent::classification::{
+    classification, classify_intent, fetch_media_from_storage,
+};
 use crate::common::agent::execute_tools;
 use crate::common::identity::UserIdentity;
 use crate::common::repository::message_repo::save_message;
 use crate::common::tools::ToolDispatcher;
+use crate::feature::message_processor::v2_orchestrator::{
+    send_message_to_subscriber, send_status_presence_update, send_status_update,
+};
 use crate::feature::{MessageSource, UnifiedMessage};
 use crate::models::Conversation;
 use crate::rag::trigger_memory_consolidation;
@@ -88,11 +93,14 @@ impl V2AgentOrchestrator {
 
         //notify message incoming
         for member in self.conversation_member_ids.iter() {
-            let _ = state.send_sse_to_user(
-                member.to_string().as_str(),
-                "message",
-                saved_message.to_sse_json(),
-            );
+            info!("notify user message saved :{}", member);
+            let _ = state
+                .send_sse_to_user(
+                    member.to_string().as_str(),
+                    "message",
+                    saved_message.to_sse_json(0),
+                )
+                .await;
         }
         // Group is registered, only respond if mentioned
         if msg.is_group
@@ -135,7 +143,8 @@ impl V2AgentOrchestrator {
             .await;
         }
 
-        let _ = state.send_status_presence_update(
+        let _ = send_status_presence_update(
+            &state,
             self.conversation_member_ids
                 .iter()
                 .map(|v| v.clone())
@@ -262,12 +271,8 @@ impl V2AgentOrchestrator {
             ));
         }
 
-        let mut intents = classify_intent(
-            state.gemini.as_ref(),
-            &augmented_text,
-            &history_text,
-        )
-        .await;
+        let mut intents =
+            classify_intent(state.gemini.as_ref(), &augmented_text, &history_text).await;
 
         // Fallback Logic: override GENERAL if imperative verbs or URLs are present
         let msg_lower = augmented_text.to_lowercase();
@@ -286,10 +291,10 @@ impl V2AgentOrchestrator {
         }
 
         // Force VITALITY if health keywords are present
-        if msg_lower.contains("step") 
-            || msg_lower.contains("sleep") 
-            || msg_lower.contains("heart") 
-            || msg_lower.contains("workout") 
+        if msg_lower.contains("step")
+            || msg_lower.contains("sleep")
+            || msg_lower.contains("heart")
+            || msg_lower.contains("workout")
             || msg_lower.contains("health")
         {
             if !intents.contains(&"VITALITY".to_string()) {
@@ -439,7 +444,8 @@ impl V2AgentOrchestrator {
 
             // Status: Model is thinking
             if loop_count <= 1 {
-                let _ = state.send_status_update(
+                let _ = send_status_update(
+                    &state,
                     self.conversation_member_ids
                         .iter()
                         .map(|v| v.clone())
@@ -449,7 +455,8 @@ impl V2AgentOrchestrator {
                     msg.is_group,
                     "thought".to_string(),
                     crate::prompts::StatusRegistry::random_thinking_phrase(),
-                );
+                )
+                .await;
             }
 
             let result =
@@ -567,7 +574,8 @@ impl V2AgentOrchestrator {
 
                     // Status: Tool checking
                     for call in &current_calls {
-                        state.send_status_update(
+                        let _ = send_status_update(
+                            &state,
                             self.conversation_member_ids
                                 .iter()
                                 .map(|v| v.clone())
@@ -577,7 +585,8 @@ impl V2AgentOrchestrator {
                             msg.is_group,
                             "tool_start".to_string(),
                             crate::prompts::StatusRegistry::random_action_phrase(&call.name),
-                        );
+                        )
+                        .await;
                     }
 
                     let tool_results = execute_tools(
@@ -667,16 +676,18 @@ impl V2AgentOrchestrator {
                             "created_at": record.created_at
                 });
 
-                let _ = state.send_message_to_subscriber(
+                let _ = send_message_to_subscriber(
+                    &state,
                     self.conversation_member_ids
                         .iter()
                         .map(|v| v.clone())
                         .collect(),
                     conversation_id,
                     msg.source.clone(),
-                    payload,
+                    record.to_sse_json(function_result.total_tokens),
                     record.clone(),
-                );
+                )
+                .await;
 
                 // Fetch updated total tokens and broadcast
                 if let Ok(row) = sqlx::query!(
@@ -713,7 +724,8 @@ impl V2AgentOrchestrator {
                 .await;
             });
 
-            let _ = state.send_status_presence_update(
+            let _ = send_status_presence_update(
+                &state,
                 self.conversation_member_ids
                     .iter()
                     .map(|v| v.clone())
@@ -922,7 +934,8 @@ impl V2AgentOrchestrator {
         .await;
 
         if let Ok(msg) = message {
-            let _notify = self.state.send_message_to_subscriber(
+            let _notify = send_message_to_subscriber(
+                &self.state,
                 self.conversation_member_ids
                     .iter()
                     .map(|v| v.clone())
@@ -938,7 +951,8 @@ impl V2AgentOrchestrator {
                 },
                 json!({}),
                 msg,
-            );
+            )
+            .await;
         }
 
         Ok(final_text)

@@ -9,6 +9,7 @@ use gemini_rust::{Content, Message};
 use serde_json::json;
 use tracing::info;
 use uuid::Uuid;
+use crate::feature::message_processor::v2_orchestrator::send_status_update;
 
 pub async fn classification(
     state: &AppState,
@@ -31,14 +32,15 @@ pub async fn classification(
                 image_url
             );
 
-            let _ = state.send_status_update(
+            let _ = send_status_update(
+                &state,
                 members.clone(),
                 conversation_id,
                 msg.source.clone(),
                 msg.is_group,
                 "tool_start".to_string(),
                 StatusRegistry::random_action_phrase("analyze_media"),
-            );
+            ).await;
 
             let classification =
                 classify_media_context(&state, &image_url, Some(text_content.clone()))

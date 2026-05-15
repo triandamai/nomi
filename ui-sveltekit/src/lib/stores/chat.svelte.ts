@@ -29,7 +29,7 @@ function createChatStore() {
     eventBus.subscribe('sse-message', (data) => {
         if (data.id) {
             const find = messages.findIndex(v => v.id == data.id)
-            if (find > 0) {
+            if (find >= 0) {
                 messages[find] = ({
                     id: data.id || crypto.randomUUID(),
                     role: data.role || "assistant",
@@ -62,7 +62,10 @@ function createChatStore() {
 
     eventBus.subscribe('sse-thought', (data) => {
         if (data.thought) {
-            currentThought = data.thought;
+            currentThought += data.thought;
+        } else if (data.text) {
+            // Status updates use 'text' field
+            currentThought = data.text;
         }
     });
 

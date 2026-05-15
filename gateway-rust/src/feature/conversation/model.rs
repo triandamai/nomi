@@ -77,7 +77,7 @@ pub struct MessageItem {
 }
 
 impl MessageItem {
-    pub fn to_sse_json(&self) -> Value {
+    pub fn to_sse_json(&self,token:i32) -> Value {
         json!({
             "id": self.id,
             "conversation_id":self.conversation_id,
@@ -85,7 +85,7 @@ impl MessageItem {
             "content": self.content.clone(),
             "thought": self.thought,
             "user_id": self.user_id,
-            "total_tokens": 0,
+            "total_tokens": token,
             "image_url": self.image_url.as_ref(),
             "video_url": self.video_url.as_ref(),
             "audio_url": self.audio_url.as_ref(),

@@ -224,6 +224,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         return Ok(());
     }
     let user_id = user_id?;
+    info!("[USER]{}",user_id);
     let conv_info = sqlx::query!(
         "SELECT
                 id,

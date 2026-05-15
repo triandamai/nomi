@@ -12,7 +12,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
-
+use tracing::info;
 use crate::common::api_response::ApiResponse;
 use crate::common::sse::sse_builder::SseBuilder;
 
@@ -60,23 +60,42 @@ impl SseBroadcaster {
 
     /// Removes ALL non-responsive clients from broadcast list.
     async fn remove_stale_client(&self) {
-        let clients = self.inner.lock().unwrap().clients.clone();
-        let mut ok_client = HashMap::new();
+        let clients_snapshot = {
+            let inner = self.inner.lock().unwrap();
+            inner.clients.clone()
+        };
 
-        for (key, users) in clients {
-            let mut ok_subs: HashMap<String, Sender<Event>> = HashMap::new();
-            for (device, client) in users {
-                if client
-                    .send(Event::default().event(":ping").json_data("keep-alive").unwrap())
-                    .await
-                    .is_ok()
-                {
-                    ok_subs.insert(device, client);
+        let mut stale_clients = Vec::new();
+
+        for (user_id, devices) in clients_snapshot {
+            for (device_id, client) in devices {
+                let ping = Event::default()
+                    .event("ping")
+                    .json_data("keep-alive")
+                    .unwrap();
+
+                // If the channel is closed, mark for removal. 
+                // If it's full, we skip this ping but keep the client.
+                match client.try_send(ping) {
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                        stale_clients.push((user_id.clone(), device_id.clone()));
+                    }
+                    _ => {}
                 }
             }
-            ok_client.insert(key, ok_subs.clone());
         }
-        self.inner.lock().unwrap().clients = ok_client;
+
+        if !stale_clients.is_empty() {
+            let mut inner = self.inner.lock().unwrap();
+            for (user_id, device_id) in stale_clients {
+                if let Some(devices) = inner.clients.get_mut(&user_id) {
+                    devices.remove(&device_id);
+                    if devices.is_empty() {
+                        inner.clients.remove(&user_id);
+                    }
+                }
+            }
+        }
     }
 
     pub async fn new_client<'a>(
@@ -85,18 +104,18 @@ impl SseBroadcaster {
         device_id: String,
         model_info: crate::common::agent::agent_model::ModelInfo,
     ) -> Sse<impl Stream<Item = Result<Event, Infallible>> + use<'a>> {
-        let (tx, rx) = mpsc::channel(10);
-        
+        let (tx, rx) = mpsc::channel(100);
+
         // Send initial connected event
         let event = Event::default()
             .event("connected")
             .json_data(ApiResponse::ok("CONNECTED".to_string(), "Success"))
             .unwrap();
-        tx.send(event).await.unwrap();
+        let _ = tx.send(event).await;
 
         // Task 3: Send initial metadata event
         let metadata = Event::default()
-            .event(":metadata")
+            .event("metadata")
             .json_data(model_info)
             .unwrap();
         let _ = tx.send(metadata).await;
@@ -129,7 +148,7 @@ impl SseBroadcaster {
             ))
             .unwrap();
 
-        let _ = tx.send(event).await.unwrap();
+        let _ = tx.send(event).await;
         tx.closed().await;
 
         Ok("Ok".to_string())
@@ -138,23 +157,21 @@ impl SseBroadcaster {
     pub async fn send<T: serde::Serialize>(&self, builder: SseBuilder<T>) {
         let target = builder.get_target();
         if target.is_broadcast() {
-            let _send = self.broadcast(&target.even_name(), &builder.data).await;
+            self.broadcast(target.even_name(), &builder.data).await;
         } else {
             if target.is_to_device() {
                 for user in target.user_id() {
-                    let _send = self
-                        .send_to_user_device(
-                            &user,
+                    self.send_to_user_device(
+                            user,
                             target.device_id(),
-                            &target.even_name(),
+                            target.even_name(),
                             &builder.data,
                         )
                         .await;
                 }
             } else {
                 for user in target.user_id() {
-                    let _send = self
-                        .send_to_user(&user, &target.even_name(), &builder.data)
+                    self.send_to_user(user, target.even_name(), &builder.data)
                         .await;
                 }
             }
@@ -162,20 +179,33 @@ impl SseBroadcaster {
     }
 
     async fn broadcast<T: serde::Serialize>(&self, event_name: &String, data: &T) {
-        let clients = self.inner.lock().unwrap().clients.clone();
-        let formatted_event_name = if event_name == "message" {
-            event_name.clone()
-        } else {
-            format!(":{}", event_name)
-        };
-        let event = Event::default().event(formatted_event_name).json_data(data).unwrap();
+        let event = Event::default()
+            .event(event_name)
+            .json_data(data)
+            .unwrap();
 
-        if !clients.is_empty() {
-            for (_, users) in clients {
-                for (_, client) in users {
-                    let _ = client.send(event.clone()).await;
+        let mut closed_clients = Vec::new();
+
+        {
+            let inner = self.inner.lock().unwrap();
+            for (user_id, devices) in &inner.clients {
+                for (device_id, client) in devices {
+                    match client.try_send(event.clone()) {
+                        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                            tracing::error!("SSE Channel closed for device {}", device_id);
+                            closed_clients.push((user_id.clone(), device_id.clone()));
+                        }
+                        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                            tracing::error!("SSE Channel FULL for device {}, dropping event {}", device_id, event_name);
+                        }
+                        Ok(_) => {}
+                    }
                 }
             }
+        }
+
+        if !closed_clients.is_empty() {
+            self.remove_clients(closed_clients).await;
         }
     }
 
@@ -185,22 +215,39 @@ impl SseBroadcaster {
         event_name: &String,
         data: &T,
     ) {
-        let clients = self.inner.lock().unwrap().clients.clone();
-        let search = clients.contains_key(user_id);
-        if search {
-            match clients.get(user_id) {
-                None => {}
-                Some(users) => {
-                    let formatted_event_name = if event_name == "message" {
-                        event_name.clone()
-                    } else {
-                        format!(":{}", event_name)
-                    };
-                    let event = Event::default().event(formatted_event_name).json_data(data).unwrap();
+        let event = Event::default()
+            .event(event_name)
+            .json_data(data)
+            .unwrap();
 
-                    for (_, client) in users {
-                        let _ = client.send(event.clone()).await;
+        let mut closed_devices = Vec::new();
+
+        {
+            let inner = self.inner.lock().unwrap();
+            if let Some(devices) = inner.clients.get(user_id) {
+                for (device_id, client) in devices {
+                    match client.try_send(event.clone()) {
+                        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                            tracing::error!("SSE Channel closed for device {}", device_id);
+                            closed_devices.push(device_id.clone());
+                        }
+                        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                            tracing::error!("SSE Channel FULL for device {}, dropping event {}", device_id, event_name);
+                        }
+                        Ok(_) => {}
                     }
+                }
+            }
+        }
+
+        if !closed_devices.is_empty() {
+            let mut inner = self.inner.lock().unwrap();
+            if let Some(devices) = inner.clients.get_mut(user_id) {
+                for d_id in closed_devices {
+                    devices.remove(&d_id);
+                }
+                if devices.is_empty() {
+                    inner.clients.remove(user_id);
                 }
             }
         }
@@ -213,19 +260,50 @@ impl SseBroadcaster {
         event_name: &String,
         data: &T,
     ) {
-        let clients = self.inner.lock().unwrap().clients.clone();
-        let search_users = clients.get(user_id);
-        if search_users.is_some() {
-            let formatted_event_name = if event_name == "message" {
-                event_name.clone()
-            } else {
-                format!(":{}", event_name)
-            };
-            let event = Event::default().event(formatted_event_name).json_data(data).unwrap();
+        let event = Event::default()
+            .event(event_name)
+            .json_data(data)
+            .unwrap();
 
-            let client = search_users.unwrap().get(device_id);
-            if client.is_some() {
-                let _ = client.unwrap().send(event.clone()).await;
+        let mut closed = false;
+
+        {
+            let inner = self.inner.lock().unwrap();
+            if let Some(devices) = inner.clients.get(user_id) {
+                if let Some(client) = devices.get(device_id) {
+                    match client.try_send(event) {
+                        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                            tracing::error!("SSE Channel closed for device {}", device_id);
+                            closed = true;
+                        }
+                        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                            tracing::error!("SSE Channel FULL for device {}, dropping event {}", device_id, event_name);
+                        }
+                        Ok(_) => {}
+                    }
+                }
+            }
+        }
+
+        if closed {
+            let mut inner = self.inner.lock().unwrap();
+            if let Some(devices) = inner.clients.get_mut(user_id) {
+                devices.remove(device_id);
+                if devices.is_empty() {
+                    inner.clients.remove(user_id);
+                }
+            }
+        }
+    }
+
+    async fn remove_clients(&self, failed_clients: Vec<(String, String)>) {
+        let mut inner = self.inner.lock().unwrap();
+        for (user_id, device_id) in failed_clients {
+            if let Some(devices) = inner.clients.get_mut(&user_id) {
+                devices.remove(&device_id);
+                if devices.is_empty() {
+                    inner.clients.remove(&user_id);
+                }
             }
         }
     }

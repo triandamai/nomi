@@ -19,6 +19,7 @@ use serde_json::json;
 use sqlx::QueryBuilder;
 use tracing::error;
 use uuid::Uuid;
+use crate::feature::message_processor::v2_orchestrator::send_message_to_subscriber;
 
 #[derive(Deserialize)]
 pub struct ExploreQuery {
@@ -596,7 +597,8 @@ pub async fn handle_outbound_redis(
         user_id: None,
         created_at: Default::default(),
     };
-    let _ = state.send_message_to_subscriber(
+    let _ = send_message_to_subscriber(
+        &state,
         members,
         conversation_id,
         match req.channel.as_str() {

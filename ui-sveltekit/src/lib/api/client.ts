@@ -120,6 +120,7 @@ export const chatApi = {
             console.error('SSE error:', error);
             eventBus.emit('gateway-status', { online: false });
         };
+
         sse.addEventListener("message", (event) => {
             try {
                 const data = JSON.parse(event.data);
@@ -129,7 +130,7 @@ export const chatApi = {
             }
         })
 
-        sse.addEventListener(":metadata", (event) => {
+        sse.addEventListener("metadata", (event) => {
             try {
                 const data = JSON.parse(event.data);
                 eventBus.emit('sse-metadata', data);
@@ -138,7 +139,7 @@ export const chatApi = {
             }
         })
 
-        sse.addEventListener(":thought", (event) => {
+        sse.addEventListener("thought", (event) => {
             try {
                 const data = JSON.parse(event.data);
                 eventBus.emit('sse-thought', data);
@@ -147,7 +148,7 @@ export const chatApi = {
             }
         })
 
-        sse.addEventListener(":tool_start", (event) => {
+        sse.addEventListener("tool_start", (event) => {
             try {
                 const data = JSON.parse(event.data);
                 eventBus.emit('sse-tool_start', data);
@@ -156,7 +157,7 @@ export const chatApi = {
             }
         })
 
-        sse.addEventListener(":tool_end", (event) => {
+        sse.addEventListener("tool_end", (event) => {
             try {
                 const data = JSON.parse(event.data);
                 eventBus.emit('sse-tool_end', data);
@@ -165,7 +166,7 @@ export const chatApi = {
             }
         })
 
-        sse.addEventListener(":token_update", (event) => {
+        sse.addEventListener("token_update", (event) => {
             try {
                 const data = JSON.parse(event.data);
                 eventBus.emit('sse-token_update', data);
@@ -174,7 +175,7 @@ export const chatApi = {
             }
         })
 
-        sse.addEventListener(":presence", (event) => {
+        sse.addEventListener("presence", (event) => {
             try {
                 const data = JSON.parse(event.data);
                 eventBus.emit('sse-presence', data);
@@ -183,7 +184,7 @@ export const chatApi = {
             }
         })
 
-        sse.addEventListener(":pairing_success", (event) => {
+        sse.addEventListener("pairing_success", (event) => {
             try {
                 const data = JSON.parse(event.data);
                 eventBus.emit('sse-pairing-success', data);
@@ -192,7 +193,7 @@ export const chatApi = {
             }
         })
 
-        sse.addEventListener(":evolution", (event) => {
+        sse.addEventListener("evolution", (event) => {
             try {
                 const data = JSON.parse(event.data);
                 eventBus.emit('sse-evolution', data);
@@ -201,7 +202,7 @@ export const chatApi = {
             }
         })
 
-        sse.addEventListener(":stock_signal", (event) => {
+        sse.addEventListener("stock_signal", (event) => {
             try {
                 const data = JSON.parse(event.data);
                 eventBus.emit('stock-signal', data);

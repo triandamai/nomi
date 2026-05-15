@@ -113,13 +113,13 @@ pub async fn handle_get_messages(
     let limit = params.limit.unwrap_or(20);
     let cursor = params.cursor.unwrap_or_else(Utc::now);
 
-    info!(
-        conversation_id = %conversation_id,
-        user_id = %user_id,
-        cursor = %cursor,
-        limit = limit,
-        "Fetching messages"
-    );
+    // info!(
+    //     conversation_id = %conversation_id,
+    //     user_id = %user_id,
+    //     cursor = %cursor,
+    //     limit = limit,
+    //     "Fetching messages"
+    // );
 
     let messages_result = sqlx::query_as!(
         MessageItem,
@@ -172,7 +172,7 @@ pub async fn handle_get_messages(
 pub async fn handle_get_file(
     State(state): State<AppState>,
     Path(filename): Path<String>,
-) -> impl axum::response::IntoResponse {
+) -> impl IntoResponse {
     let bucket = "conversations";
     match state
         .storage
@@ -663,13 +663,14 @@ pub async fn handle_chat_stream(
     axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
     Json(payload): Json<ChatRequest>,
 ) -> ApiResponse<String> {
-    info!(conversation_id = %payload.conversation_id, "Received chat stream request");
+    info!(conversation_id = %payload.conversation_id,user_id= %claims.sub, "Received chat stream request");
 
     // Resolve user_id from JWT claims
     let user_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => Some(id),
         Err(_) => None,
     };
+
 
     let conv_info = sqlx::query!(
         "SELECT

@@ -115,11 +115,15 @@ async fn main() -> anyhow::Result<()> {
 
     // Configure CORS
     let app_url = var("APP_URL").unwrap_or_else(|_| "http://localhost:5173".to_string());
-    let localhost = "http://localhost:5173";
+    
+    let origins = [
+        "http://localhost:5173".parse::<axum::http::HeaderValue>().unwrap(),
+        "http://127.0.0.1:5173".parse::<axum::http::HeaderValue>().unwrap(),
+        app_url.parse::<axum::http::HeaderValue>().unwrap(),
+    ];
 
     let cors = CorsLayer::new()
-        .allow_origin(localhost.parse::<axum::http::HeaderValue>().unwrap())
-        .allow_origin(app_url.parse::<axum::http::HeaderValue>().unwrap())
+        .allow_origin(origins)
         .allow_methods([
             axum::http::Method::GET,
             axum::http::Method::POST,
