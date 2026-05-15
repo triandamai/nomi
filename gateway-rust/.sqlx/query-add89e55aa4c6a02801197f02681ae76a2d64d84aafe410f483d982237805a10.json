@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM conversations WHERE id = $1",
+  "query": "SELECT\n            id,\n            title,\n            user_id,\n            soul_content,\n            bootstrap_content,\n            created_at,\n            updated_at,\n            max_token_usage,\n            cumulative_tokens,\n            metadata,\n            conversation_type\n        FROM conversations WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -15,48 +15,48 @@
       },
       {
         "ordinal": 2,
-        "name": "soul_content",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 3,
-        "name": "bootstrap_content",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 4,
-        "name": "created_at",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 5,
-        "name": "updated_at",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 6,
         "name": "user_id",
         "type_info": "Uuid"
       },
       {
+        "ordinal": 3,
+        "name": "soul_content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "bootstrap_content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
         "ordinal": 7,
-        "name": "cumulative_tokens",
+        "name": "max_token_usage",
         "type_info": "Int4"
       },
       {
         "ordinal": 8,
+        "name": "cumulative_tokens",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
         "name": "metadata",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "conversation_type",
         "type_info": "Varchar"
-      },
-      {
-        "ordinal": 10,
-        "name": "max_token_usage",
-        "type_info": "Int4"
       }
     ],
     "parameters": {
@@ -74,9 +74,9 @@
       true,
       true,
       true,
-      false,
-      true
+      true,
+      false
     ]
   },
-  "hash": "22af128406f4659890d0a13c221657cc897cc8fb881156dace95bdebc667a330"
+  "hash": "add89e55aa4c6a02801197f02681ae76a2d64d84aafe410f483d982237805a10"
 }
