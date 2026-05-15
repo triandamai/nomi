@@ -33,7 +33,7 @@ pub async fn start_redis_listener(state: AppState) -> anyhow::Result<()> {
                         continue;
                     }
                 };
-                info!("incoming nomi:channel-fallback \n data:{:?}\n", fallback);
+                info!("incoming nomi:channel-fallback \n data:{}\n", fallback);
             }
             "nomi:inbound" => {
                 let payload: String = msg.get_payload()?;
@@ -45,7 +45,7 @@ pub async fn start_redis_listener(state: AppState) -> anyhow::Result<()> {
                     }
                 };
 
-                info!("inbound \n data:{:?}\n", inbound);
+                info!("inbound \n data:{}\n", inbound);
                 let state_clone = state.clone();
                 tokio::spawn(async move {
                     if let Err(e) = handle_inbound_message(state_clone, inbound).await {

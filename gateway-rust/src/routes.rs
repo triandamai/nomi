@@ -29,6 +29,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/users/{id}", get(crate::feature::admin::handle_get_user_detail))
         .route("/users/{id}", axum::routing::patch(crate::feature::admin::handle_update_user))
         .route("/users/{id}", delete(crate::feature::admin::handle_delete_user))
+        .route("/redis/publish/inbound", post(crate::feature::admin::handle_inbound_redis))
+        .route("/redis/publish/outbound", post(crate::feature::admin::handle_outbound_redis))
         .layer(middleware::from_fn_with_state(state.clone(), crate::feature::admin::admin_middleware))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 

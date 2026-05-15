@@ -15,7 +15,7 @@
         RefreshCw,
         MessageSquare,
         LineChart,
-        DollarSign
+        DollarSign, Terminal
     } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import SoulTimeline from './SoulTimeline.svelte';
@@ -23,6 +23,7 @@
     import TransactionHistoryPopUp from './TransactionHistoryPopUp.svelte';
     import AdminConversationsPopUp from './AdminConversationsPopUp.svelte';
     import UserListPopUp from './UserListPopUp.svelte';
+    import RedisTestPopUp from './RedisTestPopUp.svelte';
     import { conversationStore } from '$lib/stores/conversation.svelte';
 
     import {profileStore} from '$lib/stores/profile.svelte';
@@ -158,6 +159,16 @@
             headerSnippet: userHeaderSnippet,
             width: 'w-full max-w-2xl h-screen',
             contentSnippet: userDirectorySnippet
+        });
+    }
+
+    function openRedisTest() {
+        sidebarStore.showUserMenu = false;
+        popupStore.open({
+            title: 'Redis Pub/Sub Test',
+            headerSnippet: redisHeaderSnippet,
+            width: 'w-full max-w-md h-screen',
+            contentSnippet: redisTestSnippet
         });
     }
 
@@ -535,6 +546,23 @@
     </div>
 {/snippet}
 
+{#snippet redisTestSnippet()}
+    <RedisTestPopUp />
+{/snippet}
+
+{#snippet redisHeaderSnippet()}
+    <div class="flex items-center gap-3">
+        <div class="p-2 bg-amber-500/10 rounded-xl border border-amber-500/20 text-amber-400 shrink-0">
+            <Terminal size={18}/>
+        </div>
+        <div class="min-w-0">
+            <h2 class="text-xs md:text-sm font-black uppercase tracking-widest text-slate-100 truncate">Redis
+                Test</h2>
+            <p class="text-[9px] md:text-[10px] text-slate-500 font-medium truncate">Debug Pub/Sub Events</p>
+        </div>
+    </div>
+{/snippet}
+
 {#snippet connectionManagementSnippet()}
 
     <div class="space-y-4 py-2">
@@ -769,14 +797,21 @@
                                 class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
                         >
                             <LineChart size={14}/>
-                            <span>Monitor Conversations 📊</span>
+                            <span>Monitor Conversations</span>
                         </button>
                         <button
                                 onclick={openUserDirectory}
                                 class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
                         >
                             <User size={14}/>
-                            <span>User Directory 👥</span>
+                            <span>User Directory</span>
+                        </button>
+                        <button
+                                onclick={openRedisTest}
+                                class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
+                        >
+                            <Terminal size={14}/>
+                            <span>Redis Pub/Sub Test</span>
                         </button>
                     {/if}
                     <div class="h-px bg-slate-900 my-1"></div>

@@ -1,19 +1,19 @@
 use crate::AppState;
-use axum::{
-    extract::{Query, State, Request, Path},
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-    middleware::Next,
-    response::Response,
-};
-use serde::{Deserialize, Serialize};
-use tracing::error;
-use uuid::Uuid;
 use crate::common::api_response::ApiResponse;
 use crate::feature::conversation::auth::Claims;
+use axum::{
+    Json,
+    extract::{Path, Query, Request, State},
+    http::StatusCode,
+    middleware::Next,
+    response::IntoResponse,
+    response::Response,
+};
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use sqlx::QueryBuilder;
+use tracing::error;
+use uuid::Uuid;
 
 #[derive(Deserialize)]
 pub struct ExploreQuery {
@@ -155,8 +155,8 @@ pub async fn handle_get_user_detail(
         "SELECT id, name, display_name, email, role, is_verified, created_at FROM users WHERE id = $1",
         id
     )
-    .fetch_one(&state.pool)
-    .await
+        .fetch_one(&state.pool)
+        .await
     {
         Ok(u) => u,
         Err(e) => {
@@ -191,8 +191,9 @@ pub async fn handle_get_user_detail(
         "#,
         id
     )
-        .fetch_all(&state.pool)
-        .await.unwrap_or_else(|e| {
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_else(|e| {
         error!("Error fetching conversations: {}", e);
         Vec::new()
     });
@@ -246,19 +247,53 @@ pub async fn handle_update_user(
 pub async fn handle_delete_user(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> impl IntoResponse {
+) -> ApiResponse<String> {
     // Note: This might need careful handling of foreign keys if not set to CASCADE
+    let tx = state.pool.begin().await;
+    if let Err(err) = tx {
+        info!("Error delete user: {}", err);
+        return ApiResponse::failed("Error deleting user, trx failed");
+    }
+    let mut tx = tx.unwrap();
+    let delete_messages = sqlx::query!("DELETE FROM messages WHERE user_id = $1", id)
+        .execute(&mut *tx)
+        .await;
+    if let Err(e) = delete_messages {
+        let _ = tx.rollback().await;
+        info!("Error deleting messages: {}", e);
+        return ApiResponse::failed("Error deleting user, trx message failed");
+    }
+    let delete_channels = sqlx::query!("DELETE FROM channels WHERE user_id = $1", id)
+        .execute(&mut *tx)
+        .await;
+    if let Err(e) = delete_channels {
+        let _ = tx.rollback().await;
+        info!("Error deleting channels: {}", e);
+        return ApiResponse::failed("Error deleting user, trx channels failed");
+    }
+
+    let delete_members = sqlx::query!("DELETE FROM conversation_members WHERE user_id = $1", id)
+        .execute(&mut *tx)
+        .await;
+    if let Err(e) = delete_members {
+        let _ = tx.rollback().await;
+        info!("Error deleting members: {}", e);
+        return ApiResponse::failed("Error deleting user, trx members failed");
+    }
+
     let result = sqlx::query!("DELETE FROM users WHERE id = $1", id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await;
 
-    match result {
-        Ok(_) => Json(ApiResponse::ok((), "User deleted successfully")).into_response(),
-        Err(e) => {
-            error!("Error deleting user: {}", e);
-            Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response()
-        }
+    if let Err(e) = result {
+        let _ = tx.rollback().await;
+        error!("Error deleting user: {}", e);
+        return ApiResponse::failed("Error deleting user, trx failed");
     }
+
+    let _ = tx.commit().await;
+
+    ApiResponse::ok("Success".to_string(), "User deleted successfully")
 }
 
 pub async fn admin_middleware(
@@ -266,23 +301,23 @@ pub async fn admin_middleware(
     req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let claims = req.extensions().get::<Claims>().ok_or(StatusCode::UNAUTHORIZED)?;
+    let claims = req
+        .extensions()
+        .get::<Claims>()
+        .ok_or(StatusCode::UNAUTHORIZED)?;
     let admin_id = claims.sub.clone();
     let admin_id = Uuid::parse_str(&admin_id).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Check if user is admin
-    let is_admin: Result<bool, sqlx::Error> = sqlx::query_scalar("SELECT role = 'admin' FROM users WHERE id = $1")
-        .bind(admin_id)
-        .fetch_one(&state.pool)
-        .await;
+    let is_admin: Result<bool, sqlx::Error> =
+        sqlx::query_scalar("SELECT role = 'admin' FROM users WHERE id = $1")
+            .bind(admin_id)
+            .fetch_one(&state.pool)
+            .await;
 
     match is_admin {
-        Ok(true) => {
-            Ok(next.run(req).await)
-        }
-        Ok(false) => {
-            Err(StatusCode::FORBIDDEN)
-        }
+        Ok(true) => Ok(next.run(req).await),
+        Ok(false) => Err(StatusCode::FORBIDDEN),
         Err(e) => {
             error!("Database error checking admin role: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -317,7 +352,10 @@ pub async fn handle_delete_storage(
         return Json(ApiResponse::create(400, None::<()>, "Invalid path")).into_response();
     }
 
-    let result = state.storage.delete_file(file_path.to_string(), bucket_name.to_string()).await;
+    let result = state
+        .storage
+        .delete_file(file_path.to_string(), bucket_name.to_string())
+        .await;
     match result {
         Ok(msg) => Json(ApiResponse::ok(msg, "Success")).into_response(),
         Err(e) => {
@@ -327,7 +365,13 @@ pub async fn handle_delete_storage(
     }
 }
 
+use crate::feature::InboundMessage;
+use crate::feature::conversation::model::MessageItem;
+use crate::feature::message_processor::model::MessageSource;
+use crate::feature::message_processor::v2_orchestrator::send_message_to_subscriber;
 use axum::extract::Multipart;
+use log::info;
+use serde_json::json;
 
 pub async fn handle_upload_to_storage(
     State(state): State<AppState>,
@@ -340,7 +384,12 @@ pub async fn handle_upload_to_storage(
     let obj_prefix = parts.next().unwrap_or("");
 
     if bucket_name.is_empty() {
-        return Json(ApiResponse::create(400, None::<()>, "Bucket name is required in prefix")).into_response();
+        return Json(ApiResponse::create(
+            400,
+            None::<()>,
+            "Bucket name is required in prefix",
+        ))
+        .into_response();
     }
 
     while let Ok(Some(field)) = multipart.next_field().await {
@@ -349,7 +398,10 @@ pub async fn handle_upload_to_storage(
             let file_name = field.file_name().unwrap_or("unnamed").to_string();
             let data = match field.bytes().await {
                 Ok(b) => b.to_vec(),
-                Err(e) => return Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response(),
+                Err(e) => {
+                    return Json(ApiResponse::create(500, None::<()>, &e.to_string()))
+                        .into_response();
+                }
             };
 
             let full_path = if obj_prefix.is_empty() {
@@ -358,7 +410,11 @@ pub async fn handle_upload_to_storage(
                 format!("{}/{}", obj_prefix.trim_end_matches('/'), file_name)
             };
 
-            match state.storage.upload_byte(bucket_name.to_string(), full_path, data).await {
+            match state
+                .storage
+                .upload_byte(bucket_name.to_string(), full_path, data)
+                .await
+            {
                 Ok(path) => return Json(ApiResponse::ok(path, "Success")).into_response(),
                 Err(e) => return Json(ApiResponse::create(500, None::<()>, &e)).into_response(),
             }
@@ -376,7 +432,8 @@ pub async fn handle_get_money_history(
     let limit = 20;
     let offset = (page - 1) * limit;
 
-    let mut qb = QueryBuilder::new(r#"
+    let mut qb = QueryBuilder::new(
+        r#"
         SELECT 
             mt.id, mt.merchant_name, mt.category, mt.description, mt.total_amount, mt.created_at,
             u.display_name as user_display_name,
@@ -396,8 +453,9 @@ pub async fn handle_get_money_history(
         LEFT JOIN users u ON mt.user_id = u.id
         LEFT JOIN conversations c ON mt.conversation_id = c.id
         WHERE 1=1 
-    "#);
-    
+    "#,
+    );
+
     let mut count_qb = QueryBuilder::new("SELECT COUNT(*) FROM money_tracking mt WHERE 1=1 ");
 
     if let Some(ref search) = q.query {
@@ -412,7 +470,7 @@ pub async fn handle_get_money_history(
             qb.push(" OR c.title ILIKE ");
             qb.push_bind(search_term.clone());
             qb.push(") ");
-            
+
             count_qb.push(" AND (mt.merchant_name ILIKE ");
             count_qb.push_bind(search_term.clone());
             count_qb.push(" OR mt.description ILIKE ");
@@ -441,15 +499,26 @@ pub async fn handle_get_money_history(
 
     let count: i64 = match count_qb.build_query_scalar().fetch_one(&state.pool).await {
         Ok(c) => c,
-        Err(e) => return Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response(),
+        Err(e) => {
+            return Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response();
+        }
     };
 
     let items: Vec<MoneyHistoryItem> = match qb.build_query_as().fetch_all(&state.pool).await {
         Ok(items) => items,
-        Err(e) => return Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response(),
+        Err(e) => {
+            return Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response();
+        }
     };
 
-    Json(ApiResponse::ok(MoneyHistoryResponse { items, total_count: count }, "Success")).into_response()
+    Json(ApiResponse::ok(
+        MoneyHistoryResponse {
+            items,
+            total_count: count,
+        },
+        "Success",
+    ))
+    .into_response()
 }
 
 pub async fn handle_update_money_history(
@@ -459,7 +528,9 @@ pub async fn handle_update_money_history(
 ) -> impl IntoResponse {
     let mut tx = match state.pool.begin().await {
         Ok(tx) => tx,
-        Err(e) => return Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response(),
+        Err(e) => {
+            return Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response();
+        }
     };
 
     let result = sqlx::query!(
@@ -469,8 +540,8 @@ pub async fn handle_update_money_history(
         req.category,
         id
     )
-    .execute(&mut *tx)
-    .await;
+        .execute(&mut *tx)
+        .await;
 
     if let Err(e) = result {
         let _ = tx.rollback().await;
@@ -503,9 +574,9 @@ pub async fn handle_get_admin_conversations(
     Query(q): Query<AdminConversationsQuery>,
 ) -> impl IntoResponse {
     let limit = q.limit.unwrap_or(20).max(1).min(100);
-    
+
     let mut qb = QueryBuilder::new(
-        r#"SELECT id, title, cumulative_tokens, max_token_usage, created_at FROM conversations WHERE 1=1 "#
+        r#"SELECT id, title, cumulative_tokens, max_token_usage, created_at FROM conversations WHERE 1=1 "#,
     );
 
     if let Some(cursor) = q.cursor {
@@ -529,10 +600,7 @@ pub async fn handle_get_admin_conversations(
     let next_cursor = items.last().map(|i| i.created_at.to_rfc3339());
 
     Json(ApiResponse::ok(
-        AdminConversationsResponse {
-            items,
-            next_cursor,
-        },
+        AdminConversationsResponse { items, next_cursor },
         "Success",
     ))
     .into_response()
@@ -608,7 +676,113 @@ pub async fn handle_get_users(
         }
     };
 
-    let next_cursor = items.last().and_then(|i| i.created_at.map(|dt| dt.to_rfc3339()));
+    let next_cursor = items
+        .last()
+        .and_then(|i| i.created_at.map(|dt| dt.to_rfc3339()));
 
-    Json(ApiResponse::ok(UserListResponse { items, next_cursor }, "Success")).into_response()
+    Json(ApiResponse::ok(
+        UserListResponse { items, next_cursor },
+        "Success",
+    ))
+    .into_response()
+}
+
+#[derive(Deserialize)]
+pub struct RedisInboundRequest {
+    pub event: String,
+    pub channel: String,
+    pub payload: InboundMessage,
+}
+
+#[derive(Deserialize)]
+pub struct RedisOutboundRequest {
+    pub channel: String,
+    pub event: String,
+    pub conversation_id: Option<Uuid>,
+    pub role: String,
+    pub content: String,
+}
+
+pub async fn handle_outbound_redis(
+    State(state): State<AppState>,
+    Json(req): Json<RedisOutboundRequest>,
+) -> ApiResponse<String> {
+    if let None = req.conversation_id {
+        info!("Published a redis conversation failed, convo id null");
+        return ApiResponse::bad_request("conversation_id is not valid");
+    }
+    let members = sqlx::query!(
+        "SELECT conversation_id FROM conversation_members WHERE conversation_id = $1",
+        req.conversation_id
+    )
+    .fetch_all(&state.pool)
+    .await;
+
+    if let Err(err) = members {
+        info!("Database error publishing conversation: {}", err);
+        return ApiResponse::failed("Failed to fetch conversation");
+    }
+    let members = members
+        .unwrap()
+        .iter()
+        .map(|m| m.conversation_id)
+        .collect::<Vec<_>>();
+    let conversation_id = req.conversation_id.unwrap();
+    let outbound = MessageItem {
+        id: Uuid::new_v4(),
+        conversation_id,
+        role: req.role.clone(),
+        content: req.content.clone(),
+        total_tokens: None,
+        answer_tokens: None,
+        prompt_tokens: None,
+        thought: None,
+        image_url: None,
+        video_url: None,
+        audio_url: None,
+        document_url: None,
+        sticker_url: None,
+        user_id: None,
+        created_at: Default::default(),
+    };
+    let _ = send_message_to_subscriber(
+        &state,
+        members,
+        conversation_id,
+        match req.channel.as_str() {
+            "whatsapp" => MessageSource::WhatsApp {
+                name: req.channel.to_string(),
+            },
+            "telegram" => MessageSource::Telegram {
+                name: req.channel.to_string(),
+            },
+            "web" => MessageSource::Web {
+                name: req.channel.to_string(),
+            },
+            _ => MessageSource::Other {
+                name: "other".to_string(),
+            },
+        },
+        json!({}),
+        outbound,
+    );
+
+    ApiResponse::ok("".to_string(), "Published a redis conversation")
+}
+
+pub async fn handle_inbound_redis(
+    State(state): State<AppState>,
+    Json(req): Json<RedisInboundRequest>,
+) -> impl IntoResponse {
+    info!(
+        "Published a redis event:{} \n payload {}\n",
+        req.channel, req.payload
+    );
+    match state.redis.publish_event(&req.event, &req.payload).await {
+        Ok(_) => Json(ApiResponse::ok((), "Event published successfully")).into_response(),
+        Err(e) => {
+            error!("Failed to publish to redis: {}", e);
+            Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response()
+        }
+    }
 }

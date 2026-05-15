@@ -363,6 +363,18 @@ export const chatApi = {
             method: 'DELETE'
         });
     },
+    publishAdminInbound: (payload: any) => {
+        return apiFetch<any>(`/v1/admin/redis/publish/inbound`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+    publishAdminOutbound: (payload: any) => {
+        return apiFetch<any>(`/v1/admin/redis/publish/outbound`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
     logout: () => {
         return apiFetch<any>('/auth/logout', {
             method: 'POST'

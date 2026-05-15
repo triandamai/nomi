@@ -1150,6 +1150,7 @@ pub fn send_message_to_subscriber(
                                     },
                                     metadata: None,
                                 };
+                                info!("Sent outbound message: {}", outbound);
                                 let _ = state.publish_outbond(&outbound).await;
 
                                 if i < bubbles.len() - 1 {
@@ -1218,6 +1219,7 @@ pub fn send_message_to_subscriber(
                                     },
                                     metadata: None,
                                 };
+                                info!("Sent outbound message: {}", outbound);
                                 let _ = state.publish_outbond(&outbound).await;
 
                                 if i < bubbles.len() - 1 {
