@@ -4,11 +4,10 @@ use crate::common::agent::execute_tools;
 use crate::common::identity::UserIdentity;
 use crate::common::repository::message_repo::save_message;
 use crate::common::tools::ToolDispatcher;
-use crate::feature::PresenceMessage;
-use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
 use crate::feature::message_processor::v2_orchestrator::{
     send_message_to_subscriber, send_status_update,
 };
+use crate::feature::{MessageSource, PresenceMessage, UnifiedMessage};
 use crate::models::Conversation;
 use crate::rag::trigger_memory_consolidation;
 use crate::{AppState, rag};
@@ -461,7 +460,10 @@ impl V2AgentOrchestrator {
             if loop_count <= 1 {
                 send_status_update(
                     &state,
-                    self.conversation_member_ids.iter().map(|v| v.clone()).collect(),
+                    self.conversation_member_ids
+                        .iter()
+                        .map(|v| v.clone())
+                        .collect(),
                     conversation_id,
                     msg.source.clone(),
                     msg.is_group,
@@ -587,7 +589,10 @@ impl V2AgentOrchestrator {
                     for call in &current_calls {
                         send_status_update(
                             &state,
-                            self.conversation_member_ids.iter().map(|v| v.clone()).collect(),
+                            self.conversation_member_ids
+                                .iter()
+                                .map(|v| v.clone())
+                                .collect(),
                             conversation_id,
                             msg.source.clone(),
                             msg.is_group,
@@ -685,7 +690,10 @@ impl V2AgentOrchestrator {
 
                 send_message_to_subscriber(
                     &state,
-                    self.conversation_member_ids.iter().map(|v| v.clone()).collect(),
+                    self.conversation_member_ids
+                        .iter()
+                        .map(|v| v.clone())
+                        .collect(),
                     conversation_id,
                     msg.source.clone(),
                     payload,
@@ -957,7 +965,10 @@ impl V2AgentOrchestrator {
         if let Ok(msg) = message {
             let _notify = send_message_to_subscriber(
                 &self.state,
-                self.conversation_member_ids.iter().map(|v|v.clone()).collect(),
+                self.conversation_member_ids
+                    .iter()
+                    .map(|v| v.clone())
+                    .collect(),
                 conversation_id,
                 MessageSource::Multiple {
                     source: vec![

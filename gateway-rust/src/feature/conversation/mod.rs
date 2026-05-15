@@ -4,7 +4,6 @@ use crate::feature::conversation::model::{
     MessageItem, MessageListParams, MessageListResponse, PairingResponse, RestoreSoulRequest,
     RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest, UserChannelsResponse,
 };
-use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
 use crate::models::Conversation;
 use crate::{AppState, common};
@@ -16,6 +15,7 @@ use serde_json::{Value, json};
 use sqlx::Row;
 use tracing::{error, info};
 use uuid::Uuid;
+use crate::feature::{MessageSource, UnifiedMessage};
 
 pub mod auth;
 pub mod command;

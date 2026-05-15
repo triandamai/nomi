@@ -1,4 +1,5 @@
 use crate::AppState;
+use crate::common::identity;
 use crate::common::repository::{channel_repo, pairing_repo};
 use crate::feature::{InboundMessage, OutboundMessage};
 use crate::prompts::PromptRegistry;
@@ -10,8 +11,29 @@ use uuid::Uuid;
 pub async fn process_generate_pairing(
     state: &AppState,
     msg: &InboundMessage,
-    user_id: Uuid,
 ) -> anyhow::Result<()> {
+    let display_name = match &msg.metadata {
+        None => msg.sender_id.clone(),
+        Some(meta) => meta
+            .get("display_name")
+            .map_or_else(|| msg.sender_id.clone(), |v| v.to_string()),
+    };
+
+    let user_id = identity::resolve_identity(
+        &state,
+        &msg.sender_id,
+        &msg.conversation_id,
+        &msg.channel,
+        msg.is_group.clone(),
+        display_name.clone(),
+    )
+    .await;
+    if let Err(err) = &user_id {
+        info!("User not exist:{}", err);
+        return Ok(());
+    }
+
+    let user_id = user_id?.id;
     let conv_id = if msg.is_group {
         sqlx::query!(
             "SELECT c.id
@@ -88,8 +110,29 @@ pub async fn process_pairing(
     state: &AppState,
     msg: &InboundMessage,
     text: &String,
-    user_id: Uuid,
 ) -> anyhow::Result<()> {
+    let display_name = match &msg.metadata {
+        None => msg.sender_id.clone(),
+        Some(meta) => meta
+            .get("display_name")
+            .map_or_else(|| msg.sender_id.clone(), |v| v.to_string()),
+    };
+
+    let user_id = identity::resolve_identity(
+        &state,
+        &msg.sender_id,
+        &msg.conversation_id,
+        &msg.channel,
+        msg.is_group.clone(),
+        display_name.clone(),
+    )
+    .await;
+    if let Err(err) = &user_id {
+        info!("User not exist:{}", err);
+        return Ok(());
+    }
+
+    let user_id = user_id?.id;
     let parts: Vec<&str> = text.split_whitespace().collect();
     if parts.len() >= 2 {
         let code = parts[1].to_uppercase();
@@ -251,7 +294,8 @@ pub async fn process_register(state: &AppState, msg: &InboundMessage) -> anyhow:
     }
     let conv = create_convo?;
 
-    let create_member = sqlx::query!("
+    let create_member = sqlx::query!(
+        "
         INSERT INTO conversation_members
         (conversation_id, user_id)
         VALUES ($1, $2) RETURNING conversation_id,user_id",

@@ -10,3 +10,4 @@ pub mod stock;
 pub mod reminder;
 pub mod splitter;
 pub mod format;
+pub mod app_state;

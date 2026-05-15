@@ -1,10 +1,9 @@
 use crate::AppState;
 use crate::common::identity::UserIdentity;
 use crate::common::repository::message_repo::save_message;
-use crate::feature::OutboundMessage;
 use crate::feature::conversation::model::MessageItem;
-use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
 use crate::feature::message_processor::v2_agent_orchestrator::V2AgentOrchestrator;
+use crate::feature::{MessageSource, OutboundMessage, UnifiedMessage};
 use crate::models::Conversation;
 use serde_json::json;
 use tracing::info;

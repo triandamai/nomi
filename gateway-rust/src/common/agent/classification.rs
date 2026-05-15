@@ -1,5 +1,5 @@
 use crate::common::agent::agent_model::{ExpenseData, MaintenanceData, MediaClassification};
-use crate::feature::message_processor::model::UnifiedMessage;
+use crate::feature::UnifiedMessage;
 use crate::feature::message_processor::v2_orchestrator::send_status_update;
 use crate::prompts::{PromptRegistry, StatusRegistry};
 use crate::rag::classify_media_context;
@@ -42,9 +42,10 @@ pub async fn classification(
                 StatusRegistry::random_action_phrase("analyze_media"),
             );
 
-            let classification = classify_media_context(&state, &image_url, Some(text_content.clone()))
-                .await
-                .unwrap_or(MediaClassification::Other);
+            let classification =
+                classify_media_context(&state, &image_url, Some(text_content.clone()))
+                    .await
+                    .unwrap_or(MediaClassification::Other);
 
             if let MediaClassification::Ignore = classification {
                 should_ignore = true;

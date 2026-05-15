@@ -1,4 +1,3 @@
-use crate::AppState;
 use crate::common::identity;
 use crate::common::repository::channel_repo;
 use crate::common::repository::channel_repo::is_group_registered;
@@ -6,10 +5,10 @@ use crate::feature::conversation::command::{
     get_help_command, process_generate_pairing, process_login, process_pairing, process_register,
 };
 use crate::feature::conversation::model::ChatStreamChunk;
-use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
-use crate::feature::{FallBackPayload, InboundMessage, OutboundMessage};
+use crate::feature::{FallBackPayload, InboundMessage, MessageSource, OutboundMessage, UnifiedMessage};
 use crate::models::Conversation;
+use crate::AppState;
 use serde_json::json;
 use tokio_stream::StreamExt;
 use tracing::{error, info};
@@ -70,8 +69,8 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         msg.sender_id, msg.conversation_id, msg.text
     );
 
+    // ======== WA CHANNEL GUARD ===========//
     let mut text = msg.text.trim().to_string();
-
     if text.contains("@42078516064356") {
         info!("native mentioned detected {}", text);
         text = text.replace("@42078516064356", "Nomi");
@@ -88,8 +87,9 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         info!("User {} has ':' skiped", msg.sender_id);
         return Ok(());
     }
+    // ======== END WA CHANNEL GUARD ===========//
 
-    // 1. Group Filtering & Registration Check
+    // ======== Group Filtering & Registration Check ========//
     if msg.is_group {
         let registered = is_group_registered(&state.pool, &msg.conversation_id, &msg.channel).await;
 
@@ -106,6 +106,24 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             return Ok(());
         }
     }
+
+
+    // ================================== BEGIN COMMAND ============================//
+    // 3. Check for Pairing/Register/Login
+    if text.to_uppercase().starts_with("/pair ") {
+        return process_pairing(&state, &msg, &text).await;
+    } else if text.starts_with("/linkapp") {
+        return process_generate_pairing(&state, &msg).await;
+    } else if text.starts_with("/register") {
+        return process_register(&state, &msg).await;
+    } else if text.starts_with("/login") {
+        return process_login(&state, &msg).await;
+    } else if text.starts_with("/help") {
+        return get_help_command(&state, &msg).await;
+    }
+
+    // ================================== NOT REGISTERED STOP HERE ============================//
+
 
     // 2. Resolve Identity and Channel Info
     let (conversation_id, cumulative_tokens, max_token_usage) = if msg.is_group {
@@ -129,7 +147,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             Err(_) => (Uuid::nil(), 0, 700000.0),
         }
     };
-
+    info!("Conversation id {}", conversation_id);
     if cumulative_tokens as f64 >= max_token_usage {
         info!(
             "Conversation {} has reached max token usage",
@@ -151,42 +169,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         return Ok(());
     }
 
-    info!("Conversation id {}", conversation_id);
-    let display_name = match &msg.metadata {
-        None => msg.sender_id.clone(),
-        Some(meta) => meta
-            .get("display_name")
-            .map_or_else(|| msg.sender_id.clone(), |v| v.to_string()),
-    };
-    let user_id = identity::resolve_identity(
-        &state,
-        &msg.sender_id,
-        &msg.conversation_id,
-        &msg.channel,
-        msg.is_group.clone(),
-        display_name,
-    )
-    .await;
-    if let Err(err) = &user_id {
-        info!("User not exist:{}", err);
-    }
 
-    let user_id = user_id?.id;
-    // ================================== BEGIN COMMAND ============================//
-    // 3. Check for Pairing/Register/Login
-    if text.to_uppercase().starts_with("/pair ") {
-        return process_pairing(&state, &msg, &text, user_id.clone()).await;
-    } else if text.starts_with("/linkapp") {
-        return process_generate_pairing(&state, &msg, user_id.clone()).await;
-    } else if text.starts_with("/register") {
-        return process_register(&state, &msg).await;
-    } else if text.starts_with("/login") {
-        return process_login(&state, &msg).await;
-    } else if text.starts_with("/help") {
-        return get_help_command(&state, &msg).await;
-    }
-
-    // ================================== NOT REGISTERED STOP HERE ============================//
     // 3. Resolve/Create Conversation
     if conversation_id.is_nil() {
         info!("{} via {}", msg.conversation_id, msg.channel);
@@ -219,6 +202,28 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         return Ok(());
     }
 
+    // ============== START AUTHENTICATED USER ============= /
+    let display_name = match &msg.metadata {
+        None => msg.sender_id.clone(),
+        Some(meta) => meta
+            .get("display_name")
+            .map_or_else(|| msg.sender_id.clone(), |v| v.to_string()),
+    };
+
+    let user_id = identity::resolve_identity(
+        &state,
+        &msg.sender_id,
+        &msg.conversation_id,
+        &msg.channel,
+        msg.is_group.clone(),
+        display_name.clone(),
+    )
+    .await;
+    if let Err(err) = &user_id {
+        info!("User not exist:{}", err);
+        return Ok(());
+    }
+    let user_id = user_id?;
     let conv_info = sqlx::query!("SELECT * FROM conversations WHERE id = $1", conversation_id)
         .fetch_optional(&state.pool)
         .await;
@@ -250,7 +255,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             return Ok(());
         }
     }
-    let conv_info = conv_info.unwrap().unwrap();
+    let conv_info = conv_info?.unwrap();
 
     // ================================== REGULAR CONVO ============================//
     // 5. Trigger Agentic Loop
@@ -289,7 +294,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             is_group: msg.is_group,
             is_mentioned: msg.is_mentioned,
             conversation_id,
-            user_id: Some(user_id),
+            user_id: Some(user_id.id.clone()),
             text_content: user_text,
             image_url,
             audio_url,
