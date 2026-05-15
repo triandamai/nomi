@@ -4,7 +4,7 @@ use crate::common::repository::message_repo::save_message;
 use crate::feature::OutboundMessage;
 use crate::feature::message_processor::v2_agent_orchestrator::V2AgentOrchestrator;
 use crate::models::Conversation;
-use chrono::{DateTime, Duration, Months, TimeZone, Utc};
+use chrono::{DateTime, Duration, Months, Utc};
 use chrono_tz::Tz;
 use serde_json::json;
 use tracing::{error, info};
@@ -280,7 +280,7 @@ async fn handle_trigger_agent_task(state: &AppState, task: &TaskData) -> anyhow:
         .ok_or_else(|| anyhow::anyhow!("Missing conversation_id for TRIGGER_AGENT"))?;
 
     let members = sqlx::query!(
-        "SELECT * FROM conversation_members WHERE conversation_id = $1",
+        "SELECT conversation_id,user_id FROM conversation_members WHERE conversation_id = $1",
         conversation_id
     )
     .fetch_all(&state.pool)
@@ -386,87 +386,5 @@ fn calculate_next_due(current: DateTime<Utc>, frequency: &str) -> DateTime<Utc> 
         "weekly" => current + Duration::weeks(1),
         "monthly" => current + Months::new(1),
         _ => current, // Should not happen for recurring
-    }
-}
-
-pub async fn handle_get_reminders(
-    axum::extract::State(state): axum::extract::State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<
-        crate::feature::conversation::auth::Claims,
-    >,
-    axum::extract::Query(params): axum::extract::Query<
-        crate::feature::conversation::model::MessageListParams,
-    >,
-) -> crate::common::api_response::ApiResponse<
-    Vec<crate::feature::conversation::model::ReminderResponse>,
-> {
-    let user_id = match uuid::Uuid::parse_str(&claims.sub) {
-        Ok(id) => id,
-        Err(_) => {
-            return crate::common::api_response::ApiResponse::failed("Invalid user ID in token");
-        }
-    };
-
-    let limit = params.limit.unwrap_or(20);
-    // Use a very far future date as default cursor for DESC sort
-    let cursor = params
-        .cursor
-        .unwrap_or_else(|| Utc::now() + chrono::Duration::days(365 * 10));
-
-    let result = sqlx::query!(
-        r#"
-        SELECT 
-            r.id,
-            r.task_type as "task_type!",
-            r.payload as "payload!",
-            COALESCE(r.payload->>'message', r.content) as "content!",
-            (r.due_at AT TIME ZONE 'Asia/Jakarta') as due_at,
-            r.frequency,
-            r.status,
-            u.display_name as "user_display_name",
-            c.title as "conversation_title",
-            r.created_at
-        FROM reminders r
-        LEFT JOIN users u ON r.user_id = u.id
-        LEFT JOIN conversations c ON r.conversation_id = c.id
-        WHERE r.user_id = $1 AND r.due_at < $2
-        ORDER BY r.due_at DESC
-        LIMIT $3
-        "#,
-        user_id,
-        cursor,
-        limit
-    )
-    .fetch_all(&state.pool)
-    .await;
-
-    match result {
-        Ok(rows) => {
-            let tz: Tz = "Asia/Jakarta".parse().unwrap_or(chrono_tz::UTC);
-            let reminders = rows
-                .into_iter()
-                .map(|r| crate::feature::conversation::model::ReminderResponse {
-                    id: r.id,
-                    task_type: r.task_type,
-                    payload: r.payload,
-                    content: r.content,
-                    due_at: tz
-                        .from_local_datetime(&r.due_at.unwrap())
-                        .single()
-                        .unwrap()
-                        .with_timezone(&Utc),
-                    frequency: r.frequency,
-                    status: r.status.unwrap_or_default(),
-                    user_display_name: r.user_display_name,
-                    conversation_title: r.conversation_title,
-                    created_at: r.created_at.unwrap_or_else(Utc::now),
-                })
-                .collect();
-            crate::common::api_response::ApiResponse::ok(reminders, "Tasks retrieved")
-        }
-        Err(e) => {
-            error!("Failed to fetch reminders: {}", e);
-            crate::common::api_response::ApiResponse::failed("Failed to fetch reminders")
-        }
     }
 }

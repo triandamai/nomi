@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            r.id,\n            r.task_type as \"task_type!\",\n            r.payload as \"payload!\",\n            COALESCE(r.payload->>'message', r.content) as \"content!\",\n            (r.due_at AT TIME ZONE 'Asia/Jakarta') as due_at,\n            r.frequency,\n            r.status,\n            u.display_name as \"user_display_name\",\n            c.title as \"conversation_title\",\n            r.created_at\n        FROM reminders r\n        LEFT JOIN users u ON r.user_id = u.id\n        LEFT JOIN conversations c ON r.conversation_id = c.id\n        WHERE r.user_id = $1 AND r.due_at < $2\n        ORDER BY r.due_at DESC\n        LIMIT $3\n        ",
+  "query": "\n        SELECT\n            r.id,\n            r.task_type as \"task_type!\",\n            r.payload as \"payload!\",\n            COALESCE(r.payload->>'message', r.content) as \"content!\",\n            (r.due_at AT TIME ZONE 'Asia/Jakarta') as due_at,\n            r.frequency,\n            r.status,\n            u.display_name as \"user_display_name\",\n            c.title as \"conversation_title\",\n            r.created_at\n        FROM reminders r\n        LEFT JOIN users u ON r.user_id = u.id\n        LEFT JOIN conversations c ON r.conversation_id = c.id\n        WHERE r.user_id = $1 AND r.due_at < $2\n        ORDER BY r.due_at DESC\n        LIMIT $3\n        ",
   "describe": {
     "columns": [
       {
@@ -74,5 +74,5 @@
       true
     ]
   },
-  "hash": "bce0145df095bd85c92b25ed372c279af9494214ca7dc56629e6b4451d441f22"
+  "hash": "00fed36d3055f6b4121eaa539499b5efee7ba0ce167a15b9c8dbebc9b8b2700d"
 }

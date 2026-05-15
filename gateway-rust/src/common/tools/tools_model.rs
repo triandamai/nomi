@@ -110,9 +110,9 @@ pub struct ScheduleTaskParameters {
     pub task_type: String,     // "REMINDER", "SEND_DM", "TRIGGER_AGENT"
     pub due_at: String,        // ISO 8601 absolute timestamp string
     #[schemars(description = "You must populate it according to these rules:
-    1. If task_type is 'REMINDER': Must contain exactly { \"message\": \"The reminder text to send to the user\" }.
-    2. If task_type is 'SEND_DM': Must contain exactly { \"recipient_jid\": \"The destination user ID/JID string\", \"content\": \"The message text to send\" }.
-    3. If task_type is 'TRIGGER_AGENT': Must contain exactly { \"task_prompt\": \"The instruction string for the background routine execution\" }.
+    1. If task_type is 'REMINDER': Must contain exactly { 'message': 'The reminder text to send to the user' }.
+    2. If task_type is 'SEND_DM': Must contain exactly { 'recipient_jid': 'The destination user ID/JID string', 'content': 'The message text to send' }.
+    3. If task_type is 'TRIGGER_AGENT': Must contain exactly { 'task_prompt': 'The instruction string for the background routine execution' }.
     
     CRITICAL: Do not invent or add extra keys outside of these specifications.")]
     pub payload: serde_json::Value, // Flexible execution variables
@@ -207,13 +207,12 @@ pub struct MakeStickerResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LogExpenseParameters {
     pub merchant: String,
-    pub total: Option<f64>,
+    pub total: f64,
     pub category: String,
     pub items: Vec<LogExpenseItem>,
     pub tax: Option<f64>,
     pub service: Option<f64>,
     pub discount: Option<f64>,
-    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -244,9 +243,6 @@ pub struct AnalyzeMediaParameters {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AnalyzeMediaResponse {
     pub content: String,
-    pub prompt_tokens: Option<i32>,
-    pub candidates_tokens: Option<i32>,
-    pub total_tokens: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

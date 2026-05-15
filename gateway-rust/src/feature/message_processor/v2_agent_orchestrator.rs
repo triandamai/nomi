@@ -285,6 +285,19 @@ impl V2AgentOrchestrator {
             }
         }
 
+        // Force VITALITY if health keywords are present
+        if msg_lower.contains("step") 
+            || msg_lower.contains("sleep") 
+            || msg_lower.contains("heart") 
+            || msg_lower.contains("workout") 
+            || msg_lower.contains("health")
+        {
+            if !intents.contains(&"VITALITY".to_string()) {
+                intents.push("VITALITY".to_string());
+                info!("Scout overridden: Added VITALITY due to health keywords");
+            }
+        }
+
         info!("Scout Intents Detected: {:?}", intents);
 
         let dispatcher = ToolDispatcher::new(

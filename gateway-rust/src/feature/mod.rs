@@ -9,6 +9,9 @@ pub mod message_processor;
 pub mod realtime;
 pub mod redis;
 pub mod waitlist;
+pub mod health_tracking;
+pub mod money_tracking;
+pub mod reminder;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InboundMessage {

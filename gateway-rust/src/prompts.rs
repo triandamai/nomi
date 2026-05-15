@@ -29,7 +29,7 @@ impl PromptRegistry {
         for intent in intents {
             let chunk = match intent.as_str() {
                 "FINANCE" => "\n### FINANCE LOGIC\n- Use `log_expense` tool if the user provides an expense. USE REAL DATA from the receipt, NOT placeholder text.\n- Use `get_expense_summary` tool to show monthly summary.\n- Use `get_transaction_details` tool to list specific purchases.\n",
-                "VITALITY" => "\n### VITALITY LOGIC\n- Help Trian stay healthy, suggest habits, monitor well-being.\n",
+                "VITALITY" => "\n### VITALITY LOGIC\n- Use `manage_health_data` to query or summarize biometrics (steps, sleep, heart rate).\n- Be a proactive personal companion. Notice physical strains (low sleep, high heart rates from trekking/motorcycling) and provide tailored insights. 🥗✨\n",
                 "STORAGE" => "\n### STORAGE LOGIC\n- Use `update_knowledge_base` to commit to memory. Use `retrieve_knowledge` to recall facts.\n",
                 "REMINDER" => "\n### REMINDER LOGIC\n- Use `schedule_task`, `modify_reminder`, `get_reminder_stats` to manage schedule. Use relative analysis to translate vague human terms into precise Datetimes.\n",
                 "WEB" => "\n### WEB LOGIC\n- Use `web_search` and `read_web_page` to scour the web.\n",

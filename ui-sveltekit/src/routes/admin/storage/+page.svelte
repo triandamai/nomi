@@ -61,7 +61,6 @@
             const res = await chatApi.exploreStorage(path);
             if (res.data) {
                 items = res.data
-                console.log(items)
             } else {
                 error = res.meta?.message || 'Failed to load storage';
             }

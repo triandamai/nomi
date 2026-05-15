@@ -15,12 +15,13 @@
         RefreshCw,
         MessageSquare,
         LineChart,
-        DollarSign, Terminal
+        DollarSign, Terminal, Activity, HeartPulse
     } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import SoulTimeline from './SoulTimeline.svelte';
     import QRCode from './QRCode.svelte';
     import TransactionHistoryPopUp from './TransactionHistoryPopUp.svelte';
+    import HealthHistoryPopUp from './HealthHistoryPopUp.svelte';
     import AdminConversationsPopUp from './AdminConversationsPopUp.svelte';
     import UserListPopUp from './UserListPopUp.svelte';
     import RedisTestPopUp from './RedisTestPopUp.svelte';
@@ -139,6 +140,15 @@
             title: 'Transaction History',
             width: 'w-full max-w-2xl h-screen',
             contentSnippet: moneyTrackingSnippet
+        });
+    }
+
+    function openHealthTracking() {
+        sidebarStore.showUserMenu = false;
+        popupStore.open({
+            title: 'Health & Vitality',
+            width: 'w-full max-w-2xl h-screen',
+            contentSnippet: healthTrackingSnippet
         });
     }
 
@@ -512,6 +522,10 @@
     <TransactionHistoryPopUp/>
 {/snippet}
 
+{#snippet healthTrackingSnippet()}
+    <HealthHistoryPopUp/>
+{/snippet}
+
 {#snippet adminConversationsSnippet()}
     <AdminConversationsPopUp />
 {/snippet}
@@ -783,6 +797,13 @@
                     >
                         <DollarSign size={14}/>
                         <span>Money Tracking</span>
+                    </button>
+                    <button
+                            onclick={openHealthTracking}
+                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
+                    >
+                        <HeartPulse size={14}/>
+                        <span>Health & Vitality</span>
                     </button>
                     {#if profileStore.currentUser?.role === 'admin'}
                         <button

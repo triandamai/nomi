@@ -313,20 +313,26 @@ export const chatApi = {
         return response.json();
     },
     getMoneyHistory: (page: number = 1, query?: string, category?: string) => {
-        const url = new URL(`${BASE_URL}/v1/admin/money/history`);
+        const url = new URL(`${BASE_URL}/v1/money/history`);
         url.searchParams.append('page', page.toString());
         if (query) url.searchParams.append('query', query);
         if (category) url.searchParams.append('category', category);
         return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
     },
+    getHealthHistory: (startDate?: string, endDate?: string) => {
+        const url = new URL(`${BASE_URL}/health/history`);
+        if (startDate) url.searchParams.append('start_date', startDate);
+        if (endDate) url.searchParams.append('end_date', endDate);
+        return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
+    },
     updateMoneyHistory: (id: string, updates: {amount?: number, merchant_name?: string, category?: string}) => {
-        return apiFetch<any>(`/v1/admin/money/history/${id}`, {
+        return apiFetch<any>(`/v1/money/history/${id}`, {
             method: 'PATCH',
             body: JSON.stringify(updates)
         });
     },
     deleteMoneyHistory: (id: string) => {
-        return apiFetch<any>(`/v1/admin/money/history/${id}`, {
+        return apiFetch<any>(`/v1/money/history/${id}`, {
             method: 'DELETE'
         });
     },

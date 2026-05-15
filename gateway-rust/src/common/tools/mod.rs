@@ -5,6 +5,7 @@ pub mod plugins;
 use crate::Arc;
 use crate::common::tools::plugin_trait::NomiToolPlugin;
 use crate::common::tools::plugins::dice::DicePlugin;
+use crate::common::tools::plugins::health::HealthPlugin;
 use crate::common::tools::tools_model::{
     EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters,
     ExecuteReadQueryResponse, GetInboxSummaryParameters, GetInboxSummaryResponse,
@@ -149,11 +150,10 @@ pub enum NomiTool {
     },
     #[serde(rename = "update_conversation_title")]
     UpdateConversationTitle {
-        params: tools_model::UpdateConversationTitleParameters,
+        params: UpdateConversationTitleParameters,
         user_message: String,
     },
-}
-
+    }
 #[derive(Clone)]
 pub struct ToolDispatcher {
     pub pool: Pool<Postgres>,
@@ -180,6 +180,7 @@ impl ToolDispatcher {
     ) -> Self {
         let mut plugins: HashMap<&'static str, Arc<dyn NomiToolPlugin>> = HashMap::new();
         plugins.insert("roll_dice", Arc::new(DicePlugin));
+        plugins.insert("manage_health_data", Arc::new(HealthPlugin));
 
         Self {
             pool,
@@ -469,7 +470,7 @@ impl ToolDispatcher {
                     tools.push(get_transaction_details.clone());
                 }
                 "VITALITY" => {
-                    // Not specified clearly which tools but add any health related if there are. None exist explicitly yet, maybe add analyze_media or generic ones if necessary
+                    // Handled by HealthPlugin
                 }
                 "STORAGE" => {
                     tools.push(update_knowledge_base.clone());
@@ -2030,7 +2031,7 @@ impl ToolDispatcher {
 
         let expense_data = ExpenseData {
             merchant: params.merchant,
-            total: params.total.unwrap_or(0.),
+            total: params.total,
             tax: params.tax,
             service: params.service,
             discount: params.discount,
@@ -2439,21 +2440,9 @@ impl ToolDispatcher {
         };
 
         let analysis = res.text();
-        let usage = res.usage_metadata.unwrap_or(UsageMetadata {
-            prompt_token_count: None,
-            candidates_token_count: None,
-            total_token_count: None,
-            thoughts_token_count: None,
-            prompt_tokens_details: None,
-            cached_content_token_count: None,
-            cache_tokens_details: None,
-        });
 
         let response_data = tools_model::AnalyzeMediaResponse {
             content: analysis.clone(),
-            prompt_tokens: usage.prompt_token_count,
-            candidates_tokens: usage.candidates_token_count,
-            total_tokens: usage.total_token_count,
         };
 
         let content_json = serde_json::to_string_pretty(&response_data).unwrap_or_default();
@@ -2653,14 +2642,19 @@ impl ToolDispatcher {
         };
 
         let now_wib = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).unwrap());
+        let date_str = params.date.clone().unwrap_or_else(|| "today".to_string());
         
-        let target_date = if let Some(date_str) = params.date {
-            match chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
-                Ok(d) => d,
-                Err(_) => now_wib.date_naive(),
+        let target_date = match chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+            Ok(d) => d,
+            Err(_) => {
+                if date_str.as_str() == "today" {
+                    now_wib.date_naive()
+                } else if date_str.as_str() == "yesterday" {
+                    now_wib.date_naive().pred_opt().unwrap_or(now_wib.date_naive())
+                } else {
+                    now_wib.date_naive()
+                }
             }
-        } else {
-            now_wib.date_naive()
         };
 
         let start_tz = target_date.and_hms_opt(0, 0, 0).unwrap()

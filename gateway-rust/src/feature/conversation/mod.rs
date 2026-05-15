@@ -672,7 +672,19 @@ pub async fn handle_chat_stream(
     };
 
     let conv_info = sqlx::query!(
-        "SELECT * FROM conversations WHERE id = $1",
+        "SELECT
+            id,
+            title,
+            user_id,
+            soul_content,
+            bootstrap_content,
+            created_at,
+            updated_at,
+            max_token_usage,
+            cumulative_tokens,
+            metadata,
+            conversation_type
+        FROM conversations WHERE id = $1",
         payload.conversation_id
     )
     .fetch_optional(&state.pool)
