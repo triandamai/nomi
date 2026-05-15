@@ -165,45 +165,37 @@ pub async fn handle_get_user_detail(
         }
     };
 
-    let channels: Vec<UserChannelItem> = match sqlx::query_as!(
+    let channels: Vec<UserChannelItem> = sqlx::query_as!(
         UserChannelItem,
         r#"
-        SELECT c.id, c.channel_type, c.external_id, c.external_chat_id, conv.title as conversation_title
+        SELECT c.id as "id!", c.channel_type as "channel_type!", c.external_id as "external_id!", c.external_chat_id as "external_chat_id!", conv.title as conversation_title
         FROM channels c
         LEFT JOIN conversations conv ON c.conversation_id = conv.id
         WHERE conv.user_id = $1 OR c.conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1)
         "#,
         id
     )
-    .fetch_all(&state.pool)
-    .await
-    {
-        Ok(c) => c,
-        Err(e) => {
-            error!("Error fetching channels: {}", e);
-            Vec::new()
-        }
-    };
+        .fetch_all(&state.pool)
+        .await.unwrap_or_else(|e| {
+        error!("Error fetching channels: {}", e);
+        Vec::new()
+    });
 
-    let conversations: Vec<UserConversationMemberItem> = match sqlx::query_as!(
+    let conversations: Vec<UserConversationMemberItem> = sqlx::query_as!(
         UserConversationMemberItem,
         r#"
-        SELECT cm.conversation_id, conv.title, cm.joined_at
+        SELECT cm.conversation_id as "conversation_id!", conv.title, cm.joined_at as "joined_at!"
         FROM conversation_members cm
         JOIN conversations conv ON cm.conversation_id = conv.id
         WHERE cm.user_id = $1
         "#,
         id
     )
-    .fetch_all(&state.pool)
-    .await
-    {
-        Ok(c) => c,
-        Err(e) => {
-            error!("Error fetching conversations: {}", e);
-            Vec::new()
-        }
-    };
+        .fetch_all(&state.pool)
+        .await.unwrap_or_else(|e| {
+        error!("Error fetching conversations: {}", e);
+        Vec::new()
+    });
 
     Json(ApiResponse::ok(
         UserDetailResponse {

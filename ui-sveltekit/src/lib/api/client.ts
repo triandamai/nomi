@@ -349,6 +349,20 @@ export const chatApi = {
         if (query) url.searchParams.append('query', query);
         return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
     },
+    getAdminUserDetail: (id: string) => {
+        return apiFetch<any>(`/v1/admin/users/${id}`);
+    },
+    updateAdminUser: (id: string, updates: { display_name?: string, name?: string, email?: string, role?: string, is_verified?: boolean }) => {
+        return apiFetch<any>(`/v1/admin/users/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updates)
+        });
+    },
+    deleteAdminUser: (id: string) => {
+        return apiFetch<any>(`/v1/admin/users/${id}`, {
+            method: 'DELETE'
+        });
+    },
     logout: () => {
         return apiFetch<any>('/auth/logout', {
             method: 'POST'

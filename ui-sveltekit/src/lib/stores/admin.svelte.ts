@@ -18,12 +18,30 @@ export type AdminUser = {
     created_at: string | null;
 };
 
+export type AdminUserDetail = {
+    user: AdminUser;
+    channels: Array<{
+        id: string;
+        channel_type: string;
+        external_id: string;
+        external_chat_id: string;
+        conversation_title: string | null;
+    }>;
+    conversations: Array<{
+        conversation_id: string;
+        title: string | null;
+        joined_at: string | null;
+    }>;
+};
+
 function createAdminStore() {
     let conversations = $state<AdminConversation[]>([]);
     let users = $state<AdminUser[]>([]);
+    let selectedUserDetail = $state<AdminUserDetail | null>(null);
     
     let convLoading = $state(false);
     let userLoading = $state(false);
+    let detailLoading = $state(false);
     
     let convCursor = $state<string | null>(null);
     let userCursor = $state<string | null>(null);
@@ -36,8 +54,10 @@ function createAdminStore() {
     return {
         get conversations() { return conversations; },
         get users() { return users; },
+        get selectedUserDetail() { return selectedUserDetail; },
         get convLoading() { return convLoading; },
         get userLoading() { return userLoading; },
+        get detailLoading() { return detailLoading; },
         get hasMoreConvs() { return hasMoreConvs; },
         get hasMoreUsers() { return hasMoreUsers; },
         get userSearchQuery() { return userSearchQuery; },
@@ -91,6 +111,18 @@ function createAdminStore() {
             }
         },
 
+        async fetchUserDetail(id: string) {
+            detailLoading = true;
+            try {
+                const res = await chatApi.getAdminUserDetail(id);
+                selectedUserDetail = res.data;
+            } catch (e) {
+                console.error('Admin Store Error (Detail):', e);
+            } finally {
+                detailLoading = false;
+            }
+        },
+
         async updateConversation(id: string, maxTokens: number) {
             try {
                 await chatApi.updateAdminConversation(id, { max_token_usage: maxTokens });
@@ -104,10 +136,40 @@ function createAdminStore() {
             }
         },
 
+        async updateAdminUser(id: string, updates: any) {
+            try {
+                await chatApi.updateAdminUser(id, updates);
+                if (selectedUserDetail?.user.id === id) {
+                    selectedUserDetail.user = { ...selectedUserDetail.user, ...updates };
+                }
+                const idx = users.findIndex(u => u.id === id);
+                if (idx !== -1) {
+                    users[idx] = { ...users[idx], ...updates };
+                }
+            } catch (e) {
+                console.error('Admin Store Error (User Update):', e);
+                throw e;
+            }
+        },
+
+        async deleteAdminUser(id: string) {
+            try {
+                await chatApi.deleteAdminUser(id);
+                users = users.filter(u => u.id !== id);
+                if (selectedUserDetail?.user.id === id) {
+                    selectedUserDetail = null;
+                }
+            } catch (e) {
+                console.error('Admin Store Error (User Delete):', e);
+                throw e;
+            }
+        },
+
         resetUsers() {
             users = [];
             userCursor = null;
             hasMoreUsers = true;
+            selectedUserDetail = null;
         }
     };
 }

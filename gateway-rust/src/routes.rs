@@ -26,6 +26,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/conversations", get(crate::feature::admin::handle_get_admin_conversations))
         .route("/conversations/{id}", axum::routing::patch(crate::feature::admin::handle_update_admin_conversation))
         .route("/users", get(crate::feature::admin::handle_get_users))
+        .route("/users/{id}", get(crate::feature::admin::handle_get_user_detail))
+        .route("/users/{id}", axum::routing::patch(crate::feature::admin::handle_update_user))
+        .route("/users/{id}", delete(crate::feature::admin::handle_delete_user))
         .layer(middleware::from_fn_with_state(state.clone(), crate::feature::admin::admin_middleware))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
