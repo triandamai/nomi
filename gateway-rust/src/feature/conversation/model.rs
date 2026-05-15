@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 #[derive(Deserialize, Debug)]
@@ -26,7 +26,7 @@ pub struct CreateConversationRequest {
 pub struct ConversationResponse {
     pub id: Uuid,
     pub name: String,
-    pub cumulative_tokens:Option<i32>,
+    pub cumulative_tokens: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -57,7 +57,7 @@ pub struct SoulHistoryResponse {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Serialize, Deserialize, Debug,Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MessageItem {
     pub id: Uuid,
     pub conversation_id: Uuid,
@@ -74,6 +74,26 @@ pub struct MessageItem {
     pub sticker_url: Option<String>,
     pub user_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
+}
+
+impl MessageItem {
+    pub fn to_sse_json(&self) -> Value {
+        json!({
+            "id": self.id,
+            "conversation_id":self.conversation_id,
+            "role": self.role,
+            "content": self.content.clone(),
+            "thought": self.thought,
+            "user_id": self.user_id,
+            "total_tokens": 0,
+            "image_url": self.image_url.as_ref(),
+            "video_url": self.video_url.as_ref(),
+            "audio_url": self.audio_url.as_ref(),
+            "document_url": self.document_url.as_ref(),
+            "sticker_url": self.sticker_url.as_ref(),
+            "created_at": self.created_at
+        })
+    }
 }
 
 #[derive(Deserialize, Debug)]

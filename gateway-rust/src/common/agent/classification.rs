@@ -1,6 +1,5 @@
 use crate::common::agent::agent_model::{ExpenseData, MaintenanceData, MediaClassification};
 use crate::feature::UnifiedMessage;
-use crate::feature::message_processor::v2_orchestrator::send_status_update;
 use crate::prompts::{PromptRegistry, StatusRegistry};
 use crate::rag::classify_media_context;
 use crate::{AppState, rag};
@@ -32,8 +31,7 @@ pub async fn classification(
                 image_url
             );
 
-            send_status_update(
-                &state,
+            let _ = state.send_status_update(
                 members.clone(),
                 conversation_id,
                 msg.source.clone(),

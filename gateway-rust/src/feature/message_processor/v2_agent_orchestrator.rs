@@ -4,15 +4,13 @@ use crate::common::agent::execute_tools;
 use crate::common::identity::UserIdentity;
 use crate::common::repository::message_repo::save_message;
 use crate::common::tools::ToolDispatcher;
-use crate::feature::message_processor::v2_orchestrator::{
-    send_message_to_subscriber, send_status_update,
-};
-use crate::feature::{MessageSource, PresenceMessage, UnifiedMessage};
+use crate::feature::{MessageSource, UnifiedMessage};
 use crate::models::Conversation;
 use crate::rag::trigger_memory_consolidation;
 use crate::{AppState, rag};
 use anyhow::anyhow;
 use chrono::Utc;
+use rust_decimal::prelude::ToPrimitive;
 use serde_json::json;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -80,7 +78,7 @@ impl V2AgentOrchestrator {
             msg.doc_url.clone(),
             msg.sticker_url.clone(),
         )
-            .await;
+        .await;
         if let Err(e) = save_user_message {
             info!("Saving message failed :{}", e);
             return Ok(());
@@ -88,34 +86,22 @@ impl V2AgentOrchestrator {
 
         let saved_message = save_user_message?;
 
+        //notify message incoming
         for member in self.conversation_member_ids.iter() {
             let _ = state.send_sse_to_user(
                 member.to_string().as_str(),
                 "message",
-                json!({
-                    "id": saved_message.id,
-                    "conversation_id":conversation_id,
-                    "role": saved_message.role,
-                    "content": saved_message.content.clone(),
-                    "thought": saved_message.thought,
-                    "user_id": saved_message.user_id,
-                    "total_tokens": 0,
-                    "image_url": saved_message.image_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
-                    "video_url": saved_message.video_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
-                    "audio_url": saved_message.audio_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
-                    "document_url": saved_message.document_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
-                    "sticker_url": saved_message.sticker_url.as_ref().map(|path| state.storage.get_full_url(path).to_string()),
-                    "created_at": saved_message.created_at
-        })).await;
+                saved_message.to_sse_json(),
+            );
         }
         // Group is registered, only respond if mentioned
         if msg.is_group
             && !msg.is_mentioned
             && (msg.image_url.is_none()
-            && msg.video_url.is_none()
-            && msg.audio_url.is_none()
-            && msg.doc_url.is_none()
-            && msg.sticker_url.is_none())
+                && msg.video_url.is_none()
+                && msg.audio_url.is_none()
+                && msg.doc_url.is_none()
+                && msg.sticker_url.is_none())
         {
             info!(
                 "Message is from registered group, but not mentioned or image, ignoring. but immediate save for beter context history"
@@ -129,16 +115,13 @@ impl V2AgentOrchestrator {
             "SELECT cumulative_tokens FROM conversations WHERE id = $1",
             conversation_id
         )
-            .fetch_one(&state.pool)
-            .await
+        .fetch_one(&state.pool)
+        .await
         {
             let _ = state
-                .broadcast_sse(
-                    "token_update",
-                    json!({
-                        "conversation_id": conversation_id,
-                        "cumulative_tokens": row.cumulative_tokens
-                    }),
+                .broadcast_sse_token_update(
+                    &conversation_id,
+                    &row.cumulative_tokens.unwrap_or(0).to_u64().unwrap_or(0),
                 )
                 .await;
         }
@@ -149,34 +132,19 @@ impl V2AgentOrchestrator {
                 &state.pool,
                 conversation_id,
             )
-                .await;
+            .await;
         }
 
-        let presence_payload = json!({
-            "conversation_id": conversation_id,
-            "is_typing": true,
-            "user_id": "nomi"
-        });
-        let _ = match user_id {
-            None => state.broadcast_presence_sse(presence_payload).await,
-            Some(ref id) => {
-                state
-                    .send_presence_sse_to_user(id.to_string().as_str(), presence_payload)
-                    .await
-            }
-        };
-
-        if let Ok(channel_info) = sqlx::query!("SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",conversation_id).fetch_all(&state.pool).await {
-            for channel in channel_info {
-                let presence = PresenceMessage {
-                    sender_id: channel.external_id.clone(),
-                    chat_id: channel.external_chat_id.clone(),
-                    channel: channel.channel_type.clone(),
-                    status: "typing".to_string(),
-                };
-                let _ = state.publish_presence(&presence).await;
-            }
-        }
+        let _ = state.send_status_presence_update(
+            self.conversation_member_ids
+                .iter()
+                .map(|v| v.clone())
+                .collect(),
+            conversation_id,
+            msg.source.clone(),
+            msg.is_group,
+            true,
+        );
 
         let (augmented_text, _media_context, should_ignore) = classification(
             &state,
@@ -189,7 +157,7 @@ impl V2AgentOrchestrator {
             text_content.clone(),
             injected_system_prompt,
         )
-            .await;
+        .await;
 
         if should_ignore {
             info!("Media classification returned IGNORE, stopping orchestrator loop");
@@ -221,8 +189,8 @@ impl V2AgentOrchestrator {
         DESC LIMIT 15",
             conversation_id
         )
-            .fetch_all(&state.pool)
-            .await?;
+        .fetch_all(&state.pool)
+        .await?;
 
         let mut history_text = String::new();
         for msg_h in history.into_iter().rev() {
@@ -239,24 +207,34 @@ impl V2AgentOrchestrator {
             };
 
             let image_url = match msg_h.image_url {
-                Some(path) if !is_processed => format!(" - Image: {} \n", state.storage.get_full_url(&path)),
+                Some(path) if !is_processed => {
+                    format!(" - Image: {} \n", state.storage.get_full_url(&path))
+                }
                 _ => "".to_string(),
             };
             let video_url = match msg_h.video_url {
-                Some(path) if !is_processed =>  format!("- Video: {} \n", state.storage.get_full_url(&path)),
+                Some(path) if !is_processed => {
+                    format!("- Video: {} \n", state.storage.get_full_url(&path))
+                }
                 _ => "".to_string(),
             };
             let audio_url = match msg_h.audio_url {
-                Some(path) if !is_processed =>   format!(" - Audio: {} \n", state.storage.get_full_url(&path)),
+                Some(path) if !is_processed => {
+                    format!(" - Audio: {} \n", state.storage.get_full_url(&path))
+                }
                 _ => "".to_string(),
             };
             let document_url = match msg_h.document_url {
-                Some(path) if !is_processed => format!("- Document: {} \n", state.storage.get_full_url(&path)),
+                Some(path) if !is_processed => {
+                    format!("- Document: {} \n", state.storage.get_full_url(&path))
+                }
                 _ => "".to_string(),
             };
 
             let sticker_url = match msg_h.sticker_url {
-                Some(path) if !is_processed =>  format!("- Sticker: {} \n", state.storage.get_full_url(&path)),
+                Some(path) if !is_processed => {
+                    format!("- Sticker: {} \n", state.storage.get_full_url(&path))
+                }
                 _ => "".to_string(),
             };
             let role_label = match msg_h.role.as_str() {
@@ -289,7 +267,7 @@ impl V2AgentOrchestrator {
             &augmented_text,
             &history_text,
         )
-            .await;
+        .await;
 
         // Fallback Logic: override GENERAL if imperative verbs or URLs are present
         let msg_lower = augmented_text.to_lowercase();
@@ -320,8 +298,8 @@ impl V2AgentOrchestrator {
             state.storage.clone(),
         );
 
-        if let None = self.conversation{
-            info!("conversation is null {:?}",self.conversation);
+        if let None = self.conversation {
+            info!("conversation is null {:?}", self.conversation);
             return Ok(());
         }
 
@@ -412,9 +390,9 @@ impl V2AgentOrchestrator {
                 None,
                 None,
             )
-                .await
-                .unwrap_or_default()
-                .join("---")
+            .await
+            .unwrap_or_default()
+            .join("---")
         } else {
             String::new()
         };
@@ -448,8 +426,7 @@ impl V2AgentOrchestrator {
 
             // Status: Model is thinking
             if loop_count <= 1 {
-                send_status_update(
-                    &state,
+                let _ = state.send_status_update(
                     self.conversation_member_ids
                         .iter()
                         .map(|v| v.clone())
@@ -577,8 +554,7 @@ impl V2AgentOrchestrator {
 
                     // Status: Tool checking
                     for call in &current_calls {
-                        send_status_update(
-                            &state,
+                        state.send_status_update(
                             self.conversation_member_ids
                                 .iter()
                                 .map(|v| v.clone())
@@ -597,7 +573,7 @@ impl V2AgentOrchestrator {
                         &text_content, // use the v2-stripped one
                         Some(state.sse.clone()),
                     )
-                        .await;
+                    .await;
 
                     let mut unknown_tool_called = false;
                     for (_, res) in &tool_results {
@@ -664,7 +640,7 @@ impl V2AgentOrchestrator {
                 None,
                 None,
             )
-                .await
+            .await
             {
                 let payload = json!({
                             "id": record.id,
@@ -678,8 +654,7 @@ impl V2AgentOrchestrator {
                             "created_at": record.created_at
                 });
 
-                send_message_to_subscriber(
-                    &state,
+                let _ = state.send_message_to_subscriber(
                     self.conversation_member_ids
                         .iter()
                         .map(|v| v.clone())
@@ -695,8 +670,8 @@ impl V2AgentOrchestrator {
                     "SELECT cumulative_tokens FROM conversations WHERE id = $1",
                     conversation_id
                 )
-                    .fetch_one(&state.pool)
-                    .await
+                .fetch_one(&state.pool)
+                .await
                 {
                     let _ = state
                         .broadcast_sse(
@@ -722,38 +697,19 @@ impl V2AgentOrchestrator {
                     conversation_id,
                     sse,
                 )
-                    .await;
+                .await;
             });
 
-            let payload = json!({
-                "conversation_id": conversation_id,
-                "is_typing": false,
-                "user_id": "nomi"
-            });
-
-            let _ = match user_id {
-                None => state.broadcast_presence_sse(payload).await,
-                Some(ref id) => {
-                    state
-                        .send_presence_sse_to_user(id.to_string().as_str(), payload)
-                        .await
-                }
-            };
-
-            if let Ok(channel_info) = sqlx::query!(
-        "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
-            conversation_id
-        ).fetch_all(&state.pool).await {
-                for channel in channel_info {
-                    let presence = PresenceMessage {
-                        sender_id: channel.external_id.clone(),
-                        chat_id: channel.external_chat_id.clone(),
-                        channel: channel.channel_type.clone(),
-                        status: "idle".to_string(),
-                    };
-                    let _ = state.publish_presence(&presence).await;
-                }
-            }
+            let _ = state.send_status_presence_update(
+                self.conversation_member_ids
+                    .iter()
+                    .map(|v| v.clone())
+                    .collect(),
+                conversation_id,
+                msg.source,
+                msg.is_group,
+                false,
+            );
             return Ok(());
         }
         Ok(())
@@ -950,11 +906,10 @@ impl V2AgentOrchestrator {
             None,
             None,
         )
-            .await;
+        .await;
 
         if let Ok(msg) = message {
-            let _notify = send_message_to_subscriber(
-                &self.state,
+            let _notify = self.state.send_message_to_subscriber(
                 self.conversation_member_ids
                     .iter()
                     .map(|v| v.clone())

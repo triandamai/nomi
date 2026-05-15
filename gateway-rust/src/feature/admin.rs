@@ -2,7 +2,6 @@ use crate::AppState;
 use crate::common::api_response::ApiResponse;
 use crate::feature::conversation::auth::Claims;
 use crate::feature::conversation::model::MessageItem;
-use crate::feature::message_processor::v2_orchestrator::send_message_to_subscriber;
 use crate::feature::{InboundMessage, MessageSource};
 use axum::extract::Multipart;
 use axum::{
@@ -743,8 +742,7 @@ pub async fn handle_outbound_redis(
         user_id: None,
         created_at: Default::default(),
     };
-    let _ = send_message_to_subscriber(
-        &state,
+    let _ = state.send_message_to_subscriber(
         members,
         conversation_id,
         match req.channel.as_str() {
