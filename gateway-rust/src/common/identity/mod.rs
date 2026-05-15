@@ -1,15 +1,24 @@
 use crate::AppState;
 use crate::prompts::PromptRegistry;
 use log::info;
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use tracing::error;
 use uuid::Uuid;
 
 pub mod auth_model;
 pub mod middleware;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserIdentity {
     pub id: Uuid,
     pub display_name: String,
+}
+
+impl Display for UserIdentity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&serde_json::to_string(&self).unwrap())
+    }
 }
 
 pub async fn resolve_identity(

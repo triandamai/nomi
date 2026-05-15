@@ -236,7 +236,7 @@ async fn main() -> anyhow::Result<()> {
         // presence,
         redis,
         storage,
-        model_info: crate::common::agent::agent_model::ModelInfo {
+        model_info: common::agent::agent_model::ModelInfo {
             agent_model: "gemini-2.0-flash".to_string(),
             rag_embedding: "gemini-embedding-2".to_string(),
             media_classification: "gemini-2.0-flash".to_string(),
@@ -253,9 +253,9 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Start Reminder Worker
-    let reminder_state = state.clone();
+    let schedule_task_state = state.clone();
     tokio::spawn(async move {
-        common::reminder::start_reminder_worker(reminder_state).await;
+        common::reminder::start_schedule_worker(schedule_task_state).await;
     });
 
     // Start Stock Worker

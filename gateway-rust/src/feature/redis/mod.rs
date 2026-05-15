@@ -5,9 +5,11 @@ use crate::common::repository::channel_repo::is_group_registered;
 use crate::feature::conversation::command::{
     get_help_command, process_generate_pairing, process_login, process_pairing, process_register,
 };
+use crate::feature::conversation::model::ChatStreamChunk;
 use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
 use crate::feature::{FallBackPayload, InboundMessage, OutboundMessage};
+use crate::models::Conversation;
 use serde_json::json;
 use tokio_stream::StreamExt;
 use tracing::{error, info};
@@ -129,7 +131,10 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
     };
 
     if cumulative_tokens as f64 >= max_token_usage {
-        info!("Conversation {} has reached max token usage", conversation_id);
+        info!(
+            "Conversation {} has reached max token usage",
+            conversation_id
+        );
         let _ = state.publish_outbond(&OutboundMessage {
             is_group: msg.is_group,
             sender_id: "nomi_auth".to_string(),
@@ -214,6 +219,39 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         return Ok(());
     }
 
+    let conv_info = sqlx::query!("SELECT * FROM conversations WHERE id = $1", conversation_id)
+        .fetch_optional(&state.pool)
+        .await;
+
+    if let Ok(c) = &conv_info {
+        if let None = c {
+            let error_msg = format!(
+                "Token limit reached ({}/{:.0})",
+                cumulative_tokens, max_token_usage
+            );
+            let _ = state
+                .send_sse_to_user(
+                    user_id.to_string().as_str(),
+                    "message",
+                    json!(ChatStreamChunk {
+                        content: "No workspace detected.".to_string(),
+                        thought: "".to_string(),
+                        code_block: "".to_string(),
+                        tool_call: None,
+                        prompt_tokens: 0,
+                        answer_tokens: 0,
+                        total_tokens: 0,
+                        finish_reason: Some("error".to_string()),
+                        error: Some(error_msg.clone()),
+                    }),
+                )
+                .await;
+
+            return Ok(());
+        }
+    }
+    let conv_info = conv_info.unwrap().unwrap();
+
     // ================================== REGULAR CONVO ============================//
     // 5. Trigger Agentic Loop
     let state_clone = state.clone();
@@ -266,7 +304,16 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             v2: true,
         };
 
-        if let Err(e) = process_v2_message(state, unified_msg).await {
+        let map_convo = Conversation {
+            id: conv_info.id,
+            session_id: conv_info.user_id,
+            title: conv_info.title,
+            soul_content: conv_info.soul_content,
+            bootstrap_content: conv_info.bootstrap_content,
+            created_at: conv_info.created_at,
+            updated_at: conv_info.updated_at,
+        };
+        if let Err(e) = process_v2_message(state, map_convo, unified_msg).await {
             error!("Failed to process inbound message: {}", e);
         }
     });

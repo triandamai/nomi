@@ -17,7 +17,7 @@
     import {chatStore} from '$lib/stores/chat.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
     import {chatApi} from '$lib/api/client';
-    import {formatTokenCount} from '$lib/utils';
+    import {formatTokenCount, formatDate} from '$lib/utils';
     import ToolResult from '$lib/components/ToolResult.svelte';
     import ChatBubble from '$lib/components/ChatBubble.svelte';
     import PricingPopUp from '$lib/components/PricingPopUp.svelte';
@@ -274,13 +274,20 @@
                     </div>
 
                     <div class="flex-1 flex flex-col min-w-0 space-y-4">
-                        <div class="flex items-center gap-2">
-                        <span class="text-xs font-bold uppercase tracking-wider {msg.role === 'user' ? 'text-slate-300' : 'text-blue-400'}">
-                            {msg.role === 'user' ? 'Human' : 'Nomi'}
-                            {#if msg.role !== 'user'}<span
-                                    class="font-mono ml-2 text-[10px] text-slate-500">- {formatTokenCount(msg.total_tokens)}
-                                Token</span>{/if}
-                        </span>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold uppercase tracking-wider {msg.role === 'user' ? 'text-slate-300' : 'text-blue-400'}">
+                                    {msg.role === 'user' ? 'Human' : 'Nomi'}
+                                </span>
+                                {#if msg.role !== 'user'}
+                                    <span class="font-mono text-[10px] text-slate-500">- {formatTokenCount(msg.total_tokens)} Token</span>
+                                {/if}
+                            </div>
+                            {#if msg.created_at}
+                                <span class="text-[10px] font-mono text-slate-500 uppercase tracking-tight">
+                                    {formatDate(msg.created_at)}
+                                </span>
+                            {/if}
                         </div>
 
                         {#if msg.toolCalls && msg.toolCalls.length > 0}
@@ -295,6 +302,7 @@
                                 content={msg.content}
                                 thought={msg.thought}
                                 image_url={msg.image_url}
+                                created_at={msg.created_at}
                                 onToggleThought={(expanded: boolean) => handleToggleThought(expanded, index === chatStore.messages.length - 1)}
                         />
                     </div>

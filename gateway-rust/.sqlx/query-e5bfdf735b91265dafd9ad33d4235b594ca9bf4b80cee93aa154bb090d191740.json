@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT r.id, r.user_id, r.conversation_id, r.task_type, r.payload, r.due_at, \n               r.frequency, r.interval_count, r.max_repeats, r.current_runs\n        FROM reminders r\n        WHERE r.status = 'pending' AND r.due_at <= NOW()\n        LIMIT 20\n        ",
+  "query": "\n        UPDATE reminders \n        SET status = 'processing', updated_at = NOW() \n        WHERE id IN (\n            SELECT id FROM reminders \n            WHERE status = 'pending' AND due_at <= NOW() \n            FOR UPDATE SKIP LOCKED \n            LIMIT 20\n        ) \n        RETURNING id, user_id, conversation_id, task_type, payload, due_at, \n                  frequency, interval_count, max_repeats, current_runs\n        ",
   "describe": {
     "columns": [
       {
@@ -70,5 +70,5 @@
       true
     ]
   },
-  "hash": "9591f8810e76773806a7e0cab456bff7e0f576b9962fd12d79e5f3dbb0cac8f4"
+  "hash": "e5bfdf735b91265dafd9ad33d4235b594ca9bf4b80cee93aa154bb090d191740"
 }

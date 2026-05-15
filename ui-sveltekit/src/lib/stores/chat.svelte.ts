@@ -10,6 +10,7 @@ export type Message = {
     id: string;
     user_id?: string;
     total_tokens: number;
+    created_at?: string;
     toolCalls?: Array<{ tool: any, result?: string }>;
 };
 
@@ -36,7 +37,8 @@ function createChatStore() {
                     thought: data.thought,
                     image_url: data.image_url,
                     user_id: data.user_id,
-                    total_tokens: data.total_tokens
+                    total_tokens: data.total_tokens,
+                    created_at: data.created_at
                 } as Message)
             } else {
                 messages.push({
@@ -46,7 +48,8 @@ function createChatStore() {
                     thought: data.thought,
                     image_url: data.image_url,
                     user_id: data.user_id,
-                    total_tokens: data.total_tokens
+                    total_tokens: data.total_tokens,
+                    created_at: data.created_at
                 } as Message)
 
             }

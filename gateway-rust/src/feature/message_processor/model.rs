@@ -3,12 +3,11 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MessageSource {
-    Web{name: String},
-    Telegram{name: String},
-    WhatsApp{name: String},
-    Other{
-        name: String
-    },
+    Web { name: String },
+    Telegram { name: String },
+    WhatsApp { name: String },
+    Other { name: String },
+    Multiple { source: Vec<String> }
 }
 
 #[derive(Debug, Clone)]
@@ -24,5 +23,5 @@ pub struct UnifiedMessage {
     pub sticker_url: Option<String>,
     pub doc_url: Option<String>,
     pub source: MessageSource,
-    pub v2:bool
+    pub v2: bool,
 }

@@ -6,6 +6,7 @@ use crate::feature::conversation::model::{
 };
 use crate::feature::message_processor::model::{MessageSource, UnifiedMessage};
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
+use crate::models::Conversation;
 use crate::{AppState, common};
 use axum::Json;
 use axum::extract::{Path, State};
@@ -671,44 +672,46 @@ pub async fn handle_chat_stream(
     };
 
     let conv_info = sqlx::query!(
-        "SELECT cumulative_tokens, max_token_usage FROM conversations WHERE id = $1",
+        "SELECT * FROM conversations WHERE id = $1",
         payload.conversation_id
     )
     .fetch_optional(&state.pool)
     .await;
 
-    if let Ok(Some(row)) = conv_info {
-        let cumulative_tokens = row.cumulative_tokens.map_or(0, |v| v);
-        let max_token_usage = row.max_token_usage.map_or(700000, |v| v);
-
-        if cumulative_tokens as f64 >= max_token_usage as f64 {
-            let error_msg = format!(
-                "Token limit reached ({}/{:.0})",
-                cumulative_tokens, max_token_usage
-            );
-            if let Some(uid) = user_id {
-                let _ = state
-                    .send_sse_to_user(
-                        uid.to_string().as_str(),
-                        "chat_stream",
-                        json!(ChatStreamChunk {
-                            content: "".to_string(),
-                            thought: "".to_string(),
-                            code_block: "".to_string(),
-                            tool_call: None,
-                            prompt_tokens: 0,
-                            answer_tokens: 0,
-                            total_tokens: 0,
-                            finish_reason: Some("error".to_string()),
-                            error: Some(error_msg.clone()),
-                        }),
-                    )
-                    .await;
+    if let Ok(c) = &conv_info {
+        if let Some(row) = &c {
+            let cumulative_tokens = row.cumulative_tokens.clone().map_or(0, |v| v);
+            let max_token_usage = row.max_token_usage.clone().map_or(700000, |v| v);
+            if cumulative_tokens.clone() as f64 >= max_token_usage.clone() as f64 {
+                let error_msg = format!(
+                    "Token limit reached ({}/{:.0})",
+                    cumulative_tokens, max_token_usage
+                );
+                if let Some(uid) = user_id {
+                    let _ = state
+                        .send_sse_to_user(
+                            uid.to_string().as_str(),
+                            "chat_stream",
+                            json!(ChatStreamChunk {
+                                content: "".to_string(),
+                                thought: "".to_string(),
+                                code_block: "".to_string(),
+                                tool_call: None,
+                                prompt_tokens: 0,
+                                answer_tokens: 0,
+                                total_tokens: 0,
+                                finish_reason: Some("error".to_string()),
+                                error: Some(error_msg.clone()),
+                            }),
+                        )
+                        .await;
+                }
+                return ApiResponse::create(1000, "Failed".to_string(), &error_msg);
             }
-            return ApiResponse::create(1000, "Failed".to_string(), &error_msg);
         }
     }
 
+    let conv_info = conv_info.unwrap().unwrap();
     let state_clone = state.clone();
     let conversation_id = payload.conversation_id;
     let user_message = payload.message.clone();
@@ -731,7 +734,16 @@ pub async fn handle_chat_stream(
             v2: true,
         };
 
-        if let Err(e) = process_v2_message(state_clone, unified_msg).await {
+        let map_convo = Conversation {
+            id: conv_info.id,
+            session_id: conv_info.user_id,
+            title: conv_info.title,
+            soul_content: conv_info.soul_content,
+            bootstrap_content: conv_info.bootstrap_content,
+            created_at: conv_info.created_at,
+            updated_at: conv_info.updated_at,
+        };
+        if let Err(e) = process_v2_message(state_clone, map_convo, unified_msg).await {
             error!("Failed to process web message: {}", e);
         }
     });

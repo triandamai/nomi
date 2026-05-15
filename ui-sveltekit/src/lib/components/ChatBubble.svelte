@@ -1,10 +1,10 @@
 <script lang="ts">
     import {onMount} from 'svelte';
     import {ChevronDown, ChevronRight, Cpu, ExternalLink} from 'lucide-svelte';
-    import {mdIt} from "$lib/utils";
+    import {mdIt, formatDate} from "$lib/utils";
     import {env} from '$env/dynamic/public';
 
-    let {content = '', thought = '', image_url = '', onToggleThought = () => {}} = $props();
+    let {content = '', thought = '', image_url = '', created_at = '', onToggleThought = () => {}} = $props();
 
     const BASE_URL = env.PUBLIC_GATEWAY_URL || 'http://localhost:8000/api';
     const FILE_URL = BASE_URL.replace('/api', '') + '/api/files/';
