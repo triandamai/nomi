@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                id,\n                COALESCE(payload->>'message', content) as \"content!\",\n                (due_at AT TIME ZONE 'Asia/Jakarta') as due_at,\n                status,\n                frequency,\n                current_runs\n            FROM reminders\n            WHERE user_id = $1\n              AND task_type = 'REMINDER'\n              AND ($2::TIMESTAMPTZ IS NULL OR due_at >= $2)\n              AND ($3::TIMESTAMPTZ IS NULL OR due_at <= $3)\n              AND ($4::TEXT IS NULL OR status = $4)\n            ORDER BY due_at ASC\n            LIMIT $5;\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "content!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "due_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 3,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "frequency",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "current_runs",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "c714d2bc67f65b38c8dbd328825a4e69d4ef3fafcf026577ef8976227567ba45"
+}

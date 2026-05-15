@@ -5,7 +5,7 @@ use crate::common::agent::agent_model::{ChatResponse, PromptActor};
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::common::sse::sse_emitter::SseBroadcaster;
 use crate::common::tools::tools_model::ToolResult;
-use crate::common::tools::{ArtaTool, ToolDispatcher};
+use crate::common::tools::{NomiTool, ToolDispatcher};
 use crate::feature::conversation::model::ChatStreamChunk;
 use crate::prompts::PromptRegistry;
 use chrono::Utc;
@@ -366,7 +366,7 @@ pub async fn execute_tools(
                 }
             });
 
-            let result = match serde_json::from_value::<ArtaTool>(tool_json) {
+            let result = match serde_json::from_value::<NomiTool>(tool_json) {
                 Ok(arta_tool) => dispatcher.dispatch(arta_tool).await,
                 Err(e) => ToolResult {
                     error: format!("Failed to parse tool {}: {}", call_name, e),

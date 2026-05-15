@@ -36,7 +36,7 @@ use crate::common::agent::classification::log_expense_transaction;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "tool", content = "args")]
-pub enum ArtaTool {
+pub enum NomiTool {
     #[serde(rename = "read_workspace_file")]
     ReadWorkspaceFile {
         params: ReadWorkSpaceParameters,
@@ -194,99 +194,99 @@ impl ToolDispatcher {
         }
     }
 
-    pub async fn dispatch(&self, tool: ArtaTool) -> ToolResult {
+    pub async fn dispatch(&self, tool: NomiTool) -> ToolResult {
         match tool {
-            ArtaTool::ReadWorkspaceFile {
+            NomiTool::ReadWorkspaceFile {
                 params,
                 user_message,
             } => self.read_workspace_file(params.path, user_message).await,
-            ArtaTool::ExecuteSqlQuery {
+            NomiTool::ExecuteSqlQuery {
                 params,
                 user_message,
             } => self.execute_sql_query(params.query, user_message).await,
-            ArtaTool::WebSearch {
+            NomiTool::WebSearch {
                 params,
                 user_message,
             } => self.web_search(params.query, user_message).await,
-            ArtaTool::ReadWebPage {
+            NomiTool::ReadWebPage {
                 params,
                 user_message,
             } => self.read_web_page(params.url, user_message).await,
-            ArtaTool::ParseStringToJson { .. } => ToolResult {
+            NomiTool::ParseStringToJson { .. } => ToolResult {
                 error: "".to_string(),
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
             },
-            ArtaTool::UpdateConversationSoul {
+            NomiTool::UpdateConversationSoul {
                 params,
                 user_message,
             } => self.update_nomi_soul(params, user_message).await,
-            ArtaTool::UpdateKnowledgeBase {
+            NomiTool::UpdateKnowledgeBase {
                 params,
                 user_message,
             } => self.update_knowledge_base(params, user_message).await,
-            ArtaTool::RetrieveKnowledge {
+            NomiTool::RetrieveKnowledge {
                 params,
                 user_message,
             } => self.retrieve_knowledge(params, user_message).await,
-            ArtaTool::EvolveBootstrap {
+            NomiTool::EvolveBootstrap {
                 params,
                 user_message,
             } => self.evolve_bootstrap(params, user_message).await,
-            ArtaTool::ScheduleTask {
+            NomiTool::ScheduleTask {
                 params,
                 user_message,
             } => self.schedule_task(params, user_message).await,
-            ArtaTool::ModifyReminder {
+            NomiTool::ModifyReminder {
                 params,
                 user_message,
             } => self.modify_reminder(params, user_message).await,
-            ArtaTool::GetInboxSummary {
+            NomiTool::GetInboxSummary {
                 params,
                 user_message,
             } => self.get_inbox_summary(params, user_message).await,
-            ArtaTool::GetReminderStats {
+            NomiTool::GetReminderStats {
                 params,
                 user_message,
             } => self.get_reminder_stats(params, user_message).await,
-            ArtaTool::SearchUsers {
+            NomiTool::SearchUsers {
                 params,
                 user_message,
             } => self.search_users(params, user_message).await,
-            ArtaTool::UpdateUserProfile {
+            NomiTool::UpdateUserProfile {
                 params,
                 user_message,
             } => self.update_user_profile(params, user_message).await,
-            ArtaTool::SendDirectMessage {
+            NomiTool::SendDirectMessage {
                 params,
                 user_message,
             } => self.send_direct_message(params, user_message).await,
-            ArtaTool::MakeSticker {
+            NomiTool::MakeSticker {
                 params,
                 user_message,
             } => self.make_sticker(params, user_message).await,
-            ArtaTool::LogExpense {
+            NomiTool::LogExpense {
                 params,
                 user_message,
             } => self.log_expense(params, user_message).await,
-            ArtaTool::GetLatestMediaContext {
+            NomiTool::GetLatestMediaContext {
                 params,
                 user_message,
             } => self.get_latest_media_context(params, user_message).await,
-            ArtaTool::AnalyzeMedia {
+            NomiTool::AnalyzeMedia {
                 params,
                 user_message,
             } => self.analyze_media(params, user_message).await,
-            ArtaTool::GetExpenseSummary {
+            NomiTool::GetExpenseSummary {
                 params,
                 user_message,
             } => self.get_expense_summary(params, user_message).await,
-            ArtaTool::GetTransactionDetails {
+            NomiTool::GetTransactionDetails {
                 params,
                 user_message,
             } => self.get_transaction_details(params, user_message).await,
-            ArtaTool::UpdateConversationTitle {
+            NomiTool::UpdateConversationTitle {
                 params,
                 user_message,
             } => self.update_conversation_title(params, user_message).await,

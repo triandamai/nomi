@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT c.id as \"id!\", c.channel_type as \"channel_type!\", c.external_id as \"external_id!\", c.external_chat_id as \"external_chat_id!\", conv.title as conversation_title\n        FROM channels c\n        LEFT JOIN conversations conv ON c.conversation_id = conv.id\n        WHERE conv.user_id = $1 OR c.conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "channel_type!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "external_id!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "external_chat_id!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "conversation_title",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "4af986aaaae83f8c21b1d94c32dc8408df7ae36fff1684da2e5c671eecb49738"
+}
