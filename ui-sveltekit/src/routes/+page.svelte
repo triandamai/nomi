@@ -27,6 +27,8 @@
     // Localization
     let locale = $state<'en' | 'id'>('en');
 
+    const currentYear = new Date().getFullYear();
+
     const translations = {
         en: {
             nav: {
@@ -77,7 +79,7 @@
             },
             cta: "Start Chatting 🚀",
             footer: {
-                rights: "© 2026 Arta AI Orchestrator. All rights reserved.",
+                rights: `@ ${currentYear} Build with ❤️ By Trian Damai`,
                 language: "Language"
             },
             chat: [
@@ -136,7 +138,7 @@
             },
             cta: "Mulai Chatting 🚀",
             footer: {
-                rights: "© 2026 Arta AI Orchestrator. Hak cipta dilindungi undang-undang.",
+                rights: `@ ${currentYear} Build with ❤️ By Trian Damai`,
                 language: "Bahasa"
             },
             chat: [
@@ -498,7 +500,9 @@
                 <Zap class="w-5 h-5 text-white fill-white"/>
                 <span class="text-lg font-black tracking-tighter text-white uppercase">NOMI</span>
             </div>
-            <p class="text-slate-500 text-sm font-medium">{t.footer.rights}</p>
+            <p class="text-slate-500 text-sm font-medium">
+                {@html t.footer.rights.replace('Trian Damai', '<a href="https://github.com/triandamai" target="_blank" class="hover:text-blue-400 transition-colors underline decoration-blue-500/30 underline-offset-4">Trian Damai</a>')}
+            </p>
             <div class="flex gap-8 text-xs font-bold text-slate-500 uppercase tracking-widest">
                 <a href="/privacy"
                    class="hover:text-blue-400 transition-colors">{locale === 'en' ? 'Privacy' : 'Privasi'}</a>
