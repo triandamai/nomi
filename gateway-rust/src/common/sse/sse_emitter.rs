@@ -12,7 +12,6 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::info;
 use crate::common::api_response::ApiResponse;
 use crate::common::sse::sse_builder::SseBuilder;
 

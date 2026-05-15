@@ -1,8 +1,7 @@
 use crate::common;
 use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::common::sse::sse_emitter::SseBroadcaster;
-use crate::feature::conversation::model::MessageItem;
-use crate::feature::{MessageSource, OutboundMessage, PresenceMessage};
+use crate::feature::{ OutboundMessage, PresenceMessage};
 use gemini_rust::Gemini;
 use serde_json::json;
 use sqlx::{Pool, Postgres};

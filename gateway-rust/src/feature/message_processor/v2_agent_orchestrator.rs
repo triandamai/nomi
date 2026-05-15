@@ -664,17 +664,6 @@ impl V2AgentOrchestrator {
             )
             .await
             {
-                let payload = json!({
-                            "id": record.id,
-                            "conversation_id":conversation_id,
-                            "role": record.role,
-                            "content": record.content.clone(),
-                            "thought": record.thought,
-                            "user_id": record.user_id,
-                            "total_tokens": function_result.total_tokens,
-                            "image_url": record.image_url.as_ref().map(|path| state.storage.get_full_url( path)),
-                            "created_at": record.created_at
-                });
 
                 let _ = send_message_to_subscriber(
                     &state,
