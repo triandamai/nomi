@@ -5,6 +5,7 @@
     import { page } from '$app/state';
     import { Zap, ShieldCheck, ArrowRight, Loader2, Lock } from 'lucide-svelte';
     import { fly, fade } from 'svelte/transition';
+    import { eventBus } from '$lib/utils';
 
     let externalId = $state('');
     let channel = $state('device');
@@ -31,7 +32,8 @@
             const response = await chatApi.verifyOtp(externalId, code);
             sessionStorage.setItem('auth_token', response.data.access_token);
             sessionStorage.setItem('user_id', response.data.user_id);
-            goto('/chat');
+            await goto('/chat');
+            eventBus.emit('load', null);
         } catch (e: any) {
             error = e.message || 'Invalid or expired OTP';
         } finally {

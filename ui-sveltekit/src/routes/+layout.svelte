@@ -8,38 +8,48 @@
 	import Header from '$lib/components/Header.svelte';
 	import { conversationStore } from '$lib/stores/conversation.svelte';
 
-	import { goto } from '$app/navigation';
+	import { goto, beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import {eventBus} from "$lib/utils";
 	import {ragStore} from "$lib/stores/rag.svelte";
 
 	let { children } = $props();
 
-	onMount(() => {
+	let closing: (() => void) | null = null;
+
+	function open() {
 		const token = sessionStorage.getItem('auth_token');
 		const isPublicRoute = page.url.pathname === '/' || page.url.pathname === '/login';
-		
+
 		if (!token && !isPublicRoute) {
 			goto('/login');
 			return;
 		}
-		let closing:()=> void = ()=>{
 
-		}
+		if (token && !isPublicRoute) {
+			// Close existing connection if any
+			if (closing) closing();
 
-		function open(){
-			if (token && !isPublicRoute) {
-				conversationStore.loadConversations().finally(()=>{
-					ragStore.fetchGraph(conversationStore.activeConversationId)
-					closing  = chatApi.streamEvent();
-				});
-			}
+			conversationStore.loadConversations().finally(() => {
+				ragStore.fetchGraph(conversationStore.activeConversationId);
+				closing = chatApi.streamEvent();
+			});
 		}
-		open()
-		eventBus.subscribe("load",open)
-		return ()=>{
-			eventBus.unsubscribe("load",open)
-			closing()
+	}
+
+	onMount(() => {
+		open();
+		const unsubscribe = eventBus.subscribe("load", open);
+		return () => {
+			unsubscribe();
+			if (closing) closing();
+		};
+	});
+
+	beforeNavigate(() => {
+		if (closing) {
+			closing();
+			closing = null;
 		}
 	});
 </script>
