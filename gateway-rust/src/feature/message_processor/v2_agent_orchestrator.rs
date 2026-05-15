@@ -80,7 +80,7 @@ impl V2AgentOrchestrator {
             msg.doc_url.clone(),
             msg.sticker_url.clone(),
         )
-        .await;
+            .await;
         if let Err(e) = save_user_message {
             info!("Saving message failed :{}", e);
             return Ok(());
@@ -112,10 +112,10 @@ impl V2AgentOrchestrator {
         if msg.is_group
             && !msg.is_mentioned
             && (msg.image_url.is_none()
-                && msg.video_url.is_none()
-                && msg.audio_url.is_none()
-                && msg.doc_url.is_none()
-                && msg.sticker_url.is_none())
+            && msg.video_url.is_none()
+            && msg.audio_url.is_none()
+            && msg.doc_url.is_none()
+            && msg.sticker_url.is_none())
         {
             info!(
                 "Message is from registered group, but not mentioned or image, ignoring. but immediate save for beter context history"
@@ -129,8 +129,8 @@ impl V2AgentOrchestrator {
             "SELECT cumulative_tokens FROM conversations WHERE id = $1",
             conversation_id
         )
-        .fetch_one(&state.pool)
-        .await
+            .fetch_one(&state.pool)
+            .await
         {
             let _ = state
                 .broadcast_sse(
@@ -149,7 +149,7 @@ impl V2AgentOrchestrator {
                 &state.pool,
                 conversation_id,
             )
-            .await;
+                .await;
         }
 
         let presence_payload = json!({
@@ -189,7 +189,7 @@ impl V2AgentOrchestrator {
             text_content.clone(),
             injected_system_prompt,
         )
-        .await;
+            .await;
 
         if should_ignore {
             info!("Media classification returned IGNORE, stopping orchestrator loop");
@@ -221,8 +221,8 @@ impl V2AgentOrchestrator {
         DESC LIMIT 15",
             conversation_id
         )
-        .fetch_all(&state.pool)
-        .await?;
+            .fetch_all(&state.pool)
+            .await?;
 
         let mut history_text = String::new();
         for msg_h in history.into_iter().rev() {
@@ -239,34 +239,24 @@ impl V2AgentOrchestrator {
             };
 
             let image_url = match msg_h.image_url {
-                Some(path) if !is_processed => {
-                    format!(" - Image: {} \n", state.storage.get_full_url(&path))
-                }
+                Some(path) if !is_processed => format!(" - Image: {} \n", state.storage.get_full_url(&path)),
                 _ => "".to_string(),
             };
             let video_url = match msg_h.video_url {
-                Some(path) if !is_processed => {
-                    format!("- Video: {} \n", state.storage.get_full_url(&path))
-                }
+                Some(path) if !is_processed =>  format!("- Video: {} \n", state.storage.get_full_url(&path)),
                 _ => "".to_string(),
             };
             let audio_url = match msg_h.audio_url {
-                Some(path) if !is_processed => {
-                    format!(" - Audio: {} \n", state.storage.get_full_url(&path))
-                }
+                Some(path) if !is_processed =>   format!(" - Audio: {} \n", state.storage.get_full_url(&path)),
                 _ => "".to_string(),
             };
             let document_url = match msg_h.document_url {
-                Some(path) if !is_processed => {
-                    format!("- Document: {} \n", state.storage.get_full_url(&path))
-                }
+                Some(path) if !is_processed => format!("- Document: {} \n", state.storage.get_full_url(&path)),
                 _ => "".to_string(),
             };
 
             let sticker_url = match msg_h.sticker_url {
-                Some(path) if !is_processed => {
-                    format!("- Sticker: {} \n", state.storage.get_full_url(&path))
-                }
+                Some(path) if !is_processed =>  format!("- Sticker: {} \n", state.storage.get_full_url(&path)),
                 _ => "".to_string(),
             };
             let role_label = match msg_h.role.as_str() {
@@ -299,7 +289,7 @@ impl V2AgentOrchestrator {
             &augmented_text,
             &history_text,
         )
-        .await;
+            .await;
 
         // Fallback Logic: override GENERAL if imperative verbs or URLs are present
         let msg_lower = augmented_text.to_lowercase();
@@ -330,12 +320,12 @@ impl V2AgentOrchestrator {
             state.storage.clone(),
         );
 
-        let conversation = sqlx::query!(
-            "SELECT bootstrap_content, soul_content, metadata FROM conversations WHERE id = $1",
-            conversation_id
-        )
-        .fetch_one(&state.pool)
-        .await?;
+        if let None = self.conversation{
+            info!("conversation is null {:?}",self.conversation);
+            return Ok(());
+        }
+
+        let conversation = self.conversation.clone().unwrap();
 
         let old_system_prompt_len = {
             let boot = conversation.bootstrap_content.clone().unwrap_or_default();
@@ -422,9 +412,9 @@ impl V2AgentOrchestrator {
                 None,
                 None,
             )
-            .await
-            .unwrap_or_default()
-            .join("---")
+                .await
+                .unwrap_or_default()
+                .join("---")
         } else {
             String::new()
         };
@@ -607,7 +597,7 @@ impl V2AgentOrchestrator {
                         &text_content, // use the v2-stripped one
                         Some(state.sse.clone()),
                     )
-                    .await;
+                        .await;
 
                     let mut unknown_tool_called = false;
                     for (_, res) in &tool_results {
@@ -674,7 +664,7 @@ impl V2AgentOrchestrator {
                 None,
                 None,
             )
-            .await
+                .await
             {
                 let payload = json!({
                             "id": record.id,
@@ -705,8 +695,8 @@ impl V2AgentOrchestrator {
                     "SELECT cumulative_tokens FROM conversations WHERE id = $1",
                     conversation_id
                 )
-                .fetch_one(&state.pool)
-                .await
+                    .fetch_one(&state.pool)
+                    .await
                 {
                     let _ = state
                         .broadcast_sse(
@@ -732,7 +722,7 @@ impl V2AgentOrchestrator {
                     conversation_id,
                     sse,
                 )
-                .await;
+                    .await;
             });
 
             let payload = json!({
@@ -960,7 +950,7 @@ impl V2AgentOrchestrator {
             None,
             None,
         )
-        .await;
+            .await;
 
         if let Ok(msg) = message {
             let _notify = send_message_to_subscriber(
