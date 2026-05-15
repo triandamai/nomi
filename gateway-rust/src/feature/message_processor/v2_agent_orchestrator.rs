@@ -1,5 +1,5 @@
 use crate::common::agent::agent_model::PromptActor;
-use crate::common::agent::classification::{classification, fetch_media_from_storage};
+use crate::common::agent::classification::{classification, classify_intent, fetch_media_from_storage};
 use crate::common::agent::execute_tools;
 use crate::common::identity::UserIdentity;
 use crate::common::repository::message_repo::save_message;
@@ -262,7 +262,7 @@ impl V2AgentOrchestrator {
             ));
         }
 
-        let mut intents = crate::feature::message_processor::v2_orchestrator::classify_intent(
+        let mut intents = classify_intent(
             state.gemini.as_ref(),
             &augmented_text,
             &history_text,
