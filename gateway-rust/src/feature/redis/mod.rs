@@ -1,3 +1,4 @@
+use crate::AppState;
 use crate::common::identity;
 use crate::common::repository::channel_repo;
 use crate::common::repository::channel_repo::is_group_registered;
@@ -6,9 +7,11 @@ use crate::feature::conversation::command::{
 };
 use crate::feature::conversation::model::ChatStreamChunk;
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
-use crate::feature::{FallBackPayload, InboundMessage, MessageSource, OutboundMessage, UnifiedMessage};
+use crate::feature::{
+    FallBackPayload, InboundMessage, MessageSource, OutboundMessage, UnifiedMessage,
+};
 use crate::models::Conversation;
-use crate::AppState;
+use rust_decimal::prelude::ToPrimitive;
 use serde_json::json;
 use tokio_stream::StreamExt;
 use tracing::{error, info};
@@ -107,7 +110,6 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         }
     }
 
-
     // ================================== BEGIN COMMAND ============================//
     // 3. Check for Pairing/Register/Login
     if text.to_uppercase().starts_with("/pair ") {
@@ -123,7 +125,6 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
     }
 
     // ================================== NOT REGISTERED STOP HERE ============================//
-
 
     // 2. Resolve Identity and Channel Info
     let (conversation_id, cumulative_tokens, max_token_usage) = if msg.is_group {
@@ -148,7 +149,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         }
     };
     info!("Conversation id {}", conversation_id);
-    if cumulative_tokens as f64 >= max_token_usage {
+    if cumulative_tokens.to_i64().unwrap_or(0) >= max_token_usage.to_i64().unwrap_or(700000) {
         info!(
             "Conversation {} has reached max token usage",
             conversation_id
@@ -168,7 +169,6 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         });
         return Ok(());
     }
-
 
     // 3. Resolve/Create Conversation
     if conversation_id.is_nil() {
@@ -225,37 +225,33 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
     }
     let user_id = user_id?;
     let conv_info = sqlx::query!("SELECT * FROM conversations WHERE id = $1", conversation_id)
-        .fetch_optional(&state.pool)
+        .fetch_one(&state.pool)
         .await;
+    if let Err(err) = conv_info {
+        info!("Conversation not exist:{}", err);
+        let error_msg = "Workspace Conversation doesn exist".to_string();
+        let _ = state
+            .send_sse_to_user(
+                user_id.to_string().as_str(),
+                "message",
+                json!(ChatStreamChunk {
+                    content: "No workspace detected.".to_string(),
+                    thought: "".to_string(),
+                    code_block: "".to_string(),
+                    tool_call: None,
+                    prompt_tokens: 0,
+                    answer_tokens: 0,
+                    total_tokens: 0,
+                    finish_reason: Some("error".to_string()),
+                    error: Some(error_msg.clone()),
+                }),
+            )
+            .await;
 
-    if let Ok(c) = &conv_info {
-        if let None = c {
-            let error_msg = format!(
-                "Token limit reached ({}/{:.0})",
-                cumulative_tokens, max_token_usage
-            );
-            let _ = state
-                .send_sse_to_user(
-                    user_id.to_string().as_str(),
-                    "message",
-                    json!(ChatStreamChunk {
-                        content: "No workspace detected.".to_string(),
-                        thought: "".to_string(),
-                        code_block: "".to_string(),
-                        tool_call: None,
-                        prompt_tokens: 0,
-                        answer_tokens: 0,
-                        total_tokens: 0,
-                        finish_reason: Some("error".to_string()),
-                        error: Some(error_msg.clone()),
-                    }),
-                )
-                .await;
-
-            return Ok(());
-        }
+        return Ok(());
     }
-    let conv_info = conv_info?.unwrap();
+
+    let conv_info = conv_info?;
 
     // ================================== REGULAR CONVO ============================//
     // 5. Trigger Agentic Loop
@@ -319,7 +315,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             updated_at: conv_info.updated_at,
         };
         if let Err(e) = process_v2_message(state, map_convo, unified_msg).await {
-            error!("Failed to process inbound message: {}", e);
+            error!("Failed to process inbound message: {}", e.backtrace());
         }
     });
 
