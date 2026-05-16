@@ -21,7 +21,6 @@ export type  ApiResponse<T> = {
 }
 
 export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-
     if (typeof window === 'undefined') {
         return {
             meta: {
@@ -87,7 +86,16 @@ export const chatApi = {
         video_url?: string,
         doc_url?: string
     }) => {
-        const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+        if (typeof window === 'undefined') {
+            return {
+                meta: {
+                    code: 500,
+                    message: "cannot get session"
+                },
+                data: null
+            } as ApiResponse<any>
+        }
+        const [token] = getSession()
         const response = await fetch(`${BASE_URL}/chat/stream`, {
             method: 'POST',
             headers: {
@@ -104,7 +112,16 @@ export const chatApi = {
     },
 
     uploadFile: async (file: File) => {
-        const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+        if (typeof window === 'undefined') {
+            return {
+                meta: {
+                    code: 500,
+                    message: "cannot get session"
+                },
+                data: null
+            } as ApiResponse<any>
+        }
+        const [token] = getSession()
         const formData = new FormData();
         formData.append('file', file);
 
@@ -124,8 +141,17 @@ export const chatApi = {
     },
 
     streamEvent() {
-        const userId = typeof window !== 'undefined' ? sessionStorage.getItem('user_id') : null;
-        const sse = new EventSource(`${BASE_URL}/realtime?user_id=${userId}&device_id=${crypto.randomUUID()}`);
+        if (typeof window === 'undefined') {
+            return {
+                meta: {
+                    code: 500,
+                    message: "cannot get session"
+                },
+                data: null
+            } as ApiResponse<any>
+        }
+        const [token, user_id] = getSession()
+        const sse = new EventSource(`${BASE_URL}/realtime?user_id=${user_id}&device_id=${crypto.randomUUID()}`);
 
         sse.onopen = () => {
             console.log('SSE connection opened');
@@ -308,7 +334,16 @@ export const chatApi = {
         });
     },
     uploadToStorage: async (file: File, prefix?: string) => {
-        const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+        if (typeof window === 'undefined') {
+            return {
+                meta: {
+                    code: 500,
+                    message: "cannot get session"
+                },
+                data: null
+            } as ApiResponse<any>
+        }
+        const [token] = getSession()
         const formData = new FormData();
         formData.append('file', file);
 

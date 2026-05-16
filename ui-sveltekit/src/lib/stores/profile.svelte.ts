@@ -25,6 +25,11 @@ export function getSession() {
     return [token ? atob(token) : null, user_id ? atob(user_id) : null]
 }
 
+export function removeSession(){
+    sessionStorage.removeItem(AUTH_SESS_ID);
+    sessionStorage.removeItem(AUTH_USER_ID);
+}
+
 function createProfileStore() {
     let currentUser = $state<Profile | null>(null);
     let loading = $state(false);
@@ -56,8 +61,7 @@ function createProfileStore() {
             console.error('Logout API failed', e);
         } finally {
             if (typeof sessionStorage !== 'undefined') {
-                sessionStorage.removeItem('auth_token');
-                sessionStorage.removeItem('user_id');
+                removeSession()
             }
             currentUser = null;
             goto('/login');
