@@ -12,6 +12,7 @@
 	import { page } from '$app/state';
 	import {eventBus} from "$lib/utils";
 	import {ragStore} from "$lib/stores/rag.svelte";
+	import {getSession} from "$lib/stores/profile.svelte";
 
 	let { children } = $props();
 
@@ -19,7 +20,7 @@
 	let opening = false;
 
 	async function open() {
-		const token = sessionStorage.getItem('auth_token');
+		const [token] = getSession()
 		const isPublicRoute = page.url.pathname === '/' || page.url.pathname === '/login';
 
 		if (!token && !isPublicRoute) {
@@ -33,8 +34,6 @@
 
 			try {
 				await conversationStore.loadConversations();
-				ragStore.fetchGraph(conversationStore.activeConversationId);
-
 				// Close existing connection if any
 				if (closing) closing();
 				closing = chatApi.streamEvent();

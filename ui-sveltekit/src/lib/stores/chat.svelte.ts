@@ -1,6 +1,6 @@
 import {chatApi} from '$lib/api/client';
 import {eventBus} from '$lib/utils';
-import {conversationStore} from "$lib/stores/conversation.svelte";
+import {conversationStore, getPersistConversationId} from "$lib/stores/conversation.svelte";
 
 export type Message = {
     role: 'user' | 'assistant' | 'system';
@@ -117,9 +117,10 @@ function createChatStore() {
         },
 
         async fetchMessages(loadMore = false) {
-            conversationId = conversationStore.activeConversationId
+            const id = getPersistConversationId()
+            if(!id) return
+            conversationId = id
             if (!conversationId || (loadMore && !hasMore)) return;
-
             loading = true;
             error = null;
             try {

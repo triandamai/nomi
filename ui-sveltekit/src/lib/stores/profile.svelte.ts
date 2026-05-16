@@ -1,6 +1,5 @@
-import { useAvatar } from '$lib/utils';
-import { chatApi } from '$lib/api/client';
-import { goto } from '$app/navigation';
+import {chatApi} from '$lib/api/client';
+import {goto} from '$app/navigation';
 
 export type Profile = {
     id: string;
@@ -10,6 +9,21 @@ export type Profile = {
     status: 'online' | 'offline' | 'idle';
     role?: string;
 };
+
+export const AUTH_SESS_ID = "13ca7c4f"
+export const AUTH_USER_ID = "12ca6c4f"
+
+export function setSession(session: string, user_id: string) {
+    sessionStorage.setItem(AUTH_SESS_ID, btoa(session));
+    sessionStorage.setItem(AUTH_USER_ID, btoa(user_id));
+}
+
+export function getSession() {
+    const token = sessionStorage.getItem(AUTH_SESS_ID);
+    const user_id = sessionStorage.getItem(AUTH_USER_ID);
+
+    return [token ? atob(token) : null, user_id ? atob(user_id) : null]
+}
 
 function createProfileStore() {
     let currentUser = $state<Profile | null>(null);
@@ -61,7 +75,7 @@ function createProfileStore() {
         logout,
         updateStatus(status: Profile['status']) {
             if (currentUser) {
-                currentUser = { ...currentUser, status };
+                currentUser = {...currentUser, status};
             }
         }
     };

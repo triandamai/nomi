@@ -87,11 +87,11 @@
 
     <div class="prose prose-invert max-w-none prose-sm text-slate-200">
         {#if image_url}
-            <div class="mb-4 rounded-xl overflow-hidden border border-slate-800 bg-slate-900/50 group/image relative">
+            <div class="mb-4 rounded-xl overflow-hidden border border-slate-800 bg-slate-900/50 group/image relative w-fit">
                 <img
                         src={image_url.startsWith("http") ? image_url : FILE_URL + image_url}
                         alt="Uploaded content"
-                        class="max-w-full h-auto max-h-[400px] object-contain mx-auto"
+                        class="max-w-full h-auto max-h-[350px] object-contain"
                         onerror={(e) => {
                             const img = e.currentTarget as HTMLImageElement;
                             img.src = 'https://placehold.co/600x400/18181b/a1a1aa?text=Image+Load+Failed';

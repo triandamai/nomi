@@ -1,9 +1,9 @@
-import { chatApi } from '$lib/api/client';
-import { conversationStore, type Conversation } from './conversation.svelte';
-import { popupStore } from './popup.svelte';
-import { eventBus } from '$lib/utils';
+import {chatApi} from '$lib/api/client';
+import {conversationStore, type Conversation} from './conversation.svelte';
+import {popupStore} from './popup.svelte';
+import {eventBus} from '$lib/utils';
 
-export function createSidebarStore(){
+export function createSidebarStore() {
     let showUserMenu = $state(false);
     let reminders = $state<any[]>([]);
     let isLoadingReminders = $state(false);
@@ -19,33 +19,71 @@ export function createSidebarStore(){
     let currentPlatform = $state('');
     let isLoadingQr = $state(false);
     let isGatewayOnline = $state(false);
-    let modelInfo = $state({ 
-        agent_model: 'Loading...', 
+    let modelInfo = $state({
+        agent_model: 'Loading...',
         rag_embedding: '...',
         media_classification: '...',
         media_analyze: '...'
     });
 
     return {
-        get showUserMenu() { return showUserMenu; },
-        set showUserMenu(value: boolean) { showUserMenu = value; },
-        get reminders() { return reminders; },
-        get isLoadingReminders() { return isLoadingReminders; },
-        get hasMoreReminders() { return hasMoreReminders; },
-        get isPaired() { return isPaired; },
-        get pairingCode() { return pairingCode; },
-        get copied() { return copied; },
-        get newConvName() { return newConvName; },
-        set newConvName(value: string) { newConvName = value; },
-        get newConvType() { return newConvType; },
-        set newConvType(value: string) { newConvType = value; },
-        get editingConv() { return editingConv; },
-        get channels() { return channels; },
-        get whatsappQr() { return whatsappQr; },
-        get currentPlatform() { return currentPlatform; },
-        get isLoadingQr() { return isLoadingQr; },
-        get isGatewayOnline() { return isGatewayOnline; },
-        get modelInfo() { return modelInfo; },
+        get showUserMenu() {
+            return showUserMenu;
+        },
+        set showUserMenu(value: boolean) {
+            showUserMenu = value;
+        },
+        get reminders() {
+            return reminders;
+        },
+        get isLoadingReminders() {
+            return isLoadingReminders;
+        },
+        get hasMoreReminders() {
+            return hasMoreReminders;
+        },
+        get isPaired() {
+            return isPaired;
+        },
+        get pairingCode() {
+            return pairingCode;
+        },
+        get copied() {
+            return copied;
+        },
+        get newConvName() {
+            return newConvName;
+        },
+        set newConvName(value: string) {
+            newConvName = value;
+        },
+        get newConvType() {
+            return newConvType;
+        },
+        set newConvType(value: string) {
+            newConvType = value;
+        },
+        get editingConv() {
+            return editingConv;
+        },
+        get channels() {
+            return channels;
+        },
+        get whatsappQr() {
+            return whatsappQr;
+        },
+        get currentPlatform() {
+            return currentPlatform;
+        },
+        get isLoadingQr() {
+            return isLoadingQr;
+        },
+        get isGatewayOnline() {
+            return isGatewayOnline;
+        },
+        get modelInfo() {
+            return modelInfo;
+        },
 
         init() {
             this.checkPairingStatus();
@@ -53,8 +91,8 @@ export function createSidebarStore(){
                 isGatewayOnline = data.online;
             });
             eventBus.subscribe('sse-metadata', (data) => {
-                modelInfo = { 
-                    agent_model: data.agent_model || 'Unknown', 
+                modelInfo = {
+                    agent_model: data.agent_model || 'Unknown',
                     rag_embedding: data.rag_embedding || 'Unknown',
                     media_classification: data.media_classification || 'Unknown',
                     media_analyze: data.media_analyze || 'Unknown'
@@ -115,8 +153,11 @@ export function createSidebarStore(){
         async checkPairingStatus() {
             try {
                 const data = await conversationStore.getChannels();
-                channels = data.channels;
-                isPaired = data.channels.some((c: any) => c.paired);
+                if (data.data) {
+                    channels = data.data;
+                    if (data.data.channels)
+                        isPaired = data.data.channels.some((c: any) => c.paired);
+                }
             } catch (e) {
                 console.error('Failed to check pairing status', e);
             }

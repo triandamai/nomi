@@ -1,87 +1,100 @@
-import {chatApi} from '$lib/api/client';
-import {chatStore} from "$lib/stores/chat.svelte";
-import {goto} from "$app/navigation";
+import {type ApiResponse, chatApi} from '$lib/api/client';
 import {eventBus} from '$lib/utils';
 
 export type Conversation = {
     id: string;
     name: string;
     avatar?: string;
-    cumulative_tokens:number,
+    cumulative_tokens: number,
     active?: boolean;
     online?: boolean;
 };
 
+export const CONV_ID = "296e7dc6"
+
+export function persistConversationId(value: string) {
+    localStorage.setItem(CONV_ID, btoa(value))
+}
+
+export function getPersistConversationId(): string | null {
+    const v = localStorage.getItem(CONV_ID)
+    if (!v) return null
+    return atob(v)
+}
+
 function createConversationStore() {
     let conversations = $state<Conversation[]>([]);
-    
+
     let activeConversationId = $state<string>('');
-    let activeConversation = $state<Conversation|null>(null)
+    let activeConversation = $state<Conversation | null>(null)
 
     // Subscribe to token updates
     eventBus.subscribe('sse-token_update', (data) => {
         if (data.conversation_id) {
             conversations = conversations.map(c => {
                 if (c.id === data.conversation_id) {
-                    return { ...c, cumulative_tokens: data.cumulative_tokens };
+                    return {...c, cumulative_tokens: data.cumulative_tokens};
                 }
                 return c;
             });
-            
+
             if (activeConversationId === data.conversation_id && activeConversation) {
                 activeConversation.cumulative_tokens = data.cumulative_tokens;
             }
         }
     });
 
-    return{
+    return {
         get conversations() {
             return conversations;
         },
         get activeConversationId() {
             return activeConversationId;
         },
-        get activeConversation():Conversation|null{
+        get activeConversation(): Conversation | null {
             return activeConversation
         },
         async loadConversations() {
             try {
                 const response = await chatApi.getConversations();
 
-                // Map API response to our Conversation type
-                const loaded = response.data.map((c: any) => ({
-                    id: c.id,
-                    name: c.name || c.title || 'Untitled',
-                    active: c.id === activeConversationId,
-                    cumulative_tokens: c.cumulative_tokens,
-                    online: true
-                }));
-                conversations = loaded;
-                
-                if (conversations.length > 0 && !conversations.find(c => c.id === activeConversationId)) {
-                    this.setActive(conversations[0].id);
+                if(response.data) {
+                    // Map API response to our Conversation type
+                    const loaded = response.data.map((c: any) => ({
+                        id: c.id,
+                        name: c.name || c.title || 'Untitled',
+                        active: c.id === activeConversationId,
+                        cumulative_tokens: c.cumulative_tokens,
+                        online: true
+                    }));
+                    conversations = loaded;
+
+                    const currentId = getPersistConversationId()
+                    if (currentId != null) {
+                        const find = conversations.find(c => c.id === currentId)
+                        if (conversations.length > 0 && find) {
+                            this.setActive(find.id);
+                        }
+                    }
                 }
             } catch (error) {
                 console.error('Failed to load conversations', error);
             }
         },
         setActive(id: string) {
+            persistConversationId(id)
             activeConversationId = id;
-            const find = conversations.find(c=>c.id == id)
-
+            const find = conversations.find(c => c.id == id)
             activeConversation = find || null
             conversations = conversations.map(c => ({
                 ...c,
                 active: c.id === id
             }));
-            chatStore.fetchMessages(false).finally(()=>{
-                goto("/chat")
-            })
         },
         async addConversation(name: string, type: string = 'private') {
             try {
                 const response = await chatApi.createConversation(name, type);
-                if(response.data) {
+                if (response.data) {
                     // For now, if response is dummy, we generate a local one
                     const newConv: Conversation = {
                         id: response.data.id || crypto.randomUUID(),
@@ -100,14 +113,14 @@ function createConversationStore() {
         async updateConversation(id: string, name: string) {
             try {
                 await chatApi.updateConversation(id, name);
-                conversations = conversations.map(c => 
-                    c.id === id ? { ...c, name } : c
+                conversations = conversations.map(c =>
+                    c.id === id ? {...c, name} : c
                 );
             } catch (error) {
                 console.error('Failed to update conversation', error);
                 // Fallback
-                conversations = conversations.map(c => 
-                    c.id === id ? { ...c, name } : c
+                conversations = conversations.map(c =>
+                    c.id === id ? {...c, name} : c
                 );
             }
         },
@@ -136,13 +149,19 @@ function createConversationStore() {
                 throw error;
             }
         },
-        async getChannels() {
+        async getChannels():Promise<ApiResponse<any>> {
             try {
                 const response = await chatApi.getChannels();
-                return response.data;
+                return response;
             } catch (error) {
                 console.error('Failed to get user channels', error);
-                throw error;
+                return {
+                    meta:{
+                        code:500,
+                        message:(error as any).message
+                    },
+                    data:null
+                } as ApiResponse<any>
             }
         }
     };

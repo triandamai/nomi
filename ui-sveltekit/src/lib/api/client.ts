@@ -1,6 +1,7 @@
 import {eventBus} from '$lib/utils';
 import type {Conversation} from "$lib/stores/conversation.svelte";
-import { env } from '$env/dynamic/public';
+import {env} from '$env/dynamic/public';
+import {getSession} from "$lib/stores/profile.svelte";
 
 const BASE_URL = env.PUBLIC_GATEWAY_URL || 'http://localhost:8000/api';
 const CHANNEL_URL = env.PUBLIC_CHANNEL_URL || 'http://localhost:8001/api';
@@ -20,12 +21,22 @@ export type  ApiResponse<T> = {
 }
 
 export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
+
+    if (typeof window === 'undefined') {
+        return {
+            meta: {
+                code: 500,
+                message: "cannot get session"
+            },
+            data: null
+        } as ApiResponse<T>
+    }
+    const [token] = getSession()
     const response = await fetch(`${BASE_URL}${endpoint}`, {
         ...options,
         headers: {
             'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            ...(token ? {'Authorization': `Bearer ${token}`} : {}),
             ...options.headers
         }
     });
@@ -67,19 +78,24 @@ export const chatApi = {
         return apiFetch<{ access_token: string, user_id: string }>('/auth/verify-otp', {
             method: 'POST',
             body: JSON.stringify({external_id: externalId, code})
-        });
+        })
     },
 
-    streamChat: async (message: string, conversationId: string, media?: { image_url?: string, audio_url?: string, video_url?: string, doc_url?: string }) => {
+    streamChat: async (message: string, conversationId: string, media?: {
+        image_url?: string,
+        audio_url?: string,
+        video_url?: string,
+        doc_url?: string
+    }) => {
         const token = typeof window !== 'undefined' ? sessionStorage.getItem('auth_token') : null;
         const response = await fetch(`${BASE_URL}/chat/stream`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                ...(token ? {'Authorization': `Bearer ${token}`} : {}),
             },
             body: JSON.stringify({
-                message, 
+                message,
                 conversation_id: conversationId,
                 ...media
             })
@@ -95,7 +111,7 @@ export const chatApi = {
         const response = await fetch(`${BASE_URL}/upload`, {
             method: 'POST',
             headers: {
-                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                ...(token ? {'Authorization': `Bearer ${token}`} : {}),
             },
             body: formData
         });
@@ -113,12 +129,12 @@ export const chatApi = {
 
         sse.onopen = () => {
             console.log('SSE connection opened');
-            eventBus.emit('gateway-status', { online: true });
+            eventBus.emit('gateway-status', {online: true});
         };
 
         sse.onerror = (error) => {
             console.error('SSE error:', error);
-            eventBus.emit('gateway-status', { online: false });
+            eventBus.emit('gateway-status', {online: false});
         };
 
         sse.addEventListener("message", (event) => {
@@ -302,7 +318,7 @@ export const chatApi = {
         const response = await fetch(url.toString(), {
             method: 'POST',
             headers: {
-                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                ...(token ? {'Authorization': `Bearer ${token}`} : {}),
             },
             body: formData
         });
@@ -326,7 +342,7 @@ export const chatApi = {
         if (endDate) url.searchParams.append('end_date', endDate);
         return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
     },
-    updateMoneyHistory: (id: string, updates: {amount?: number, merchant_name?: string, category?: string}) => {
+    updateMoneyHistory: (id: string, updates: { amount?: number, merchant_name?: string, category?: string }) => {
         return apiFetch<any>(`/v1/money/history/${id}`, {
             method: 'PATCH',
             body: JSON.stringify(updates)
@@ -359,7 +375,13 @@ export const chatApi = {
     getAdminUserDetail: (id: string) => {
         return apiFetch<any>(`/v1/admin/users/${id}`);
     },
-    updateAdminUser: (id: string, updates: { display_name?: string, name?: string, email?: string, role?: string, is_verified?: boolean }) => {
+    updateAdminUser: (id: string, updates: {
+        display_name?: string,
+        name?: string,
+        email?: string,
+        role?: string,
+        is_verified?: boolean
+    }) => {
         return apiFetch<any>(`/v1/admin/users/${id}`, {
             method: 'PATCH',
             body: JSON.stringify(updates)

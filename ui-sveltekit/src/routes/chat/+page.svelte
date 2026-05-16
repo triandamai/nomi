@@ -23,7 +23,7 @@
     import PricingPopUp from '$lib/components/PricingPopUp.svelte';
     import {onMount, tick} from 'svelte';
     import {eventBus} from "$lib/utils";
-    import {goto} from '$app/navigation';
+    import {afterNavigate, goto} from '$app/navigation';
     import {popupStore} from '$lib/stores/popup.svelte';
 
     let inputMessage = $state('');
@@ -163,7 +163,11 @@
 
         })
         eventBus.emit("load", {})
-
+        afterNavigate(()=>{
+            chatStore.fetchMessages(false).finally(() => {
+                console.log("finish load messages")
+            })
+        })
         return () => unsubscribe();
     })
 </script>

@@ -25,13 +25,14 @@
     import AdminConversationsPopUp from './AdminConversationsPopUp.svelte';
     import UserListPopUp from './UserListPopUp.svelte';
     import RedisTestPopUp from './RedisTestPopUp.svelte';
-    import { conversationStore } from '$lib/stores/conversation.svelte';
+    import {conversationStore} from '$lib/stores/conversation.svelte';
 
     import {profileStore} from '$lib/stores/profile.svelte';
     import {popupStore} from '$lib/stores/popup.svelte';
     import {sidebarStore} from '$lib/stores/sidebar.svelte';
     import {onMount} from 'svelte';
     import {goto} from '$app/navigation';
+    import {chatStore} from "$lib/stores/chat.svelte";
 
     onMount(() => {
         profileStore.fetchProfile();
@@ -527,7 +528,7 @@
 {/snippet}
 
 {#snippet adminConversationsSnippet()}
-    <AdminConversationsPopUp />
+    <AdminConversationsPopUp/>
 {/snippet}
 
 {#snippet adminHeaderSnippet()}
@@ -544,7 +545,7 @@
 {/snippet}
 
 {#snippet userDirectorySnippet()}
-    <UserListPopUp />
+    <UserListPopUp/>
 {/snippet}
 
 {#snippet userHeaderSnippet()}
@@ -561,7 +562,7 @@
 {/snippet}
 
 {#snippet redisTestSnippet()}
-    <RedisTestPopUp />
+    <RedisTestPopUp/>
 {/snippet}
 
 {#snippet redisHeaderSnippet()}
@@ -704,7 +705,11 @@
                         name={conv.name}
                         active={conv.id === conversationStore.activeConversationId}
                         online={conv.online}
-                        onClick={() => conversationStore.setActive(conv.id)}
+                        onClick={() => {
+                                conversationStore.setActive(conv.id)
+                                chatStore.fetchMessages(false).finally(() => {goto("/chat")})
+                            }
+                        }
                 />
 
                 <!-- Action Tooltip/Menu -->
