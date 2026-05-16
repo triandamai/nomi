@@ -5,19 +5,21 @@ pub mod plugins;
 use crate::Arc;
 use crate::common::tools::plugin_trait::NomiToolPlugin;
 use crate::common::tools::plugins::dice::DicePlugin;
+use crate::common::tools::plugins::communication::CommunicationPlugin;
+use crate::common::tools::plugins::finance::FinancePlugin;
 use crate::common::tools::plugins::health::HealthPlugin;
+use crate::common::tools::plugins::user::UserPlugin;
+use crate::common::tools::plugins::read_web_page::ReadWebPagePlugin;
+use crate::common::tools::plugins::web_search::WebSearchPlugin;
 use crate::common::tools::tools_model::{
     EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters,
     ExecuteReadQueryResponse, GetInboxSummaryParameters, GetInboxSummaryResponse,
     GetLatestMediaContextParameters, GetReminderStatsParameters, GetReminderStatsResponse,
     MakeStickerParameters, MakeStickerResponse, ModifyReminderParameters, ModifyReminderResponse,
-    ParseToJsonParameters, ReadWebPageParameters, ReadWebPageResponse, ReadWorkSpaceParameters,
-    ReadWorkSpaceResponse, ScheduleTaskParameters, ScheduleTaskResponse, SearchUsersParameters,
-    SearchUsersResponse, SearchWebParameters, SearchWebResponse, SendDirectMessageParameters,
-    SendDirectMessageResponse, ToolResult, UpdateConversationSoulParameters,
+    ParseToJsonParameters, ReadWorkSpaceParameters,
+    ReadWorkSpaceResponse, ScheduleTaskParameters, ScheduleTaskResponse, ToolResult, UpdateConversationSoulParameters,
     UpdateConversationSoulResponse, UpdateConversationTitleParameters,
     UpdateConversationTitleResponse, UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse,
-    UpdateUserProfileParameters, UpdateUserProfileResponse,
 };
 use crate::prompts::PromptRegistry;
 use chrono::{Utc, TimeZone, NaiveDateTime};
@@ -32,8 +34,6 @@ use std::fs;
 use std::path::PathBuf;
 use tracing::info;
 use uuid::Uuid;
-use crate::common::agent::agent_model::{ExpenseData, ExpenseItem};
-use crate::common::agent::classification::log_expense_transaction;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "tool", content = "args")]
@@ -46,16 +46,6 @@ pub enum NomiTool {
     #[serde(rename = "execute_sql_query")]
     ExecuteSqlQuery {
         params: ExecuteReadQueryParameters,
-        user_message: String,
-    },
-    #[serde(rename = "web_search")]
-    WebSearch {
-        params: SearchWebParameters,
-        user_message: String,
-    },
-    #[serde(rename = "read_web_page")]
-    ReadWebPage {
-        params: ReadWebPageParameters,
         user_message: String,
     },
     #[serde(rename = "parse_to_json")]
@@ -103,29 +93,9 @@ pub enum NomiTool {
         params: GetReminderStatsParameters,
         user_message: String,
     },
-    #[serde(rename = "search_users")]
-    SearchUsers {
-        params: SearchUsersParameters,
-        user_message: String,
-    },
-    #[serde(rename = "update_user_profile")]
-    UpdateUserProfile {
-        params: UpdateUserProfileParameters,
-        user_message: String,
-    },
-    #[serde(rename = "send_direct_message")]
-    SendDirectMessage {
-        params: SendDirectMessageParameters,
-        user_message: String,
-    },
     #[serde(rename = "make_sticker")]
     MakeSticker {
         params: MakeStickerParameters,
-        user_message: String,
-    },
-    #[serde(rename = "log_expense")]
-    LogExpense {
-        params: tools_model::LogExpenseParameters,
         user_message: String,
     },
     #[serde(rename = "get_latest_media_context")]
@@ -138,23 +108,14 @@ pub enum NomiTool {
         params: tools_model::AnalyzeMediaParameters,
         user_message: String,
     },
-    #[serde(rename = "get_expense_summary")]
-    GetExpenseSummary {
-        params: tools_model::GetExpenseSummaryParameters,
-        user_message: String,
-    },
-    #[serde(rename = "get_transaction_details")]
-    GetTransactionDetails {
-        params: tools_model::GetTransactionDetailsParameters,
-        user_message: String,
-    },
     #[serde(rename = "update_conversation_title")]
     UpdateConversationTitle {
         params: UpdateConversationTitleParameters,
         user_message: String,
     },
-    }
-#[derive(Clone)]
+}
+
+    #[derive(Clone)]
 pub struct ToolDispatcher {
     pub pool: Pool<Postgres>,
     pub workspace_root: PathBuf,
@@ -164,6 +125,7 @@ pub struct ToolDispatcher {
     pub gemini_api_key: String,
     pub sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
     pub storage: crate::common::storage::StorageClient,
+    pub app_state: crate::common::app_state::AppState,
     pub plugins: HashMap<&'static str, Arc<dyn NomiToolPlugin>>,
 }
 
@@ -177,10 +139,16 @@ impl ToolDispatcher {
         gemini_api_key: String,
         sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
         storage: crate::common::storage::StorageClient,
+        app_state: crate::common::app_state::AppState,
     ) -> Self {
         let mut plugins: HashMap<&'static str, Arc<dyn NomiToolPlugin>> = HashMap::new();
         plugins.insert("roll_dice", Arc::new(DicePlugin));
         plugins.insert("manage_health_data", Arc::new(HealthPlugin));
+        plugins.insert("manage_finance", Arc::new(FinancePlugin));
+        plugins.insert("manage_user", Arc::new(UserPlugin));
+        plugins.insert("send_message", Arc::new(CommunicationPlugin));
+        plugins.insert("web_search", Arc::new(WebSearchPlugin));
+        plugins.insert("read_web_page", Arc::new(ReadWebPagePlugin));
 
         Self {
             pool,
@@ -191,6 +159,7 @@ impl ToolDispatcher {
             gemini_api_key,
             sse,
             storage,
+            app_state,
             plugins,
         }
     }
@@ -205,14 +174,6 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.execute_sql_query(params.query, user_message).await,
-            NomiTool::WebSearch {
-                params,
-                user_message,
-            } => self.web_search(params.query, user_message).await,
-            NomiTool::ReadWebPage {
-                params,
-                user_message,
-            } => self.read_web_page(params.url, user_message).await,
             NomiTool::ParseStringToJson { .. } => ToolResult {
                 error: "".to_string(),
                 success: false,
@@ -251,26 +212,10 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.get_reminder_stats(params, user_message).await,
-            NomiTool::SearchUsers {
-                params,
-                user_message,
-            } => self.search_users(params, user_message).await,
-            NomiTool::UpdateUserProfile {
-                params,
-                user_message,
-            } => self.update_user_profile(params, user_message).await,
-            NomiTool::SendDirectMessage {
-                params,
-                user_message,
-            } => self.send_direct_message(params, user_message).await,
             NomiTool::MakeSticker {
                 params,
                 user_message,
             } => self.make_sticker(params, user_message).await,
-            NomiTool::LogExpense {
-                params,
-                user_message,
-            } => self.log_expense(params, user_message).await,
             NomiTool::GetLatestMediaContext {
                 params,
                 user_message,
@@ -279,14 +224,6 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.analyze_media(params, user_message).await,
-            NomiTool::GetExpenseSummary {
-                params,
-                user_message,
-            } => self.get_expense_summary(params, user_message).await,
-            NomiTool::GetTransactionDetails {
-                params,
-                user_message,
-            } => self.get_transaction_details(params, user_message).await,
             NomiTool::UpdateConversationTitle {
                 params,
                 user_message,
@@ -310,18 +247,6 @@ impl ToolDispatcher {
                 .with_parameters::<ExecuteReadQueryParameters>()
                 .with_response::<ExecuteReadQueryResponse>();
 
-        let web_search =
-            FunctionDeclaration::new("web_search", "Search information from internet", None)
-                .with_parameters::<SearchWebParameters>()
-                .with_response::<SearchWebResponse>();
-
-        let read_web_page = FunctionDeclaration::new(
-            "read_web_page",
-            "Read content of a web page as Markdown. Best for technical docs or news.",
-            None,
-        )
-        .with_parameters::<ReadWebPageParameters>()
-        .with_response::<ReadWebPageResponse>();
 
         let update_nomi_soul =
             FunctionDeclaration::new(
@@ -390,30 +315,6 @@ impl ToolDispatcher {
             .with_parameters::<GetReminderStatsParameters>()
             .with_response::<GetReminderStatsResponse>();
 
-        let search_users = FunctionDeclaration::new(
-            "search_users",
-            "Searches the users table across username, display_name, and email using a case-insensitive partial match.",
-            None,
-        )
-            .with_parameters::<SearchUsersParameters>()
-            .with_response::<SearchUsersResponse>();
-
-        let update_user_profile = FunctionDeclaration::new(
-            "update_user_profile",
-            "Allows updating the display_name of the current user. Restricted to the user_id extracted from the current session/JWT.",
-            None,
-        )
-            .with_parameters::<UpdateUserProfileParameters>()
-            .with_response::<UpdateUserProfileResponse>();
-
-        let send_direct_message = FunctionDeclaration::new(
-            "send_direct_message",
-            "Sends a direct message to another user. Use search_users first to find their correct JID (user ID). Provide the recipient_jid and the message content.",
-            None,
-        )
-            .with_parameters::<SendDirectMessageParameters>()
-            .with_response::<SendDirectMessageResponse>();
-
         let make_sticker = FunctionDeclaration::new(
             "make_sticker",
             "Turns an image into a sticker. If no image_url is provided, it will use the most recently uploaded image in the conversation.",
@@ -422,14 +323,6 @@ impl ToolDispatcher {
             .with_parameters::<MakeStickerParameters>()
             .with_response::<MakeStickerResponse>();
 
-        let log_expense = FunctionDeclaration::new(
-            "log_expense",
-            "Log a financial expense. DO NOT guess or hallucinate item names (like Lorem Ipsum) or prices. If data is missing or unclear, DO NOT use dummy data; instead, ask the user for clarification.",
-            None,
-        )
-            .with_parameters::<tools_model::LogExpenseParameters>()
-            .with_response::<tools_model::LogExpenseResponse>();
-
         let analyze_media = FunctionDeclaration::new(
             "analyze_media",
             "Analyze a media file (image, video, audio, or document) and provide information based on a prompt. Use this when the user asks questions about a file, wants to read text from it, or needs a description/summary. If no media_url is provided, it will use the most recently uploaded file in the conversation.",
@@ -437,22 +330,6 @@ impl ToolDispatcher {
         )
             .with_parameters::<tools_model::AnalyzeMediaParameters>()
             .with_response::<tools_model::AnalyzeMediaResponse>();
-
-        let get_expense_summary = FunctionDeclaration::new(
-            "get_expense_summary",
-            "Retrieve an expense summary for a given period (e.g., 'today', 'yesterday', 'last_7_days', 'this_month', 'last_month').",
-            None,
-        )
-            .with_parameters::<tools_model::GetExpenseSummaryParameters>()
-            .with_response::<tools_model::GetExpenseSummaryResponse>();
-
-        let get_transaction_details = FunctionDeclaration::new(
-            "get_transaction_details",
-            "Use this tool when the user asks for a list of items, specific purchases, or a breakdown of where their money went for a specific day.",
-            None,
-        )
-            .with_parameters::<tools_model::GetTransactionDetailsParameters>()
-            .with_response::<tools_model::GetTransactionDetailsResponse>();
 
         let update_conversation_title = FunctionDeclaration::new(
             "update_conversation_title",
@@ -465,9 +342,7 @@ impl ToolDispatcher {
         for intent in intents {
             match intent.as_str() {
                 "FINANCE" => {
-                    tools.push(log_expense.clone());
-                    tools.push(get_expense_summary.clone());
-                    tools.push(get_transaction_details.clone());
+                    // Handled by FinancePlugin
                 }
                 "VITALITY" => {
                     // Handled by HealthPlugin
@@ -484,30 +359,33 @@ impl ToolDispatcher {
                     tools.push(get_reminder_stats.clone());
                 }
                 "WEB" => {
-                    tools.push(web_search.clone());
-                    tools.push(read_web_page.clone());
+                    // Handled by Plugins
+                    // Add Google Search retrieval if supported by model
+                    let mut unique_tools = Vec::new();
+                    let mut seen_names = std::collections::HashSet::new();
+                    for t in tools {
+                        if seen_names.insert(t.name.clone()) {
+                            unique_tools.push(t);
+                        }
+                    }
+                    return Tool::google_search();
                 }
                 "DASHBOARD" => {
                     tools.push(get_reminder_stats.clone());
                     tools.push(get_inbox_summary.clone());
-                    tools.push(get_expense_summary.clone());
                     tools.push(update_conversation_title.clone());
                     tools.push(retrieve_knowledge.clone());
-                    tools.push(update_user_profile.clone());
                     tools.push(evolve_bootstrap_content.clone());
                     tools.push(update_nomi_soul.clone());
                 }
                 "COMMUNICATION" => {
                     tools.push(get_inbox_summary.clone());
-                    tools.push(search_users.clone());
-                    tools.push(send_direct_message.clone());
                     tools.push(update_conversation_title.clone());
                     tools.push(schedule_task.clone());
                 }
                 "GENERAL" => {
                     tools.push(update_conversation_title.clone());
                     tools.push(retrieve_knowledge.clone());
-                    tools.push(update_user_profile.clone());
                     tools.push(evolve_bootstrap_content.clone());
                     tools.push(update_nomi_soul.clone());
                     tools.push(schedule_task.clone());
@@ -525,8 +403,6 @@ impl ToolDispatcher {
             tools = vec![
                 read_workspace_file,
                 execute_read_query,
-                web_search,
-                read_web_page,
                 update_nomi_soul,
                 update_knowledge_base,
                 retrieve_knowledge,
@@ -535,14 +411,8 @@ impl ToolDispatcher {
                 modify_reminder,
                 get_inbox_summary,
                 get_reminder_stats,
-                search_users,
-                update_user_profile,
-                send_direct_message,
                 make_sticker,
-                log_expense,
                 analyze_media,
-                get_expense_summary,
-                get_transaction_details,
                 update_conversation_title,
             ];
         }
@@ -927,151 +797,6 @@ impl ToolDispatcher {
         }
     }
 
-    async fn web_search(&self, query: String, user_message: String) -> ToolResult {
-        info!(query = %query, "Executing web_search");
-
-        let api_key = match std::env::var("TAVILY_API_KEY") {
-            Ok(key) => key,
-            Err(_) => {
-                info!("TAVILY_API_KEY not found in environment");
-                return ToolResult {
-                    error: "Cannot reach website search".to_string(),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        let client = reqwest::Client::new();
-        let res = client
-            .post("https://api.tavily.com/search")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .json(&json!({
-                "query": query,
-                "search_depth": "advanced",
-                "include_answer": true,
-                "max_results": 5
-            }))
-            .send()
-            .await;
-
-        match res {
-            Ok(response) => {
-                let val: Value = response.json().await.unwrap_or(json!({}));
-                let results = val["results"].as_array();
-
-                let mut output = String::new();
-                if let Some(answer) = val["answer"].as_str() {
-                    output.push_str(&format!("Summary: {}\n\n", answer));
-                }
-
-                if let Some(results) = results {
-                    for (i, res) in results.iter().enumerate() {
-                        let title = res["title"].as_str().unwrap_or("No Title");
-                        let url = res["url"].as_str().unwrap_or("No URL");
-                        let content = res["content"].as_str().unwrap_or("");
-                        output.push_str(&format!(
-                            "{}. {} \nURL: {} \nSnippet: {}\n\n",
-                            i + 1,
-                            title,
-                            url,
-                            content
-                        ));
-                    }
-                }
-
-                info!("get result from web search and returning to agent");
-                ToolResult {
-                    error: "".to_string(),
-                    success: true,
-                    content: output.clone(),
-                    follow_up_prompt: build_follow_up_prompt(
-                        user_message,
-                        output,
-                        "web_search".to_string(),
-                    ),
-                }
-            }
-            Err(e) => {
-                info!("Error execute tavily: {}", e);
-                ToolResult {
-                    error: format!("Web search API error: {}", e),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                }
-            }
-        }
-    }
-
-    async fn read_web_page(&self, url: String, user_message: String) -> ToolResult {
-        info!(url = %url, "Executing read_web_page via Jina Reader");
-
-        let client = reqwest::Client::new();
-        let jina_url = format!("https://r.jina.ai/{}", url);
-
-        let api_key = match std::env::var("JINA_API_KEY") {
-            Ok(key) => key,
-            Err(_) => {
-                info!("JINA_API_KEY not found in environment");
-                return ToolResult {
-                    error: "Failed read web page".to_string(),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        let res = client
-            .get(jina_url)
-            .header("X-Return-Format", "markdown")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .send()
-            .await;
-
-        match res {
-            Ok(response) => {
-                let mut content = response.text().await.unwrap_or_default();
-
-                // Safety & Token Budget: Limit to roughly 1250 tokens (~5000 chars)
-                if content.len() > 5000 {
-                    content = content.chars().take(5000).collect::<String>();
-                    content.push_str("\n\n[Content truncated for token budget...]");
-                }
-
-                if content.trim().is_empty() {
-                    return ToolResult {
-                        error: "I checked the link, but I couldn't find any readable text there! 🏔️".to_string(),
-                        success: false,
-                        content: "".to_string(),
-                        follow_up_prompt: "".to_string(),
-                    };
-                }
-
-                ToolResult {
-                    error: "".to_string(),
-                    success: true,
-                    content: content.clone(),
-                    follow_up_prompt: build_follow_up_prompt(
-                        user_message,
-                        "Web content retrieved successfully.".to_string(),
-                        "read_web_page".to_string(),
-                    ),
-                }
-            }
-            Err(e) => {
-                info!("Error execute jina: {}", e);
-                ToolResult {
-                    error: format!("Web Reader error: {}", e),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                }
-            }
-        }
-    }
 
     async fn update_nomi_soul(
         &self,
@@ -1839,250 +1564,6 @@ impl ToolDispatcher {
         }
     }
 
-    async fn publish_to_nomi_outbond(&self, text: &str) {
-        if let Some(conv_id) = self.conversation_id {
-            let channel_info = sqlx::query!(
-                "SELECT c.channel_type, c.external_id, c.external_chat_id FROM channels c JOIN conversation_members cm ON c.user_id = cm.user_id WHERE cm.conversation_id = $1",
-                conv_id
-            ).fetch_all(&self.pool).await.unwrap_or_default();
-
-            if let Ok(redis_url) = std::env::var("REDIS_URL") {
-                if let Ok(client) = redis::Client::open(redis_url) {
-                    if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
-                        use redis::AsyncCommands;
-                        for channel in channel_info {
-                            let payload = serde_json::json!({
-                                "is_group": false,
-                                "sender_id": channel.external_id,
-                                "conversation_id": channel.external_chat_id,
-                                "text": text,
-                                "channel": channel.channel_type,
-                                "video_url": None::<String>,
-                                "image_url": None::<String>,
-                                "audio_url": None::<String>,
-                                "doc_url": None::<String>,
-                                "sticker_url": None::<String>,
-                                "metadata": None::<serde_json::Value>,
-                            })
-                            .to_string();
-                            let _ = conn
-                                .publish::<&str, String, ()>("nomi:outbound", payload)
-                                .await;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    async fn search_users(
-        &self,
-        params: SearchUsersParameters,
-        user_message: String,
-    ) -> ToolResult {
-        info!("Searching users for query: {}", params.query);
-        let pattern = format!("%{}%", params.query);
-        // We use 'name' column for username based on the schema.
-        let results = sqlx::query!(
-            "SELECT id, name as username, display_name, email FROM users \
-             WHERE name ILIKE $1 OR display_name ILIKE $1 OR email ILIKE $1 LIMIT 20",
-            pattern
-        )
-        .fetch_all(&self.pool)
-        .await;
-
-        match results {
-            Ok(rows) => {
-                if rows.is_empty() {
-                    return ToolResult {
-                        error: "".to_string(),
-                        success: true,
-                        content: "No users found".to_string(),
-                        follow_up_prompt: build_follow_up_prompt(
-                            user_message,
-                            "No users found".to_string(),
-                            "search_users".to_string(),
-                        ),
-                    };
-                }
-
-                let mut summary = String::new();
-                for row in rows {
-                    summary.push_str(&format!(
-                        "- ID: {}, Username: {}, Display: {}, Email: {}\n",
-                        row.id,
-                        row.username.as_deref().unwrap_or("N/A"),
-                        row.display_name.as_deref().unwrap_or("N/A"),
-                        row.email.as_deref().unwrap_or("N/A")
-                    ));
-                }
-
-                let content = format!("Found {} users:\n{}", summary.lines().count(), summary);
-                self.publish_to_nomi_outbond(&format!(
-                    "Searched for users matching '{}'",
-                    params.query
-                ))
-                .await;
-
-                ToolResult {
-                    error: "".to_string(),
-                    success: true,
-                    content: content.clone(),
-                    follow_up_prompt: build_follow_up_prompt(
-                        user_message,
-                        content,
-                        "search_users".to_string(),
-                    ),
-                }
-            }
-            Err(e) => ToolResult {
-                error: format!("Database error searching users: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
-        }
-    }
-
-    async fn update_user_profile(
-        &self,
-        params: UpdateUserProfileParameters,
-        user_message: String,
-    ) -> ToolResult {
-        info!("Updating user profile");
-
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                return ToolResult {
-                    error: "User ID not found in context".to_string(),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        let result = sqlx::query!(
-            "UPDATE users SET display_name = $1 WHERE id = $2",
-            params.display_name,
-            user_id
-        )
-        .execute(&self.pool)
-        .await;
-
-        match result {
-            Ok(_) => {
-                let content = format!(
-                    "Successfully updated display_name to '{}'",
-                    params.display_name
-                );
-                self.publish_to_nomi_outbond(&content).await;
-
-                ToolResult {
-                    error: "".to_string(),
-                    success: true,
-                    content: content.clone(),
-                    follow_up_prompt: build_follow_up_prompt(
-                        user_message,
-                        content,
-                        "update_user_profile".to_string(),
-                    ),
-                }
-            }
-            Err(e) => ToolResult {
-                error: format!("Database error updating profile: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
-        }
-    }
-
-    async fn log_expense(
-        &self,
-        params: tools_model::LogExpenseParameters,
-        user_message: String,
-    ) -> ToolResult {
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                return ToolResult {
-                    error: "User not authenticated".to_string(),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        if let None = self.conversation_id {
-            info!(
-                "Logging user {} to expense but conversation id is null",
-                user_id
-            );
-            return ToolResult {
-                error: "Conversation ID not found".to_string(),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            };
-        }
-
-        let expense_data = ExpenseData {
-            merchant: params.merchant,
-            total: params.total,
-            tax: params.tax,
-            service: params.service,
-            discount: params.discount,
-            items: params
-                .items
-                .into_iter()
-                .map(|i| ExpenseItem {
-                    name: i.name,
-                    quantity: i.quantity,
-                    amount: i.amount,
-                })
-                .collect(),
-            category: params.category,
-        };
-
-        match log_expense_transaction(
-            &self.pool,
-            user_id,
-            self.conversation_id,
-            &expense_data,
-        )
-        .await
-        {
-            Ok(_) => {
-                if let Some(cid) = self.conversation_id {
-                    let _ = crate::common::repository::message_repo::mark_last_media_processed(&self.pool, cid).await;
-                }
-                let content = format!(
-                    "Expense of {} at {} logged successfully under {}. Attached image linked and cleared from pending queue.",
-                    expense_data.total, expense_data.merchant, expense_data.category
-                );
-                ToolResult {
-                    error: "".to_string(),
-                    success: true,
-                    content: content.clone(),
-                    follow_up_prompt: build_follow_up_prompt(
-                        user_message,
-                        content,
-                        "log_expense".to_string(),
-                    ),
-                }
-            }
-            Err(e) => ToolResult {
-                error: format!("Failed to log expense: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
-        }
-    }
-
     async fn make_sticker(
         &self,
         params: MakeStickerParameters,
@@ -2182,69 +1663,6 @@ impl ToolDispatcher {
                 content,
                 "make_sticker".to_string(),
             ),
-        }
-    }
-
-    async fn send_direct_message(
-        &self,
-        params: SendDirectMessageParameters,
-        user_message: String,
-    ) -> ToolResult {
-        info!("Sending direct message to: {}", params.recipient_jid);
-
-        // We need to find a channel for the recipient to know where to send it.
-        // For simplicity, we'll pick the most recent channel for that user.
-        let channel_info = sqlx::query!(
-            "SELECT channel_type, external_id, external_chat_id FROM channels WHERE external_id = $1 OR user_id::text = $1 ORDER BY created_at DESC LIMIT 1",
-            params.recipient_jid
-        ).fetch_optional(&self.pool).await;
-
-        match channel_info {
-            Ok(Some(channel)) => {
-                let outbound = crate::feature::OutboundMessage {
-                    is_group: false,
-                    sender_id: channel.external_id.clone(),
-                    conversation_id: channel.external_chat_id.clone(),
-                    text: params.content.clone(),
-                    channel: channel.channel_type.clone(),
-                    video_url: None,
-                    image_url: None,
-                    audio_url: None,
-                    doc_url: None,
-                    sticker_url: None,
-                    metadata: None,
-                };
-
-                // Publish to Redis using the helper method or direct client
-                let _ = self.redis_publish_outbound(&outbound).await;
-
-                let content = format!(
-                    "Message sent to {}: {}",
-                    params.recipient_jid, params.content
-                );
-                ToolResult {
-                    error: "".to_string(),
-                    success: true,
-                    content: content.clone(),
-                    follow_up_prompt: build_follow_up_prompt(
-                        user_message,
-                        content,
-                        "send_direct_message".to_string(),
-                    ),
-                }
-            }
-            Ok(None) => ToolResult {
-                error: format!("No active channel found for user {}", params.recipient_jid),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
-            Err(e) => ToolResult {
-                error: format!("Database error looking up recipient: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
         }
     }
 
@@ -2455,284 +1873,6 @@ impl ToolDispatcher {
                 user_message,
                 content_json,
                 "analyze_media".to_string(),
-            ),
-        }
-    }
-
-    async fn get_expense_summary(
-        &self,
-        params: tools_model::GetExpenseSummaryParameters,
-        user_message: String,
-    ) -> ToolResult {
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                return ToolResult {
-                    error: "User not authenticated".to_string(),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        use chrono::Datelike;
-        let now_wib = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).unwrap());
-
-        let (start_date, end_date) = match params.period.as_str() {
-            "today" => {
-                let start = now_wib.date_naive().and_hms_opt(0, 0, 0).unwrap();
-                let end = now_wib.date_naive().and_hms_opt(23, 59, 59).unwrap();
-                (start, end)
-            },
-            "yesterday" => {
-                let yesterday = now_wib.date_naive() - chrono::Duration::days(1);
-                let start = yesterday.and_hms_opt(0, 0, 0).unwrap();
-                let end = yesterday.and_hms_opt(23, 59, 59).unwrap();
-                (start, end)
-            },
-            "last_7_days" => {
-                let start_date = now_wib.date_naive() - chrono::Duration::days(6);
-                let start = start_date.and_hms_opt(0, 0, 0).unwrap();
-                let end = now_wib.date_naive().and_hms_opt(23, 59, 59).unwrap();
-                (start, end)
-            },
-            "last_month" => {
-                let month = if now_wib.month() == 1 { 12 } else { now_wib.month() - 1 };
-                let year = if now_wib.month() == 1 { now_wib.year() - 1 } else { now_wib.year() };
-                let start = chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-                let next_month = if month == 12 { 1 } else { month + 1 };
-                let next_month_year = if month == 12 { year + 1 } else { year };
-                let end = chrono::NaiveDate::from_ymd_opt(next_month_year, next_month, 1).unwrap().and_hms_opt(0, 0, 0).unwrap() - chrono::Duration::seconds(1);
-                (start, end)
-            },
-            _ => { // "this_month" or fallback
-                let start = chrono::NaiveDate::from_ymd_opt(now_wib.year(), now_wib.month(), 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-                let end = now_wib.date_naive().and_hms_opt(23, 59, 59).unwrap();
-                (start, end)
-            }
-        };
-
-        let start_tz = start_date.and_local_timezone(chrono::FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
-        let end_tz = end_date.and_local_timezone(chrono::FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
-
-        let is_monthly = params.period == "this_month" || params.period == "last_month";
-        let mut total_expenses = 0.0;
-        let mut total_income = 0.0;
-        let mut summary_found = false;
-
-        if is_monthly {
-            let period_start_date = start_tz.date_naive();
-            if let Ok(Some(row)) = sqlx::query!(
-                "SELECT total_expenses, total_income FROM money_tracking_summary WHERE user_id = $1 AND period = $2",
-                user_id,
-                period_start_date
-            )
-                .fetch_optional(&self.pool)
-                .await
-            {
-                use rust_decimal::prelude::ToPrimitive;
-                total_expenses = row.total_expenses.unwrap_or_default().to_f64().unwrap_or(0.0);
-                total_income = row.total_income.unwrap_or_default().to_f64().unwrap_or(0.0);
-                summary_found = total_expenses > 0.0 || total_income > 0.0;
-            }
-        }
-
-        let mut top_category = None;
-        let mut trend_percentage = None;
-
-        if !summary_found {
-            // Fallback calculation
-            if let Ok(sum_row) = sqlx::query!(
-                "SELECT SUM(total_amount) as total_expenses
-                 FROM money_tracking
-                 WHERE user_id = $1 AND created_at >= $2 AND created_at <= $3",
-                user_id,
-                start_tz,
-                end_tz
-            )
-                .fetch_one(&self.pool)
-                .await
-            {
-                use rust_decimal::prelude::ToPrimitive;
-                total_expenses = sum_row.total_expenses.unwrap_or_default().to_f64().unwrap_or(0.0);
-
-                if total_expenses > 0.0 {
-                    let cat_row = sqlx::query!(
-                        "SELECT category
-                         FROM money_tracking
-                         WHERE user_id = $1 AND created_at >= $2 AND created_at <= $3
-                         GROUP BY category
-                         ORDER BY SUM(total_amount) DESC LIMIT 1",
-                        user_id,
-                        start_tz,
-                        end_tz
-                    )
-                        .fetch_optional(&self.pool)
-                        .await
-                        .unwrap_or(None);
-
-                    top_category = cat_row.and_then(|r| r.category);
-                }
-            }
-        }
-
-        // Calculate previous period for trend
-        let duration = end_tz.signed_duration_since(start_tz);
-        let actual_duration = duration + chrono::Duration::seconds(1);
-        let prev_end_tz = start_tz - chrono::Duration::seconds(1);
-        let prev_start_tz = start_tz - actual_duration;
-
-        if let Ok(prev_sum_row) = sqlx::query!(
-            "SELECT SUM(total_amount) as total_expenses
-             FROM money_tracking
-             WHERE user_id = $1 AND created_at >= $2 AND created_at <= $3",
-            user_id,
-            prev_start_tz,
-            prev_end_tz
-        )
-            .fetch_one(&self.pool)
-            .await
-        {
-            use rust_decimal::prelude::ToPrimitive;
-            let prev_total = prev_sum_row.total_expenses.unwrap_or_default().to_f64().unwrap_or(0.0);
-            if prev_total > 0.0 {
-                trend_percentage = Some(((total_expenses - prev_total) / prev_total) * 100.0);
-            }
-        }
-
-        if total_expenses == 0.0 {
-            return ToolResult {
-                error: "".to_string(),
-                success: true,
-                content: format!("Zero spending for {}! 💸✨", params.period),
-                follow_up_prompt: "".to_string(),
-            };
-        }
-
-        let json_result = json!({
-            "total_expenses": total_expenses,
-            "total_income": total_income,
-            "top_category": top_category,
-            "trend_percentage": trend_percentage
-        });
-
-        ToolResult {
-            error: "".to_string(),
-            success: true,
-            content: json_result.to_string(),
-            follow_up_prompt: build_follow_up_prompt(user_message, json_result.to_string(), "get_expense_summary".to_string()),
-        }
-    }
-    async fn get_transaction_details(
-        &self,
-        params: tools_model::GetTransactionDetailsParameters,
-        user_message: String,
-    ) -> ToolResult {
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                return ToolResult {
-                    error: "User not authenticated".to_string(),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        let now_wib = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).unwrap());
-        let date_str = params.date.clone().unwrap_or_else(|| "today".to_string());
-        
-        let target_date = match chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
-            Ok(d) => d,
-            Err(_) => {
-                if date_str.as_str() == "today" {
-                    now_wib.date_naive()
-                } else if date_str.as_str() == "yesterday" {
-                    now_wib.date_naive().pred_opt().unwrap_or(now_wib.date_naive())
-                } else {
-                    now_wib.date_naive()
-                }
-            }
-        };
-
-        let start_tz = target_date.and_hms_opt(0, 0, 0).unwrap()
-            .and_local_timezone(chrono::FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
-        let end_tz = target_date.and_hms_opt(23, 59, 59).unwrap()
-            .and_local_timezone(chrono::FixedOffset::east_opt(7 * 3600).unwrap()).unwrap();
-
-        let mut transactions = Vec::new();
-        let mut total_day_amount = 0.0;
-
-        let rows = sqlx::query!(
-            r#"
-            SELECT 
-                mt.id, 
-                mt.merchant_name, 
-                mt.total_amount, 
-                mt.category, 
-                mt.description, 
-                mt.created_at as "created_at!",
-                COALESCE(
-                    jsonb_agg(
-                        jsonb_build_object(
-                            'name', mti.name,
-                            'quantity', mti.quantity,
-                            'total_amount', mti.total_amount
-                        )
-                    ) FILTER (WHERE mti.id IS NOT NULL),
-                    '[]'::jsonb
-                ) as "items!"
-            FROM money_tracking mt
-            LEFT JOIN money_tracking_items mti ON mt.id = mti.money_tracking_id
-            WHERE mt.user_id = $1 AND mt.created_at >= $2 AND mt.created_at <= $3
-            GROUP BY mt.id
-            ORDER BY mt.created_at DESC
-            "#,
-            user_id,
-            start_tz,
-            end_tz
-        )
-        .fetch_all(&self.pool)
-        .await;
-
-        if let Ok(rows) = rows {
-            for row in rows {
-                use rust_decimal::prelude::ToPrimitive;
-                let amount = row.total_amount.to_f64().unwrap_or(0.0);
-                let created_at = row.created_at.with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).unwrap()).to_rfc3339();
-
-                total_day_amount += amount;
-
-                let items: Vec<tools_model::TransactionItem> = serde_json::from_value(row.items).unwrap_or_default();
-
-                transactions.push(tools_model::TransactionDetail {
-                    merchant_name: row.merchant_name,
-                    total_amount: amount,
-                    category: row.category,
-                    description: row.description,
-                    items,
-                    created_at,
-                });
-            }
-        }
-
-        let result = tools_model::GetTransactionDetailsResponse {
-            transactions,
-            total_amount: total_day_amount,
-        };
-
-        let content_json = serde_json::to_string_pretty(&result).unwrap_or_default();
-
-        ToolResult {
-            error: "".to_string(),
-            success: true,
-            content: content_json.clone(),
-            follow_up_prompt: build_follow_up_prompt(
-                user_message,
-                content_json,
-                "get_transaction_details".to_string(),
             ),
         }
     }

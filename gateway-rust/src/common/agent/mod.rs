@@ -11,6 +11,7 @@ use crate::prompts::PromptRegistry;
 use chrono::Utc;
 use gemini_rust::{
     Content, FunctionCall, FunctionCallingMode, GenerationResponse, Message, Role, UsageMetadata,
+    Tool,
 };
 use std::sync::Arc;
 use tokio_stream::StreamExt;
@@ -59,15 +60,24 @@ pub async fn send_prompt(
                         role: Some(Role::User),
                     },
                 });
-            if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
-                builder = builder
-                    .with_tool(dispatcher.generate_tool_for_prompt(intents))
-                    .with_function_calling_mode(FunctionCallingMode::Auto);
+
+            let tool = if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
+                dispatcher.generate_tool_for_prompt(intents)
             } else {
+                dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()])
+            };
+
+            let has_functions = match &tool {
+                Tool::Function { function_declarations } => !function_declarations.is_empty(),
+                _ => true, // Other tools like GoogleSearch are not empty functions
+            };
+
+            if has_functions {
                 builder = builder
-                    .with_tool(dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]))
+                    .with_tool(tool)
                     .with_function_calling_mode(FunctionCallingMode::Auto);
             }
+
             builder.with_max_output_tokens(4096)
         }
         PromptActor::MultiTool {
@@ -146,15 +156,23 @@ pub async fn send_prompt(
                 }
             }
 
-            if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
-                builder = builder
-                    .with_tool(dispatcher.generate_tool_for_prompt(intents))
-                    .with_function_calling_mode(FunctionCallingMode::Auto);
+            let tool = if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
+                dispatcher.generate_tool_for_prompt(intents)
             } else {
+                dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()])
+            };
+
+            let has_functions = match &tool {
+                Tool::Function { function_declarations } => !function_declarations.is_empty(),
+                _ => true,
+            };
+
+            if has_functions {
                 builder = builder
-                    .with_tool(dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]))
+                    .with_tool(tool)
                     .with_function_calling_mode(FunctionCallingMode::Auto);
             }
+
             builder.with_max_output_tokens(4096)
         }
     };

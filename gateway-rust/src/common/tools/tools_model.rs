@@ -52,26 +52,6 @@ pub struct ToolResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SearchWebParameters {
-    pub query: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SearchWebResponse {
-    pub content: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ReadWebPageParameters {
-    pub url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ReadWebPageResponse {
-    pub content: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UpdateConversationSoulParameters {
     pub new_soul: String,
     pub reason_for_change: String,
@@ -154,7 +134,11 @@ pub struct GetReminderStatsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchUsersParameters {
-    pub query: String,
+    pub query: Option<String>,
+    pub user_id: Option<String>,
+    pub name: Option<String>,
+    pub display_name: Option<String>,
+    pub email: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

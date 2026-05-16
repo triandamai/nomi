@@ -284,9 +284,25 @@ impl V2AgentOrchestrator {
                 || msg_lower.contains("find")
                 || msg_lower.contains("search")
                 || msg_lower.contains("save")
+                || msg_lower.contains("tell")
+                || msg_lower.contains("message")
             {
                 intents = vec!["FULL_REGISTRY".to_string()];
                 info!("Scout overridden: Fallback to FULL_REGISTRY due to keywords");
+            }
+        }
+
+        // Force FINANCE if money/spending keywords are present
+        if msg_lower.contains("spend")
+            || msg_lower.contains("expense")
+            || msg_lower.contains("money")
+            || msg_lower.contains("receipt")
+            || msg_lower.contains("finance")
+            || msg_lower.contains("transaction")
+        {
+            if !intents.contains(&"FINANCE".to_string()) {
+                intents.push("FINANCE".to_string());
+                info!("Scout overridden: Added FINANCE intent due to keywords");
             }
         }
 
@@ -314,6 +330,7 @@ impl V2AgentOrchestrator {
             state.gemini_api_key.clone(),
             state.sse.clone(),
             state.storage.clone(),
+            state.clone(),
         );
 
         if let None = self.conversation {
@@ -764,6 +781,7 @@ impl V2AgentOrchestrator {
             self.state.gemini_api_key.clone(),
             self.state.sse.clone(),
             self.state.storage.clone(),
+            self.state.clone(),
         );
 
         let build_system_prompt = || -> String {

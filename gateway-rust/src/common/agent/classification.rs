@@ -492,12 +492,16 @@ pub(crate) async fn classify_intent(
     let prompt = format!(
         "Analyze the user request and history. Classify into one or more categories: [FINANCE, VITALITY, STORAGE, REMINDER, WEB, DASHBOARD, COMMUNICATION, GENERAL]. If multiple apply, return them as a comma-separated list (e.g., REMINDER, WEB). Return ONLY the keywords.\n\n\
         Rules:\n\
-        1. If the user uses an imperative verb (Check, Log, Save, Find, Search) followed by a noun that relates to a tool (DMs, Expense, Health, File), it is NEVER General. Map it to the most relevant functional category.\n\
-        2. Explicit Mapping: 'DMs', 'Messages', 'Email', and 'Inbox' are explicitly linked to COMMUNICATION or WEB.\n\
+        1. If the user uses an imperative verb (Check, Log, Save, Find, Search, Summarize) followed by a noun that relates to a tool (DMs, Expense, Spending, Health, File), it is NEVER General. Map it to the most relevant functional category.\n\
+        2. Explicit Mapping:\n\
+           - 'DMs', 'Messages', 'Email', 'Inbox', 'Send Message' -> COMMUNICATION or WEB.\n\
+           - 'Spending', 'Expenses', 'Finance', 'Money', 'Receipt' -> FINANCE.\n\
         3. Examples:\n\
         User: \"nom check my dms\" -> COMMUNICATION\n\
         User: \"nom what's the news?\" -> WEB\n\
-        User: \"nom save this receipt\" -> FINANCE\n\n\
+        User: \"nom save this receipt\" -> FINANCE\n\
+        User: \"how much did I spend today?\" -> FINANCE\n\
+        User: \"send message to trian\" -> COMMUNICATION\n\n\
         History:\n{}\n\nUser Message: {}",
         history, user_msg
     );
