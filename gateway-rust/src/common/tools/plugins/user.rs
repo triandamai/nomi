@@ -142,8 +142,11 @@ impl UserPlugin {
             }
 
             if let Some(name) = args["name"].as_str() {
-                query_builder.push(" AND name ILIKE ");
+                query_builder.push(" AND (name ILIKE ");
                 query_builder.push_bind(format!("%{}%", name));
+                query_builder.push(" OR display_name ILIKE ");
+                query_builder.push_bind(format!("%{}%", name));
+                query_builder.push(")");
                 has_filter = true;
             }
 
@@ -168,6 +171,7 @@ impl UserPlugin {
                 };
             }
 
+        
             query_builder.push(" LIMIT 20");
             query_builder.build().fetch_all(&dispatcher.pool).await
         };
