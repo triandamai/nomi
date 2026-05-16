@@ -139,7 +139,7 @@
         sidebarStore.showUserMenu = false;
         popupStore.open({
             title: 'Transaction History',
-            width: 'w-full max-w-2xl h-screen',
+            width: 'w-full max-w-2xl h-[100dvh]',
             contentSnippet: moneyTrackingSnippet
         });
     }
@@ -148,7 +148,7 @@
         sidebarStore.showUserMenu = false;
         popupStore.open({
             title: 'Health & Vitality',
-            width: 'w-full max-w-2xl h-screen',
+            width: 'w-full max-w-2xl h-[100dvh]',
             contentSnippet: healthTrackingSnippet
         });
     }
@@ -158,7 +158,7 @@
         popupStore.open({
             title: 'Admin Monitor',
             headerSnippet: adminHeaderSnippet,
-            width: 'w-full max-w-2xl h-screen',
+            width: 'w-full max-w-2xl h-[100dvh]',
             contentSnippet: adminConversationsSnippet
         });
     }
@@ -168,7 +168,7 @@
         popupStore.open({
             title: 'User Directory',
             headerSnippet: userHeaderSnippet,
-            width: 'w-full max-w-2xl h-screen',
+            width: 'w-full max-w-2xl h-[100dvh]',
             contentSnippet: userDirectorySnippet
         });
     }
@@ -178,7 +178,7 @@
         popupStore.open({
             title: 'Redis Pub/Sub Test',
             headerSnippet: redisHeaderSnippet,
-            width: 'w-full max-w-md h-screen',
+            width: 'w-full max-w-md h-[100dvh]',
             contentSnippet: redisTestSnippet
         });
     }
@@ -686,7 +686,7 @@
     </div>
 {/snippet}
 
-<aside class="w-[72px] h-screen bg-[#0f172a] border-r border-slate-800 flex flex-col items-center py-3 gap-3">
+<aside class="w-[72px] h-[100dvh] bg-[#0f172a] border-r border-slate-800 flex flex-col items-center py-3 gap-3">
     <!-- Home / Logo -->
     <div class="mb-2">
         <a href="/"

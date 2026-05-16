@@ -68,7 +68,7 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
-<div class="dark flex h-screen bg-[--bg-main] text-[--text-main] font-sans selection:bg-zinc-800">
+<div class="dark flex h-[100dvh] bg-[--bg-main] text-[--text-main] font-sans selection:bg-zinc-800">
 	{#if page.url.pathname !== '/login' && page.url.pathname !== '/'}
 		<DiscordSidebar />
 		<div class="flex-1 flex flex-col relative overflow-hidden">

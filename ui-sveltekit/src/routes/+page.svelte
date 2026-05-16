@@ -169,7 +169,7 @@
     });
 </script>
 
-<div class="min-h-screen bg-[#0f172a] text-slate-200 font-sans selection:bg-blue-500/30">
+<div class="min-h-[100dvh] bg-[#0f172a] text-slate-200 font-sans selection:bg-blue-500/30">
     <!-- Sticky Header -->
     <header class="fixed top-0 w-full z-50 border-b border-slate-800/50 bg-[#0f172a]/80 backdrop-blur-md">
         <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">

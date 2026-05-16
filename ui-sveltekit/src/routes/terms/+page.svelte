@@ -50,7 +50,7 @@
     const t = $derived(content[locale]);
 </script>
 
-<div class="min-h-screen bg-[#0f172a] text-slate-200 font-sans p-6 md:p-12">
+<div class="min-h-[100dvh] bg-[#0f172a] text-slate-200 font-sans p-6 md:p-12">
     <div class="max-w-3xl mx-auto space-y-12" in:fly={{ y: 20, duration: 800 }}>
         <header class="flex items-center justify-between border-b border-slate-800 pb-8">
             <div class="flex items-center gap-4">

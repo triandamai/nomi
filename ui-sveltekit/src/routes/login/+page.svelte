@@ -46,7 +46,7 @@
     }
 </script>
 
-<div class="min-h-screen bg-[#0f172a] text-slate-200 font-sans selection:bg-blue-500/30 flex flex-col">
+<div class="min-h-[100dvh] bg-[#0f172a] text-slate-200 font-sans selection:bg-blue-500/30 flex flex-col">
     <!-- Header/Logo -->
     <header class="p-8">
         <a href="/" class="inline-flex items-center gap-2 group">
