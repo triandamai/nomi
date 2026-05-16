@@ -1,5 +1,5 @@
 use crate::common::agent::agent_model::{ExpenseData, MaintenanceData, MediaClassification};
-use crate::feature::UnifiedMessage;
+use crate::feature::{MessageSource, UnifiedMessage};
 use crate::prompts::{PromptRegistry, StatusRegistry};
 use crate::rag::classify_media_context;
 use crate::{AppState, rag};
@@ -36,7 +36,7 @@ pub async fn classification(
                 &state,
                 members.clone(),
                 conversation_id,
-                msg.source.clone(),
+                MessageSource::Web {name:"web".to_string()},
                 msg.is_group,
                 "tool_start".to_string(),
                 StatusRegistry::random_action_phrase("analyze_media"),

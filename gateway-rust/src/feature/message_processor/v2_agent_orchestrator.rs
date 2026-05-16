@@ -468,7 +468,7 @@ impl V2AgentOrchestrator {
                         .map(|v| v.clone())
                         .collect(),
                     conversation_id,
-                    msg.source.clone(),
+                    MessageSource::Web {name:"web".to_string()},
                     msg.is_group,
                     "thought".to_string(),
                     crate::prompts::StatusRegistry::random_thinking_phrase(),
@@ -598,7 +598,7 @@ impl V2AgentOrchestrator {
                                 .map(|v| v.clone())
                                 .collect(),
                             conversation_id,
-                            msg.source.clone(),
+                            MessageSource::Web {name:"web".to_string()},
                             msg.is_group,
                             "tool_start".to_string(),
                             crate::prompts::StatusRegistry::random_action_phrase(&call.name),

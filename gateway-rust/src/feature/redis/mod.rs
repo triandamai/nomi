@@ -207,7 +207,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         None => msg.sender_id.clone(),
         Some(meta) => meta
             .get("display_name")
-            .map_or_else(|| msg.sender_id.clone(), |v| v.to_string()),
+            .map_or_else(|| msg.sender_id.clone(), |v| v.as_str().unwrap_or("").to_string()),
     };
 
     let user_id = identity::resolve_identity(
