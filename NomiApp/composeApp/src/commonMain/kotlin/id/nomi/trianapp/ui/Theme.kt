@@ -14,20 +14,28 @@ import androidx.compose.ui.unit.sp
 val Slate950 = Color(0xFF020617) // Deepest background canvas
 val Slate900 = Color(0xFF0F172A) // Main surface card background (#0f172a)
 val Slate800 = Color(0xFF1E293B) // Border / stroke colors
+val Slate700 = Color(0xFF334155) // Darker border/surface
 val Slate400 = Color(0xFF94A3B8) // Muted text secondary color
+val Slate300 = Color(0xFFCBD5E1) // Secondary text
 val Slate100 = Color(0xFFF1F5F9) // Primary high-contrast text color
 
 val Emerald500 = Color(0xFF10B981) // Success accents / positive flows
 val AccentBlue = Color(0xFF38BDF8) // High-performance interactive elements
+val Indigo500 = Color(0xFF6366F1) // AI / Brand primary
+val Indigo400 = Color(0xFF818CF8) // Hover/Light states
 
 private val NomiColorScheme = darkColorScheme(
-    primary = AccentBlue,
-    secondary = Emerald500,
+    primary = Indigo500,
+    onPrimary = Color.White,
+    secondary = AccentBlue,
+    tertiary = Emerald500,
     background = Slate950,
     surface = Slate900,
+    surfaceVariant = Slate800,
     onBackground = Slate100,
     onSurface = Slate100,
-    outline = Slate800
+    onSurfaceVariant = Slate300,
+    outline = Slate700
 )
 
 // --- ✍️ TYPOGRAPHY CONFIGURATION ---
@@ -58,7 +66,7 @@ val NomiTypography = Typography(
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        color = Slate400
+        color = Slate300
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.Monospace, // Monospace accents for tracking codes/logs
