@@ -95,6 +95,7 @@ pub struct UnifiedMessage {
     pub is_group: bool,
     pub is_mentioned: bool,
     pub conversation_id: Uuid,
+    pub display_name: Option<String>,
     pub user_id: Option<Uuid>,
     pub text_content: String,
     pub image_url: Option<String>,

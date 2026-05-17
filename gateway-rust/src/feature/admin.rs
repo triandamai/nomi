@@ -583,6 +583,7 @@ pub async fn handle_outbound_redis(
     let outbound = MessageItem {
         id: Uuid::new_v4(),
         conversation_id,
+        display_name:None,
         role: req.role.clone(),
         content: req.content.clone(),
         total_tokens: None,

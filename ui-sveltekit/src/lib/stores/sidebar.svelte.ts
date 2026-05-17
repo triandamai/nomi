@@ -154,7 +154,7 @@ export function createSidebarStore() {
             try {
                 const data = await conversationStore.getChannels();
                 if (data.data) {
-                    channels = data.data;
+                    channels = data.data.channels;
                     if (data.data.channels)
                         isPaired = data.data.channels.some((c: any) => c.paired);
                 }

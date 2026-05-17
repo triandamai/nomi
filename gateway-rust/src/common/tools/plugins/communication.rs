@@ -94,6 +94,7 @@ impl NomiToolPlugin for CommunicationPlugin {
 
                     let message_item = crate::feature::conversation::model::MessageItem {
                         id: message_id,
+                        display_name:Some("Nomi".to_string()),
                         conversation_id: convo_id,
                         role: "assistant".to_string(),
                         content: content.to_string(),

@@ -18,6 +18,9 @@ pub struct OtpVerify {
 pub struct AuthResponse {
     pub access_token: String,
     pub user_id: String,
+    pub profile: Option<UserProfile>,
+    pub channels: Option<Vec<crate::feature::conversation::model::ChannelStatus>>,
+    pub conversations: Option<Vec<crate::feature::conversation::model::ConversationResponse>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

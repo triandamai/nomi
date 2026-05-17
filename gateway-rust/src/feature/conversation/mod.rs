@@ -1,7 +1,8 @@
 use crate::common::api_response::ApiResponse;
+use crate::common::identity::auth_model::{AuthResponse, UserProfile};
 use crate::feature::conversation::model::{
     ChannelStatus, ChatRequest, ChatStreamChunk, ConversationResponse, CreateConversationRequest,
-    MessageItem, MessageListParams, MessageListResponse, PairingResponse, RestoreSoulRequest,
+    MessageItem, MessageListParams, MessageListResponse, PairingRequest, PairingResponse, RestoreSoulRequest,
     RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest, UserChannelsResponse,
 };
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
@@ -9,6 +10,7 @@ use crate::models::Conversation;
 use crate::{AppState, common};
 use axum::Json;
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use chrono::Utc;
 use serde_json::{Value, json};
@@ -39,7 +41,7 @@ pub async fn handle_get_user_channels(
 
     match result {
         Ok(rows) => {
-            let platforms = vec!["telegram".to_string(), "whatsapp".to_string()];
+            let platforms = vec!["telegram".to_string(), "whatsapp".to_string(),"mobile".to_string()];
             let mut channels = Vec::new();
 
             let linked_platforms: std::collections::HashSet<String> =
@@ -77,6 +79,188 @@ pub async fn handle_create_pairing(
         Ok(pairing) => ApiResponse::ok(pairing, "Created pairing code"),
         Err(err) => ApiResponse::failed(err.to_string().as_str()),
     }
+}
+
+pub async fn handle_pairing_handshake(
+    State(state): State<AppState>,
+    Json(payload): Json<PairingRequest>,
+) -> impl IntoResponse {
+    let redis_key = format!("pairing:{}", payload.pairing_code);
+
+    let data_str = match state.redis.get(&redis_key).await {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ApiResponse::<AuthResponse>::failed(
+                    "Pairing code expired or invalid",
+                )),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            error!("Redis error: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::<AuthResponse>::failed("Server error")),
+            )
+                .into_response();
+        }
+    };
+
+    let (user_id, _conv_id) = match serde_json::from_str::<Value>(&data_str) {
+        Ok(v) => {
+            let uid = v["user_id"].as_str().and_then(|s| Uuid::parse_str(s).ok());
+            let cid = v["conversation_id"]
+                .as_str()
+                .and_then(|s| Uuid::parse_str(s).ok());
+            match (uid, cid) {
+                (Some(u), Some(c)) => (u, c),
+                _ => {
+                    // Fallback for old simple string format if any
+                    if let Ok(u) = Uuid::parse_str(&data_str) {
+                        (u, Uuid::nil())
+                    } else {
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(ApiResponse::<AuthResponse>::failed("Invalid user data")),
+                        )
+                            .into_response();
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            // Fallback for old simple string format
+            if let Ok(u) = Uuid::parse_str(&data_str) {
+                (u, Uuid::nil())
+            } else {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiResponse::<AuthResponse>::failed("Invalid user data")),
+                )
+                    .into_response();
+            }
+        }
+    };
+
+    // Single-use token: delete immediately
+    let _ = state.redis.del(&redis_key).await;
+
+    // Issue JWT
+    let user_row = match sqlx::query!("SELECT id, role, display_name FROM users WHERE id = $1", user_id)
+        .fetch_one(&state.pool)
+        .await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            error!("Database error: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::<AuthResponse>::failed("User not found")),
+            )
+                .into_response();
+        }
+    };
+
+    let expiration = Utc::now()
+        .checked_add_signed(chrono::Duration::days(30)) // Mobile usually longer session
+        .expect("valid timestamp")
+        .timestamp() as usize;
+
+    let claims = auth::Claims {
+        sub: user_id.to_string(),
+        role: user_row.role.clone().unwrap_or_else(|| "user".to_string()),
+        exp: expiration,
+    };
+
+    let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "secret".to_string());
+    let token = match jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(jwt_secret.as_ref()),
+    ) {
+        Ok(t) => t,
+        Err(e) => {
+            error!("JWT encoding error: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::<AuthResponse>::failed("Token generation error")),
+            )
+                .into_response();
+        }
+    };
+
+    // Fetch Profile
+    let profile = UserProfile {
+        id: user_id.to_string(),
+        display_name: user_row.display_name,
+        avatar_url: None,
+        role: user_row.role,
+    };
+
+    // Fetch Channels
+    let channel_rows = sqlx::query!(
+        "SELECT DISTINCT channel_type FROM channels WHERE user_id = $1",
+        user_id
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let platforms = vec!["telegram".to_string(), "whatsapp".to_string()];
+    let linked_platforms: std::collections::HashSet<String> =
+        channel_rows.into_iter().map(|r| r.channel_type).collect();
+
+    let channels = platforms
+        .into_iter()
+        .map(|p| ChannelStatus {
+            paired: linked_platforms.contains(&p),
+            platform: p,
+        })
+        .collect::<Vec<_>>();
+
+    // Fetch Conversations
+    let conv_rows = sqlx::query!(
+        r#"
+        SELECT c.id, c.title, c.created_at, c.updated_at, c.cumulative_tokens
+        FROM conversations c
+        INNER JOIN conversation_members cm ON c.id = cm.conversation_id
+        WHERE cm.user_id = $1
+        ORDER BY c.updated_at DESC
+        LIMIT 50
+        "#,
+        user_id
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let conversations = conv_rows
+        .into_iter()
+        .map(|row| ConversationResponse {
+            id: row.id,
+            cumulative_tokens: row.cumulative_tokens,
+            name: row.title.unwrap_or_default(),
+            created_at: row.created_at.unwrap_or_else(Utc::now),
+            updated_at: row.updated_at.unwrap_or_else(Utc::now),
+        })
+        .collect::<Vec<_>>();
+
+    (
+        StatusCode::OK,
+        Json(ApiResponse::ok(
+            AuthResponse {
+                access_token: token,
+                user_id: user_id.to_string(),
+                profile: Some(profile),
+                channels: Some(channels),
+                conversations: Some(conversations),
+            },
+            "Pairing successful",
+        )),
+    )
+        .into_response()
 }
 
 pub async fn handle_get_messages(
@@ -124,24 +308,26 @@ pub async fn handle_get_messages(
     let messages_result = sqlx::query_as!(
         MessageItem,
         r#"
-        SELECT id,
-               conversation_id as "conversation_id!",
-               role,
-               content,
-               thought,
-               user_id,
-               created_at as "created_at!",
-               total_tokens,
-               answer_tokens,
-               prompt_tokens,
-               image_url,
-               video_url,
-               audio_url,
-               document_url,
-               sticker_url
-        FROM messages
-        WHERE conversation_id = $1 AND created_at < $2
-        ORDER BY created_at DESC
+        SELECT m.id,
+               m.conversation_id as "conversation_id!",
+               u.display_name,
+               m.role,
+               m.content,
+               m.thought,
+               m.user_id,
+               m.created_at as "created_at!",
+               m.total_tokens,
+               m.answer_tokens,
+               m.prompt_tokens,
+               m.image_url,
+               m.video_url,
+               m.audio_url,
+               m.document_url,
+               m.sticker_url
+        FROM messages as m
+        LEFT JOIN users AS u ON u.id = m.user_id
+        WHERE m.conversation_id = $1 AND m.created_at < $2
+        ORDER BY m.created_at DESC
         LIMIT $3
         "#,
         conversation_id,
@@ -733,6 +919,7 @@ pub async fn handle_chat_stream(
         let unified_msg = UnifiedMessage {
             is_group: false,
             is_mentioned: false,
+            display_name:Some(conv_info.title.clone().unwrap()),
             conversation_id,
             user_id,
             text_content: user_message,

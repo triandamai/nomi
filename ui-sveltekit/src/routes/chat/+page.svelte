@@ -14,7 +14,7 @@
         Loader2,
         Wrench
     } from 'lucide-svelte';
-    import {chatStore} from '$lib/stores/chat.svelte';
+    import {chatStore, type Message} from '$lib/stores/chat.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
     import {chatApi} from '$lib/api/client';
     import {formatTokenCount, formatDate} from '$lib/utils';
@@ -163,7 +163,7 @@
 
         })
         eventBus.emit("load", {})
-        afterNavigate(()=>{
+        afterNavigate(() => {
             chatStore.fetchMessages(false).finally(() => {
                 console.log("finish load messages")
             })
@@ -250,7 +250,7 @@
             </div>
         </div>
     {:else}
-        <div class="max-w-4xl mx-auto space-y-10">
+        <div class="max-w-4xl mx-auto space-y-1">
             {#if chatStore.hasMore}
                 <div class="flex justify-center">
                     <button
@@ -264,35 +264,41 @@
             {/if}
 
             {#each chatStore.messages as msg, index (msg.id)}
-                <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {@const prevMessage: Message | undefined | null = chatStore.messages[index - 1]}
+                <div class="group flex gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 {msg.user_id !== prevMessage?.user_id ? 'mt-10':'mt-0'}">
                     <div class="flex-shrink-0 pt-1">
-                        {#if msg.role === 'user'}
+                        {#if (msg.role === 'user' && msg.user_id !== prevMessage?.user_id)}
                             <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
                                 <User class="w-4 h-4 text-slate-950"/>
                             </div>
-                        {:else}
+                        {:else if msg.role === 'assistant' || msg.role === 'system'}
                             <div class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center">
                                 <Bot class="w-4 h-4 text-slate-400"/>
                             </div>
+                        {:else}
+                            <div class="w-8 h-8 rounded-lg bg-transparent flex items-center justify-center"></div>
                         {/if}
                     </div>
 
                     <div class="flex-1 flex flex-col min-w-0 space-y-4">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-2">
+                        {#if (msg.user_id !== prevMessage?.user_id)}
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
                                 <span class="text-xs font-bold uppercase tracking-wider {msg.role === 'user' ? 'text-slate-300' : 'text-blue-400'}">
-                                    {msg.role === 'user' ? 'Human' : 'Nomi'}
+                                    {msg.role === 'user' ? msg.display_name ?? 'Human' : 'Nomi'}
                                 </span>
-                                {#if msg.role !== 'user'}
-                                    <span class="font-mono text-[10px] text-slate-500">- {formatTokenCount(msg.total_tokens)} Token</span>
-                                {/if}
-                            </div>
-                            {#if msg.created_at}
+                                    {#if msg.role !== 'user'}
+                                    <span class="font-mono text-[10px] text-slate-500">- {formatTokenCount(msg.total_tokens)}
+                                        Token</span>
+                                    {/if}
+                                </div>
+                                {#if msg.created_at}
                                 <span class="text-[10px] font-mono text-slate-500 uppercase tracking-tight">
                                     {formatDate(msg.created_at)}
                                 </span>
-                            {/if}
-                        </div>
+                                {/if}
+                            </div>
+                        {/if}
 
                         {#if msg.toolCalls && msg.toolCalls.length > 0}
                             <div class="space-y-3">
@@ -306,7 +312,6 @@
                                 content={msg.content}
                                 thought={msg.thought}
                                 image_url={msg.image_url}
-                                created_at={msg.created_at}
                                 onToggleThought={(expanded: boolean) => handleToggleThought(expanded, index === chatStore.messages.length - 1)}
                         />
                     </div>

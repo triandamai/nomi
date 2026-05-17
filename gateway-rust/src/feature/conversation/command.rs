@@ -136,15 +136,63 @@ pub async fn process_pairing(
     let parts: Vec<&str> = text.split_whitespace().collect();
     if parts.len() >= 2 {
         let code = parts[1].to_uppercase();
-        if let Some(conv_id) = pairing_repo::validate_pairing_code(&state.pool, &code).await? {
-            let display_name = match msg.metadata.clone() {
-                None => None,
-                Some(meta) => meta
-                    .get("display_name")
-                    .map_or_else(|| None, |v| Some(v.to_string())),
-            };
 
-            pairing_repo::complete_pairing(&state.pool, &code, user_id).await?;
+        let redis_key = format!("pairing:{}", code);
+        let target_user_id_str = match state.redis.get(&redis_key).await {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                let _ = send_message(
+                    state,
+                    msg,
+                    "Pairing code expired or invalid. Please generate a new one.".to_string(),
+                    msg.metadata.clone(),
+                )
+                .await;
+                return Ok(());
+            }
+            Err(e) => {
+                error!("Redis error: {}", e);
+                return Ok(());
+            }
+        };
+
+        let (target_user_id, conv_id) = match serde_json::from_str::<serde_json::Value>(&target_user_id_str) {
+            Ok(v) => {
+                let uid = v["user_id"].as_str().and_then(|s| Uuid::parse_str(s).ok());
+                let cid = v["conversation_id"]
+                    .as_str()
+                    .and_then(|s| Uuid::parse_str(s).ok());
+                match (uid, cid) {
+                    (Some(u), Some(c)) => (u, c),
+                    _ => {
+                        if let Ok(u) = Uuid::parse_str(&target_user_id_str) {
+                            (u, Uuid::nil())
+                        } else {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                if let Ok(u) = Uuid::parse_str(&target_user_id_str) {
+                    (u, Uuid::nil())
+                } else {
+                    return Ok(());
+                }
+            }
+        };
+
+        // Single-use token: delete immediately
+        let _ = state.redis.del(&redis_key).await;
+
+        let display_name = match msg.metadata.clone() {
+            None => None,
+            Some(meta) => meta
+                .get("display_name")
+                .map_or_else(|| None, |v| Some(v.to_string())),
+        };
+
+        if !conv_id.is_nil() {
             channel_repo::link_channel(
                 &state.pool,
                 &msg.channel,
@@ -155,35 +203,36 @@ pub async fn process_pairing(
                 display_name,
             )
             .await?;
-
-            let _ = state
-                .send_to_user(
-                    user_id.to_string().as_str(),
-                    "pairing_success",
-                    json!({
-                        "conversation_id": conv_id,
-                        "platform": msg.channel,
-                        "message": format!("Successfully paired with {}!", msg.channel)
-                    }),
-                    &OutboundMessage {
-                        is_group: msg.is_group,
-                        sender_id: msg.sender_id.clone(),
-                        conversation_id: msg.conversation_id.clone(),
-                        text: "Pairing successful! This conversation is now linked.".to_string(),
-                        channel: msg.channel.clone(),
-                        video_url: None,
-                        image_url: None,
-                        audio_url: None,
-                        doc_url: None,
-                        sticker_url: None,
-                        metadata: msg.metadata.clone(),
-                    },
-                )
-                .await;
-
-            return Ok(());
         }
+
+        let _ = state
+            .send_to_user(
+                target_user_id.to_string().as_str(),
+                "pairing_success",
+                json!({
+                    "conversation_id": conv_id,
+                    "platform": msg.channel,
+                    "message": format!("Successfully paired with {}!", msg.channel)
+                }),
+                &OutboundMessage {
+                    is_group: msg.is_group,
+                    sender_id: msg.sender_id.clone(),
+                    conversation_id: msg.conversation_id.clone(),
+                    text: "Pairing successful! This conversation is now linked.".to_string(),
+                    channel: msg.channel.clone(),
+                    video_url: None,
+                    image_url: None,
+                    audio_url: None,
+                    doc_url: None,
+                    sticker_url: None,
+                    metadata: msg.metadata.clone(),
+                },
+            )
+            .await;
+
+        return Ok(());
     }
+
     Ok(())
 }
 

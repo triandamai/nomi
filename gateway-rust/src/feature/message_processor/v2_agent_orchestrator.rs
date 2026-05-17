@@ -89,11 +89,12 @@ impl V2AgentOrchestrator {
             return Ok(());
         }
 
-        let saved_message = save_user_message?;
+        let mut saved_message = save_user_message?;
 
         //notify message incoming
         for member in self.conversation_member_ids.iter() {
             info!("notify user message saved :{}", member);
+            saved_message.display_name = Some(msg.display_name.clone().unwrap());
             let _ = state
                 .send_sse_to_user(
                     member.to_string().as_str(),
@@ -663,7 +664,7 @@ impl V2AgentOrchestrator {
                 .trim()
                 .to_string();
 
-            if let Ok(record) = save_message(
+            if let Ok(mut record) = save_message(
                 &state.pool,
                 conversation_id,
                 "assistant",
@@ -681,6 +682,7 @@ impl V2AgentOrchestrator {
             )
             .await
             {
+
 
                 let _ = send_message_to_subscriber(
                     &state,

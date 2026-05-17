@@ -303,6 +303,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         let unified_msg = UnifiedMessage {
             is_group: msg.is_group,
             is_mentioned: msg.is_mentioned,
+            display_name:Some(display_name),
             conversation_id,
             user_id: Some(user_id.id.clone()),
             text_content: user_text,

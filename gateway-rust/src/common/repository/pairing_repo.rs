@@ -7,6 +7,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 use crate::AppState;
 use crate::feature::conversation::model::PairingResponse;
+use serde_json::json;
 
 pub async fn validate_pairing_code(
     pool: &PgPool,
@@ -41,62 +42,65 @@ pub async fn complete_pairing(
 
 
 pub async fn create_pairing_code(
-    state:&AppState,
+    state: &AppState,
     conversation_id: Uuid,
     user_id: Uuid,
-)->anyhow::Result<PairingResponse>{
-
-
+) -> anyhow::Result<PairingResponse> {
     // Verify membership
     let membership = sqlx::query!(
         "SELECT 1 as one FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
         conversation_id,
         user_id
     )
-        .fetch_optional(&state.pool)
-        .await;
+    .fetch_optional(&state.pool)
+    .await;
 
     match membership {
         Ok(Some(_)) => (),
         Ok(None) => {
             error!("User is not membership");
-            return Err(anyhow!("User is not membership"))
-        },
+            return Err(anyhow!("User is not membership"));
+        }
         Err(e) => {
             error!("Failed to verify membership: {}", e);
             return Err(anyhow!("Failed to verify membership"));
         }
     }
 
-    // Generate a random 6-character alphanumeric code
-    let pairing_code: String = rng()
+    // Generate a secure 6-digit code string formatted as XXX-XXX
+    let code_part1: String = rng()
         .sample_iter(&Alphanumeric)
-        .take(6)
+        .take(3)
         .map(char::from)
         .collect::<String>()
         .to_uppercase();
 
-    let expires_at = Utc::now() + chrono::Duration::minutes(10);
+    let code_part2: String = rng()
+        .sample_iter(&Alphanumeric)
+        .take(3)
+        .map(char::from)
+        .collect::<String>()
+        .to_uppercase();
 
-    match sqlx::query!(
-        "INSERT INTO pairing_rooms (conversation_id, pairing_code, expires_at) VALUES ($1, $2, $3) RETURNING pairing_code, expires_at",
-        conversation_id,
+    let pairing_code = format!("{}-{}", code_part1, code_part2);
+    let expires_at = Utc::now() + chrono::Duration::minutes(5);
+
+    // Save to Redis with 5-minute TTL
+    let redis_key = format!("pairing:{}", pairing_code);
+    let payload = json!({
+        "user_id": user_id,
+        "conversation_id": conversation_id
+    });
+    
+    state
+        .redis
+        .set_ex(&redis_key, &payload.to_string(), 300)
+        .await?;
+
+    info!("Created Redis-backed pairing code: {}", pairing_code);
+
+    Ok(PairingResponse {
         pairing_code,
-        expires_at
-    )
-        .fetch_one(&state.pool)
-        .await
-    {
-        Ok(row) => {
-            info!("Created pairing code");
-            Ok(PairingResponse {
-                pairing_code: row.pairing_code,
-                expires_at: row.expires_at.unwrap_or(expires_at),
-            })
-        },
-        Err(e) => {
-            error!("Failed to create pairing room: {}", e);
-            Err(anyhow!("Failed to create pairing room"))
-        }
-    }
+        expires_at,
+    })
 }

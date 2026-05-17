@@ -3,7 +3,7 @@ use crate::common::api_response::ApiResponse;
 use crate::common::identity::middleware::auth_middleware;
 use crate::feature::conversation::{
     auth::{handle_get_profile, handle_logout, handle_request_otp, handle_verify_otp},
-    handle_chat_stream, handle_create_conversation, handle_create_pairing,
+    handle_chat_stream, handle_create_conversation, handle_create_pairing, handle_pairing_handshake,
     handle_delete_conversation, handle_get_conversations, handle_get_file, handle_get_messages,
     handle_get_path_file, handle_get_soul_history, handle_get_user_channels,
     handle_restore_conversation_soul, handle_update_conversation, handle_upload_file,
@@ -142,6 +142,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/auth/request-otp", post(handle_request_otp))
         .route("/auth/verify-otp", post(handle_verify_otp))
+        .route("/auth/pair", post(handle_pairing_handshake))
         .route("/waitlist", post(handle_waitlist))
         .route("/realtime", get(register_public_sse))
         .route("/files/{filename}", get(handle_get_file))

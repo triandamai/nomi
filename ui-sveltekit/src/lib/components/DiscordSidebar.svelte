@@ -465,38 +465,67 @@
 
 {#snippet pairingContent()}
     <div class="space-y-6 py-2">
-        <div class="bg-slate-950 border border-slate-800 rounded-3xl p-8 flex flex-col items-center gap-6">
-            <p class="text-[10px] text-slate-500 uppercase font-black tracking-[0.2em]">Internal Pairing Code</p>
-            <div class="text-5xl font-black text-blue-400 tracking-[0.3em] font-mono">
-                {sidebarStore.pairingCode}
+        {#if ['telegram','whatsapp','mobile'].includes(sidebarStore.currentPlatform)}
+            <div class="bg-slate-950 border border-slate-800 rounded-3xl p-8 flex flex-col items-center gap-6">
+                <p class="text-[10px] text-slate-500 uppercase font-black tracking-[0.2em]">Internal Pairing Code</p>
+                <div class="text-5xl font-black text-blue-400 tracking-[0.3em] font-mono">
+                    {sidebarStore.pairingCode}
+                </div>
+                <button
+                        onclick={() => sidebarStore.copyToClipboard()}
+                        class="flex items-center gap-2 px-6 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs text-slate-300 transition-all active:scale-95"
+                >
+                    {#if sidebarStore.copied}
+                        <Check size={14} class="text-blue-400"/>
+                        <span class="text-blue-400">Copied!</span>
+                    {:else}
+                        <Copy size={14}/>
+                        <span>Copy Code</span>
+                    {/if}
+                </button>
             </div>
-            <button
-                    onclick={() => sidebarStore.copyToClipboard()}
-                    class="flex items-center gap-2 px-6 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs text-slate-300 transition-all active:scale-95"
-            >
-                {#if sidebarStore.copied}
-                    <Check size={14} class="text-blue-400"/>
-                    <span class="text-blue-400">Copied!</span>
-                {:else}
-                    <Copy size={14}/>
-                    <span>Copy Code</span>
-                {/if}
-            </button>
-        </div>
+            {/if}
 
         <div class="space-y-4">
             <p class="text-[10px] text-slate-500 font-black uppercase tracking-widest">Instructions</p>
             <ol class="text-sm text-slate-400 space-y-3 list-decimal list-inside">
                 {#if sidebarStore.currentPlatform === 'telegram'}
-                    <li>Open <a href="https://t.me/ArtaOpenAgentBot" target="_blank"
-                                class="text-blue-400 hover:underline">@ArtaOpenAgentBot</a></li>
+                    <li>Open
+                        <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-blue-400 hover:underline">
+                            @Nomi
+                        </a>
+                    </li>
+                    <li>Open our bot on Telegram</li>
+                    <li>Send the command:
+                        <code class="bg-slate-950 px-2 py-1 rounded text-blue-400 font-mono text-xs border border-slate-800">/pair {sidebarStore.pairingCode}</code>
+                    </li>
+                    <li>Wait for automated soul linking</li>
+                {:else if sidebarStore.currentPlatform === 'whatsapp'}
+                    <li>Install
+                        <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-blue-400 hover:underline">
+                            @Nomi
+                        </a>
+                    </li>
+                    <li>Open our bot on Whatsapp</li>
+                    <li>Input the code in Login Page:
+                        <code class="bg-slate-950 px-2 py-1 rounded text-blue-400 font-mono text-xs border border-slate-800">/pair {sidebarStore.pairingCode}</code>
+                    </li>
+                    <li>Wait for automated soul linking</li>
+                {:else if sidebarStore.currentPlatform === 'mobile'}
+                    <li>Open
+                        <a href="https://t.me/ArtaOpenAgentBot" target="_blank" class="text-blue-400 hover:underline">
+                            @ArtaOpenAgentBot
+                        </a>
+                    </li>
+                    <li>Open our Mobile App</li>
+                    <li>Input the code in Login Page:
+                        <code class="bg-slate-950 px-2 py-1 rounded text-blue-400 font-mono text-xs border border-slate-800">{sidebarStore.pairingCode}</code>
+                    </li>
+                    <li>Wait for automated soul linking</li>
                 {:else}
-                    <li>Open our bot on WhatsApp</li>
+                    <li>Not Supported Yet</li>
                 {/if}
-                <li>Send the command: <code
-                        class="bg-slate-950 px-2 py-1 rounded text-blue-400 font-mono text-xs border border-slate-800">/pair {sidebarStore.pairingCode}</code>
-                </li>
-                <li>Wait for automated soul linking</li>
+
             </ol>
         </div>
     </div>

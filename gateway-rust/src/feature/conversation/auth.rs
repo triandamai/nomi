@@ -171,6 +171,9 @@ pub async fn handle_verify_otp(
         Json(ApiResponse::ok(AuthResponse {
             access_token: token,
             user_id: user_id.to_string(),
+            profile: None,
+            channels: None,
+            conversations: None,
         }, "Login successful"))
     )
 }

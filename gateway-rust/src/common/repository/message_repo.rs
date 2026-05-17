@@ -110,6 +110,7 @@ pub async fn save_message(
             Ok(MessageItem {
                 id: row.id,
                 conversation_id,
+                display_name:None,
                 role: role.to_string(),
                 content: content.to_string(),
                 thought: thought.map(|s| s.to_string()),

@@ -22,7 +22,7 @@ pub struct CreateConversationRequest {
     pub conversation_type: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ConversationResponse {
     pub id: Uuid,
     pub name: String,
@@ -61,6 +61,7 @@ pub struct SoulHistoryResponse {
 pub struct MessageItem {
     pub id: Uuid,
     pub conversation_id: Uuid,
+    pub display_name: Option<String>,
     pub role: String,
     pub content: String,
     pub total_tokens: Option<i32>,
@@ -83,6 +84,7 @@ impl MessageItem {
             "conversation_id":self.conversation_id,
             "role": self.role,
             "content": self.content.clone(),
+            "display_name": self.display_name,
             "thought": self.thought,
             "user_id": self.user_id,
             "total_tokens": token,
@@ -114,7 +116,12 @@ pub struct PairingResponse {
     pub expires_at: DateTime<Utc>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Debug)]
+pub struct PairingRequest {
+    pub pairing_code: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ChannelStatus {
     pub paired: bool,
     pub platform: String,
