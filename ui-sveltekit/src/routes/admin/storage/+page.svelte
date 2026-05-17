@@ -20,6 +20,7 @@
         Download
     } from 'lucide-svelte';
     import {env} from '$env/dynamic/public';
+    import toast from 'svelte-french-toast';
 
     const BASE_URL = env.PUBLIC_GATEWAY_URL || 'http://localhost:8000/api';
     const FILE_URL = BASE_URL.replace('/api', '') + '/api/files';
@@ -103,8 +104,9 @@
             await chatApi.deleteStorage(item.full_path);
             popupStore.closeLast();
             loadData(currentPath);
+            toast.success('File deleted successfully');
         } catch (e: any) {
-            alert('Failed to delete file: ' + e.message);
+            toast.error('Failed to delete file: ' + e.message);
         }
     }
 
@@ -112,7 +114,7 @@
         const input = e.target as HTMLInputElement;
         if (!input.files?.length) return;
         if (!currentPath) {
-            alert('Please enter a bucket first');
+            toast.error('Please enter a bucket first');
             return;
         }
 
@@ -122,8 +124,9 @@
                 await chatApi.uploadToStorage(file, currentPath);
             }
             loadData(currentPath);
+            toast.success('Upload successful');
         } catch (e: any) {
-            alert('Upload failed: ' + e.message);
+            toast.error('Upload failed: ' + e.message);
         } finally {
             uploading = false;
             input.value = '';

@@ -3,6 +3,7 @@
     import { slide, fly } from 'svelte/transition';
     import { History, ChevronDown, ChevronUp, RotateCcw } from 'lucide-svelte';
     import { soulStore } from '$lib/stores/soul.svelte';
+    import toast from 'svelte-french-toast';
 
     interface Props {
         conversationId: string;
@@ -19,8 +20,9 @@
     async function restoreVersion(version: number) {
         try {
             await soulStore.restoreVersion(conversationId, version);
+            toast.success('Soul restored successfully');
         } catch (e: any) {
-            alert(e.message || 'Failed to restore soul');
+            toast.error(e.message || 'Failed to restore soul');
         }
     }
 

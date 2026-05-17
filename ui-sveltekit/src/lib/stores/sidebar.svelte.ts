@@ -2,6 +2,7 @@ import {chatApi} from '$lib/api/client';
 import {conversationStore, type Conversation} from './conversation.svelte';
 import {popupStore} from './popup.svelte';
 import {eventBus} from '$lib/utils';
+import toast from 'svelte-french-toast';
 
 export function createSidebarStore() {
     let showUserMenu = $state(false);
@@ -103,6 +104,11 @@ export function createSidebarStore() {
                     isPaired = true;
                     this.checkPairingStatus();
                     popupStore.closeLast();
+                    toast.success(data.message || 'Successfully paired!', {
+                        duration: 4000,
+                        position: 'top-right',
+                        style: 'background: #1e1e1e; color: #fff; border: 1px solid #333;'
+                    });
                 }
             });
         },

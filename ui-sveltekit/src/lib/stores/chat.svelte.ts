@@ -1,6 +1,7 @@
 import {type ApiResponse, chatApi} from '$lib/api/client';
 import {eventBus} from '$lib/utils';
 import {conversationStore, getPersistConversationId} from "$lib/stores/conversation.svelte";
+import toast from 'svelte-french-toast';
 
 export type Message = {
     role: 'user' | 'assistant' | 'system';
@@ -28,6 +29,17 @@ function createChatStore() {
 
     // Subscribe to SSE events via EventBus
     eventBus.subscribe('sse-message', (data) => {
+        // Only process message if it belongs to the current active conversation
+        if (data.conversation_id && data.conversation_id !== conversationStore.activeConversationId) {
+            // Show alert/notification for message from another conversation
+            toast.success(`New message in another conversation: ${data.content.substring(0, 50)}${data.content.length > 50 ? '...' : ''}`, {
+                duration: 5000,
+                position: 'top-right',
+                style: 'background: #1e1e1e; color: #fff; border: 1px solid #333;'
+            });
+            return;
+        }
+
         if (data.id) {
             const find = messages.findIndex(v => v.id == data.id)
             if (find >= 0) {
@@ -62,6 +74,10 @@ function createChatStore() {
     });
 
     eventBus.subscribe('sse-thought', (data) => {
+        if (data.conversation_id && data.conversation_id !== conversationStore.activeConversationId) {
+            // Show alert/notification for message from another conversation
+            return;
+        }
         if (data.thought) {
             currentThought += data.thought;
         } else if (data.text) {
@@ -71,24 +87,48 @@ function createChatStore() {
     });
 
     eventBus.subscribe('sse-tool_start', (data) => {
+        if (data.conversation_id && data.conversation_id !== conversationStore.activeConversationId) {
+            // Show alert/notification for message from another conversation
+            return;
+        }
         if (data.name) {
             activeTool = data.name;
         }
     });
 
     eventBus.subscribe('sse-tool_end', (data) => {
+        if (data.conversation_id && data.conversation_id !== conversationStore.activeConversationId) {
+            // Show alert/notification for message from another conversation
+            return;
+        }
         activeTool = null;
     });
 
     eventBus.subscribe('sse-presence', (data) => {
-        if (data.user_id === 'nomi') {
+        if (data.conversation_id && data.conversation_id !== conversationStore.activeConversationId) {
+            // Show alert/notification for message from another conversation
+            return;
+        }
+        if (data.user_id === 'nomi' || data.user_id === 'nomi-auth' || data.user_id === 'system' || data.user_id === 'assistant') {
             isTyping = data.is_typing;
         }
     });
 
     eventBus.subscribe('sse-evolution', (data) => {
         // Show notification to user
-        alert(data.message || "Nomi has updated her core instructions to better suit your needs. ✨");
+        toast.success(data.message || "Nomi has updated her core instructions to better suit your needs. ✨", {
+            duration: 6000,
+            position: 'bottom-right',
+            style: 'background: #1e1e1e; color: #fff; border: 1px solid #333;'
+        });
+    });
+
+    eventBus.subscribe('token-limit-reached', (message) => {
+        toast.error(message || "Token limit reached for this conversation.", {
+            duration: 5000,
+            position: 'top-center',
+            style: 'background: #7f1d1d; color: #fff; border: 1px solid #991b1b;'
+        });
     });
 
     return {

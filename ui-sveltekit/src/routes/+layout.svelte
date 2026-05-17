@@ -12,6 +12,7 @@
 	import { page } from '$app/state';
 	import {eventBus} from "$lib/utils";
 	import {getSession} from "$lib/stores/profile.svelte";
+	import { Toaster } from 'svelte-french-toast';
 
 	let { children } = $props();
 
@@ -85,3 +86,5 @@
 {#if page.url.pathname !== '/login'}
 	<PopupManager />
 {/if}
+
+<Toaster />
