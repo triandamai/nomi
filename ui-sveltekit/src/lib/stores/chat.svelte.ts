@@ -1,10 +1,11 @@
-import {chatApi} from '$lib/api/client';
+import {type ApiResponse, chatApi} from '$lib/api/client';
 import {eventBus} from '$lib/utils';
 import {conversationStore, getPersistConversationId} from "$lib/stores/conversation.svelte";
 
 export type Message = {
     role: 'user' | 'assistant' | 'system';
     content: string;
+    display_name:string|null,
     thought?: string;
     image_url?: string;
     id: string;
@@ -173,7 +174,7 @@ function createChatStore() {
             error = null;
 
 
-            const response = await chatApi.streamChat(content, conversationId, media).then((res) => res.json()).catch(err => {
+            const response:any = await chatApi.streamChat(content, conversationId, media).then((res:any)=>res.json()).catch(err => {
                 error = err instanceof Error ? err.message : 'Failed to send message';
             }).finally(() => {
                 loading = false;
