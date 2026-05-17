@@ -26,7 +26,7 @@ pub mod model;
 pub async fn handle_get_user_channels(
     State(state): State<AppState>,
     axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
-) -> ApiResponse<UserChannelsResponse> {
+) -> ApiResponse<Vec<ChannelStatus>> {
     let user_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => id,
         Err(_) => return ApiResponse::failed("Invalid user ID in token"),
@@ -54,7 +54,7 @@ pub async fn handle_get_user_channels(
                 });
             }
 
-            ApiResponse::ok(UserChannelsResponse { channels }, "User channels retrieved")
+            ApiResponse::ok( channels , "User channels retrieved")
         }
         Err(e) => {
             error!("Failed to fetch user channels: {}", e);
