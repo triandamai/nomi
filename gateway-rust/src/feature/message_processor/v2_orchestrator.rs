@@ -460,7 +460,7 @@ pub async fn send_message_to_subscriber(
         if let Ok(convo) = convo {
             for member in members {
                 let _ = state
-                    .send_sse_to_user(member.to_string().as_str(), "message", sse_data.clone())
+                    .send_sse_to_user(member.to_string().as_str(), "new_message", sse_data.clone())
                     .await;
             }
 

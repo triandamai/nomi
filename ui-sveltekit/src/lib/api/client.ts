@@ -172,6 +172,16 @@ export const chatApi = {
             }
         })
 
+        sse.addEventListener("new_message", (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log("INCOMIN NEW ",data)
+                eventBus.emit('sse-message', data);
+            } catch (e) {
+                console.error('Failed to parse SSE message', e);
+            }
+        })
+
         sse.addEventListener("metadata", (event) => {
             try {
                 const data = JSON.parse(event.data);

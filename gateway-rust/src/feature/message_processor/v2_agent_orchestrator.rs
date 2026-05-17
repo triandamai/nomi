@@ -664,7 +664,7 @@ impl V2AgentOrchestrator {
                 .trim()
                 .to_string();
 
-            if let Ok(mut record) = save_message(
+            if let Ok(record) = save_message(
                 &state.pool,
                 conversation_id,
                 "assistant",

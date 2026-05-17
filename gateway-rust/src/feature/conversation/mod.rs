@@ -3,7 +3,7 @@ use crate::common::identity::auth_model::{AuthResponse, UserProfile};
 use crate::feature::conversation::model::{
     ChannelStatus, ChatRequest, ChatStreamChunk, ConversationResponse, CreateConversationRequest,
     MessageItem, MessageListParams, MessageListResponse, PairingRequest, PairingResponse, RestoreSoulRequest,
-    RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest, UserChannelsResponse,
+    RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest,
 };
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
 use crate::models::Conversation;
