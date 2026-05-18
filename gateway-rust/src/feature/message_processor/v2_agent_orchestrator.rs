@@ -611,7 +611,6 @@ impl V2AgentOrchestrator {
                         &dispatcher,
                         current_calls.clone(),
                         &text_content, // use the v2-stripped one
-                        Some(state.sse.clone()),
                     )
                     .await;
 
@@ -653,6 +652,20 @@ impl V2AgentOrchestrator {
                 }
                 Err(e) => {
                     error!("V2 Agentic loop error: {}", e);
+                    let _ = send_status_update(
+                        &state,
+                        self.conversation_member_ids
+                            .iter()
+                            .map(|v| v.clone())
+                            .collect(),
+                        conversation_id,
+                        MessageSource::Web {
+                            name:"web".to_string()
+                        },
+                        false,
+                        "error".to_string(),
+                        "Oops, something went wrong.".to_string()
+                    ).await;
                     break;
                 }
             }
@@ -909,8 +922,7 @@ impl V2AgentOrchestrator {
                     }
 
                     let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
-                    let tool_results =
-                        execute_tools(&dispatcher, current_calls.clone(), task_prompt, None).await;
+                    let tool_results = execute_tools(&dispatcher, current_calls.clone(), task_prompt).await;
 
                     tool_turns.push((current_calls, tool_results));
                 }

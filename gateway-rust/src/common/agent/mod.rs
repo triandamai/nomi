@@ -2,18 +2,17 @@ pub mod agent_model;
 pub mod classification;
 
 use crate::common::agent::agent_model::{ChatResponse, PromptActor};
-use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
-use crate::common::sse::sse_emitter::SseBroadcaster;
 use crate::common::tools::tools_model::ToolResult;
 use crate::common::tools::{NomiTool, ToolDispatcher};
+use crate::feature::MessageSource;
 use crate::feature::conversation::model::ChatStreamChunk;
-use crate::prompts::PromptRegistry;
+use crate::feature::message_processor::v2_orchestrator::send_tool_update;
+use crate::prompts::{PromptRegistry, StatusRegistry};
 use chrono::Utc;
 use gemini_rust::{
-    Content, FunctionCall, FunctionCallingMode, GenerationResponse, Message, Role, UsageMetadata,
-    Tool,
+    Content, FunctionCall, FunctionCallingMode, GenerationResponse, Message, Role, Tool,
+    UsageMetadata,
 };
-use std::sync::Arc;
 use tokio_stream::StreamExt;
 use tracing::{error, info};
 
@@ -23,9 +22,7 @@ pub async fn send_prompt(
     intents: &[String],
 ) -> Result<(GenerationResponse, ChatStreamChunk), String> {
     info!("\n ==== sending message to llm ==== \n");
-
     let gemini = dispatcher.gemini.as_ref();
-
     let gemini_builder = match actor {
         PromptActor::User {
             history,
@@ -68,7 +65,9 @@ pub async fn send_prompt(
             };
 
             let has_functions = match &tool {
-                Tool::Function { function_declarations } => !function_declarations.is_empty(),
+                Tool::Function {
+                    function_declarations,
+                } => !function_declarations.is_empty(),
                 _ => true, // Other tools like GoogleSearch are not empty functions
             };
 
@@ -163,7 +162,7 @@ pub async fn send_prompt(
             };
 
             let has_functions = match &tool {
-                Tool::Function { function_declarations } => !function_declarations.is_empty(),
+                Tool::Function { function_declarations, } => !function_declarations.is_empty(),
                 _ => true,
             };
 
@@ -303,14 +302,12 @@ pub async fn execute_tools(
     dispatcher: &ToolDispatcher,
     function_calls: Vec<FunctionCall>,
     user_message: &str,
-    sse: Option<Arc<SseBroadcaster>>,
 ) -> Vec<(String, ToolResult)> {
     let mut futures = Vec::new();
 
     for call in function_calls {
         let dispatcher = dispatcher.clone();
         let user_message = user_message.to_string();
-        let sse = sse.clone();
         let call_name = call.name.clone();
         let args = call.args.clone();
 
@@ -322,14 +319,19 @@ pub async fn execute_tools(
             );
 
             // Send tool_start SSE event
-            if let Some(sse) = sse.as_ref() {
-                let _ = sse
-                    .send(SseBuilder::new(
-                        SseTarget::broadcast("tool_start".to_string()),
-                        serde_json::json!({ "name": call_name }),
-                    ))
-                    .await;
-            }
+
+            let _ = send_tool_update(
+                &dispatcher.app_state,
+                vec![dispatcher.user_id.unwrap()],
+                dispatcher.conversation_id.unwrap(),
+                MessageSource::Web {
+                    name: "web".to_string(),
+                },
+                false,
+                "tool_start".to_string(),
+                call_name.clone(),
+            )
+            .await;
 
             // Check if it's a plugin tool
             if let Some(plugin) = dispatcher.plugins.get(call_name.as_str()) {
@@ -354,14 +356,18 @@ pub async fn execute_tools(
                     },
                 };
 
-                if let Some(sse) = sse.as_ref() {
-                    let _ = sse
-                        .send(SseBuilder::new(
-                            SseTarget::broadcast("tool_end".to_string()),
-                            serde_json::json!({ "name": call_name, "success": result.success }),
-                        ))
-                        .await;
-                }
+                let _ = send_tool_update(
+                    &dispatcher.app_state,
+                    vec![dispatcher.user_id.unwrap()],
+                    dispatcher.conversation_id.unwrap(),
+                    MessageSource::Web {
+                        name: "web".to_string(),
+                    },
+                    false,
+                    "tool_end".to_string(),
+                    call_name.clone(),
+                )
+                .await;
 
                 return (call_name, result);
             }
@@ -395,15 +401,18 @@ pub async fn execute_tools(
             };
 
             // Send tool_end SSE event
-            if let Some(sse) = sse.as_ref() {
-                let _ = sse
-                    .send(SseBuilder::new(
-                        SseTarget::broadcast("tool_end".to_string()),
-                        serde_json::json!({ "name": call_name, "success": result.success }),
-                    ))
-                    .await;
-            }
-
+            let _ = send_tool_update(
+                &dispatcher.app_state,
+                vec![dispatcher.user_id.unwrap()],
+                dispatcher.conversation_id.unwrap(),
+                MessageSource::Web {
+                    name: "web".to_string(),
+                },
+                false,
+                "tool_end".to_string(),
+                StatusRegistry::random_action_phrase(call_name.clone().as_str()),
+            )
+            .await;
             (call_name, result)
         }));
     }

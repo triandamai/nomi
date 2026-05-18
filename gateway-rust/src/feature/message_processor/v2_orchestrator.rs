@@ -8,6 +8,7 @@ use crate::models::Conversation;
 use tracing::info;
 use uuid::Uuid;
 use crate::feature::conversation::model::MessageItem;
+use crate::prompts::{ StatusRegistry};
 
 pub async fn process_v2_message(
     state: AppState,
@@ -319,6 +320,136 @@ pub async fn send_status_update(
     });
 }
 
+pub async fn send_tool_update(
+    state:&AppState,
+    members: Vec<Uuid>,
+    conversation_id: Uuid,
+    source: MessageSource,
+    is_group: bool,
+    event: String,
+    tool_name:String,
+) {
+    info!("send_status_update start");
+    let state = state.clone();
+    let pool = state.pool.clone();
+    let event = event.clone();
+    tokio::spawn(async move {
+        let convo = sqlx::query!(
+                "SELECT conversation_type,id FROM conversations WHERE id = $1",
+                conversation_id
+            )
+            .fetch_one(&pool)
+            .await;
+
+        let ch_names = match source.clone() {
+            MessageSource::Web { name } => vec![name.to_string()],
+            MessageSource::Telegram { name } => vec![name.to_string()],
+            MessageSource::WhatsApp { name } => vec![name.to_string()],
+            MessageSource::Other { name } => vec![name.to_string()],
+            MessageSource::Multiple { source } => source.iter().map(|s| s.clone()).collect(),
+        };
+
+        if let Err(err) = &convo {
+            info!("Sent status update failed: {}", err);
+        }
+
+        if let Ok(data) = convo {
+            if data.conversation_type.eq_ignore_ascii_case("private") {
+                info!("send_status_update web");
+                for member in members {
+                    let _ = state
+                        .send_sse_to_user(
+                            member.to_string().as_str(),
+                            event.to_string().as_str(),
+                            json!({
+                                    "conversation_id": conversation_id,
+                                    "name":tool_name,
+                                    "text":StatusRegistry::random_action_phrase(tool_name.as_str())
+                                }),
+                        )
+                        .await;
+                }
+
+                if !is_group {
+                    let channel_info = sqlx::query!(
+                            "SELECT c.channel_type, c.external_id, c.external_chat_id
+                                    FROM channels c
+                                    JOIN conversation_members cm ON c.user_id = cm.user_id
+                                    WHERE cm.conversation_id = $1 AND c.channel_type = ANY($2::text[])",
+                            conversation_id,
+                            &ch_names[..]
+                        )
+                        .fetch_all(&pool)
+                        .await
+                        .unwrap_or(Vec::new());
+
+                    for channel in channel_info {
+                        let outbound = OutboundMessage {
+                            is_group,
+                            sender_id: channel.external_id.clone(),
+                            conversation_id: channel.external_chat_id.clone(),
+                            text: StatusRegistry::random_action_phrase(tool_name.as_str()),
+                            channel: channel.channel_type.clone(),
+                            video_url: None,
+                            image_url: None,
+                            audio_url: None,
+                            doc_url: None,
+                            sticker_url: None,
+                            metadata: None,
+                        };
+                        let _ = state.publish_outbond(&outbound).await;
+                    }
+                }
+            } else {
+                for member in members {
+                    let _ = state
+                        .send_sse_to_user(
+                            member.to_string().as_str(),
+                            event.to_string().as_str(),
+                            json!({
+                                    "conversation_id": conversation_id,
+                                    "name":tool_name,
+                                    "text":StatusRegistry::random_action_phrase(tool_name.as_str())
+                                }),
+                        )
+                        .await;
+                }
+
+                if !is_group {
+                    info!("send_status_update channel:{:?}", ch_names);
+                    let channel_info = sqlx::query!(
+                            "SELECT c.conversation_id, c.channel, c.external_group_id
+                            FROM channel_group c
+                            WHERE c.conversation_id = $1 AND c.channel =  ANY($2::text[])",
+                            conversation_id,
+                            &ch_names[..]
+                        )
+                        .fetch_all(&pool)
+                        .await
+                        .unwrap_or(Vec::new());
+
+                    for channel in channel_info {
+                        let outbound = OutboundMessage {
+                            is_group: false,
+                            sender_id: "".to_string(),
+                            conversation_id: channel.external_group_id.clone(),
+                            text: tool_name.clone(),
+                            channel: channel.channel.clone(),
+                            video_url: None,
+                            image_url: None,
+                            audio_url: None,
+                            doc_url: None,
+                            sticker_url: None,
+                            metadata: None,
+                        };
+                        let _ = state.publish_outbond(&outbound).await;
+                    }
+                }
+            }
+        }
+    });
+}
+
 pub async fn send_status_presence_update(
     state:&AppState,
     members: Vec<Uuid>,
@@ -359,7 +490,7 @@ pub async fn send_status_presence_update(
                         .send_sse_to_user(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
-                            json!({"conversation_id": conversation_id,"is_typing": is_typing,"user_id": "nomi"}),
+                            json!({"conversation_id": conversation_id,"is_typing": is_typing,"user_id": "nomi","text":""}),
                         )
                         .await;
                 }
@@ -393,7 +524,7 @@ pub async fn send_status_presence_update(
                         .send_sse_to_user(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
-                            json!({"conversation_id": conversation_id,"is_typing": is_typing,"user_id": "nomi"}),
+                            json!({"conversation_id": conversation_id,"is_typing": is_typing,"user_id": "nomi","text":""}),
                         )
                         .await;
                 }
