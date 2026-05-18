@@ -3,7 +3,7 @@ package id.nomi.trianapp.domain.usecase
 import id.nomi.trianapp.data.local.*
 import id.nomi.trianapp.data.model.ApiResponse
 import id.nomi.trianapp.data.model.PairingRequest
-import id.nomi.trianapp.data.model.PairingResponse
+import id.nomi.trianapp.data.model.PairingDto
 import id.nomi.trianapp.data.preferences.PreferencesConstant
 import id.nomi.trianapp.data.preferences.PreferencesStorage
 import id.nomi.trianapp.data.remote.ApiClient
@@ -13,19 +13,20 @@ class SendPairingRequestUseCase(
     private val preferencesStorage: PreferencesStorage,
     private val nomiDb: NomiDb
 ) {
-    suspend operator fun invoke(pairingCode: String): ApiResponse<PairingResponse> {
+    suspend operator fun invoke(pairingCode: String): ApiResponse<PairingDto> {
         val sanitizedCode = if (pairingCode.length == 6) {
             "${pairingCode.substring(0, 3)}-${pairingCode.substring(3)}"
         } else {
             pairingCode
         }
-        val response = apiClient.post<PairingRequest, PairingResponse>("/api/auth/pair", PairingRequest(sanitizedCode))
+        val response = apiClient.post<PairingRequest, PairingDto>("/api/auth/pair", PairingRequest(sanitizedCode))
 
         
         response.data?.let { data ->
             // Save access token
             preferencesStorage.put(PreferencesConstant.SESSION_TOKEN, data.accessToken)
-            
+            preferencesStorage.put(PreferencesConstant.ACTIVE_U_ID, data.userId)
+
             // Save profile, channels, and conversations to Room
             val profileEntity = ProfileEntity(
                 id = data.profile.id,

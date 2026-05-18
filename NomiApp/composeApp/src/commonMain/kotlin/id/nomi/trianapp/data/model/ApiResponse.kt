@@ -22,3 +22,4 @@ data class ErrorDetail(
     @SerialName("error_message")
     val errorMessage: List<String>
 )
+

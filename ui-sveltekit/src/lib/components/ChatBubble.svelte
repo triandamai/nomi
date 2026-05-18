@@ -43,19 +43,30 @@
     onMount(() => {
         init();
 
-        if (typeof window !== 'undefined' && !(window as any).copyToClipboard) {
-            (window as any).copyToClipboard = (btn: HTMLButtonElement) => {
-                const code = decodeURIComponent(btn.getAttribute('data-code') || '');
-                navigator.clipboard.writeText(code).then(() => {
-                    const originalInner = btn.innerHTML;
-                    btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500"><polyline points="20 6 9 17 4 12"/></svg>`;
-                    btn.classList.add('copied');
-                    setTimeout(() => {
-                        btn.innerHTML = originalInner;
-                        btn.classList.remove('copied');
-                    }, 2000);
-                });
-            };
+        if (typeof window !== 'undefined') {
+            if (!(window as any).copyToClipboard) {
+                (window as any).copyToClipboard = (btn: HTMLButtonElement) => {
+                    const code = decodeURIComponent(btn.getAttribute('data-code') || '');
+                    navigator.clipboard.writeText(code).then(() => {
+                        const originalInner = btn.innerHTML;
+                        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500"><polyline points="20 6 9 17 4 12"/></svg>`;
+                        btn.classList.add('copied');
+                        setTimeout(() => {
+                            btn.innerHTML = originalInner;
+                            btn.classList.remove('copied');
+                        }, 2000);
+                    });
+                };
+            }
+
+            if (!(window as any).toggleCodeBlock) {
+                (window as any).toggleCodeBlock = (btn: HTMLButtonElement) => {
+                    const pre = btn.closest('pre');
+                    if (pre) {
+                        pre.classList.toggle('collapsed');
+                    }
+                };
+            }
         }
     });
 
@@ -133,44 +144,75 @@
         white-space: pre-wrap;
     }
 
-    :global(.prose :not(pre) > code) {
-        background-color: #1e293b;
-        padding: 0.2rem 0.4rem;
-        border-radius: 0.25rem;
-        color: #f1f5f9;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    :global(.prose pre.collapsed code) {
+        display: none;
     }
 
-    :global(.copy-button) {
+    :global(.prose pre.collapsed) {
+        padding-top: 2.5rem;
+        padding-bottom: 0rem;
+        min-height: 2.5rem;
+    }
+
+    :global(.code-block-header) {
         position: absolute;
-        top: 0.5rem;
-        right: 0.5rem;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 1rem;
+        background-color: #1e293b;
+        border-bottom: 1px solid #334155;
+        border-top-left-radius: 1rem;
+        border-top-right-radius: 1rem;
+    }
+
+    :global(.code-lang) {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #94a3b8;
+    }
+
+    :global(.code-header-actions) {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    :global(.copy-button), :global(.toggle-button) {
         padding: 0.25rem;
-        border-radius: 0.5rem;
-        background-color: rgba(15, 23, 42, 0.8);
-        border: 1px solid #334155;
+        border-radius: 0.375rem;
+        background-color: transparent;
+        border: 1px solid transparent;
         color: #64748b;
-        opacity: 0;
         transition: all 0.2s;
         cursor: pointer;
-        z-index: 10;
         display: flex;
         align-items: center;
         justify-content: center;
     }
 
-    :global(.prose pre:hover .copy-button) {
-        opacity: 1;
-    }
-
-    :global(.copy-button:hover) {
+    :global(.copy-button:hover), :global(.toggle-button:hover) {
         background-color: #334155;
         color: #f1f5f9;
         border-color: #475569;
     }
 
     :global(.copy-button.copied) {
-        opacity: 1;
-        border-color: #3b82f6;
+        color: #10b981;
+    }
+
+    :global(.prose pre.collapsed .toggle-icon) {
+        transform: rotate(-90deg);
+    }
+
+    :global(.toggle-icon) {
+        transition: transform 0.2s;
     }
 </style>

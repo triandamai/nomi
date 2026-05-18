@@ -73,6 +73,7 @@ kotlin {
             implementation(libs.ui.tooling.preview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.compose.webview)
 
             implementation("com.composables:icons-lucide-cmp:2.2.1")
             implementation(libs.jetbrains.navigation3.ui)

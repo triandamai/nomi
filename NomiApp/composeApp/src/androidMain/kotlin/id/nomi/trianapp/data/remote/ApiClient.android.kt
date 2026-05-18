@@ -85,9 +85,10 @@ actual fun getHttpClient(
                 prettyPrint = true
                 isLenient = true
                 ignoreUnknownKeys = true // Highly recommended to avoid crashes on new API fields
+//                coerceInputValues = true
             })
         }
-        install(SSE){
+        install(SSE) {
             this.maxReconnectionAttempts = 20
             this.showCommentEvents()
             this.showRetryEvents()
@@ -96,3 +97,4 @@ actual fun getHttpClient(
 
 actual val baseUrl: String
     get() = "https://nomi-gateway.pakaiarta.id"
+//    get() = "http://localhost:8000"

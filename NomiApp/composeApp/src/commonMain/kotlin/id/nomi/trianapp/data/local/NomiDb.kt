@@ -14,9 +14,10 @@ import kotlinx.coroutines.IO
     entities = [
         ProfileEntity::class,
         ChannelEntity::class,
-        ConversationEntity::class
+        ConversationEntity::class,
+        MessageEntity::class
     ],
-    version = 8,
+    version = 11,
     autoMigrations = [],
     exportSchema = true
 )

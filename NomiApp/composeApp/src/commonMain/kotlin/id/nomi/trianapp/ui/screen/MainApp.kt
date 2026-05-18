@@ -28,7 +28,7 @@ import id.nomi.trianapp.ui.screen.auth.LoginPage
 import id.nomi.trianapp.ui.screen.chat.PageChat
 import id.nomi.trianapp.ui.screen.profile.ProfilePage
 import id.nomi.trianapp.ui.screen.rag.RagPage
-import id.nomi.trianapp.ui.screen.setting.SettingPage
+import id.nomi.trianapp.ui.screen.workspace.WorkspacePage
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
@@ -47,7 +47,7 @@ sealed interface Route : NavKey {
     data object Profile : Route
 
     @Serializable
-    data object Settings : Route
+    data object Workspace : Route
 
     @Serializable
     data object Rag : Route
@@ -59,7 +59,7 @@ private val config = SavedStateConfiguration {
             subclass(Route.Login::class)
             subclass(Route.Chat::class)
             subclass(Route.Profile::class)
-            subclass(Route.Settings::class)
+            subclass(Route.Workspace::class)
             subclass(Route.Rag::class)
         }
     }
@@ -74,20 +74,24 @@ fun MainApp() {
     val backStack = rememberNavBackStack(config, Route.Login)
 
     LaunchedEffect(appState) {
-        when(appState) {
+        when (appState) {
             MainAppState.Authenticated -> {
                 if (backStack.last() == Route.Login) {
                     backStack.add(Route.Chat)
                 }
             }
+
             MainAppState.Unauthenticated -> {
                 if (backStack.last() != Route.Login) {
                     backStack.add(Route.Login)
                 }
             }
+
             else -> {}
         }
     }
+
+
 
     NavDisplay(
         backStack = backStack,
@@ -98,160 +102,36 @@ fun MainApp() {
             }
             entry<Route.Chat> {
                 PageChat(onNavigationClick = {
-                    if (backStack.last() != Route.Settings) {
-                        backStack.add(Route.Settings)
+                    if (backStack.last() != Route.Workspace) {
+                        backStack.add(Route.Workspace)
+                    }
+                }, onShowRAG = {
+                    if (backStack.last() != Route.Rag) {
+                        backStack.add(Route.Rag)
                     }
                 })
             }
             entry<Route.Profile> {
                 ProfilePage()
             }
-            entry<Route.Settings> {
-                Row(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    if (appState is MainAppState.Authenticated) {
-                        Sidebar(
-                            currentRoute = Route.Chat,
-                            onNavigate = { route ->
-                                if (backStack.last() != route) {
-                                    backStack.add(route)
-                                }
-                            }
-                        )
-                        // Crisp vertical divider mimicking web aesthetics
-                        VerticalDivider(
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
-                            thickness = 0.5.dp
-                        )
+            entry<Route.Workspace> {
+                WorkspacePage(onConversationSelected = {
+                    if (backStack.last() != Route.Chat) {
+                        backStack.add(Route.Chat)
                     }
-                    Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                        Column(modifier = Modifier.background(Slate950)) {
-                            CenterAlignedTopAppBar(
-                                title = {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            "Nomi",
-                                            style = MaterialTheme.typography.titleLarge.copy(
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = 17.sp,
-                                                letterSpacing = 0.sp
-                                            )
-                                        )
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(6.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Emerald500)
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                "Active now",
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    color = Slate400,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Normal
-                                                )
-                                            )
-                                        }
-                                    }
-                                },
-                                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                                    containerColor = Slate950,
-                                    titleContentColor = Color.White
-                                )
-                            )
-                            Divider(color = Slate800, thickness = 0.5.dp)
-                        }
-                        SettingPage()
-                    }
-                }
+                })
             }
             entry<Route.Rag> {
-                RagPage()
+                RagPage(
+                    onNavigationClick = {
+                        if (backStack.last() == Route.Rag) {
+                            backStack.removeLast()
+                        }
+                    }
+                )
             }
         }
     )
-}
-
-@Composable
-fun Sidebar(currentRoute: Route, onNavigate: (Route) -> Unit) {
-    Column(
-        modifier = Modifier
-            .width(72.dp)
-            .fillMaxHeight()
-            .background(Slate950)
-            .padding(vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier.size(48.dp)
-        ) {
-
-        }
-        // App/Home Icon
-        SidebarNavItem(
-            icon = Lucide.House,
-            isActive = currentRoute == Route.Chat,
-            onClick = { onNavigate(Route.Chat) }
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-        Divider(
-            modifier = Modifier.width(32.dp).padding(vertical = 4.dp),
-            color = Slate800,
-            thickness = 1.dp
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Navigation Items
-        SidebarNavItem(
-            icon = Lucide.BookOpen,
-            isActive = currentRoute == Route.Rag,
-            onClick = { onNavigate(Route.Rag) }
-        )
-        SidebarNavItem(
-            icon = Lucide.User,
-            isActive = currentRoute == Route.Profile,
-            onClick = { onNavigate(Route.Profile) }
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        SidebarNavItem(
-            icon = Lucide.Settings,
-            isActive = currentRoute == Route.Settings,
-            onClick = { onNavigate(Route.Settings) }
-        )
-    }
-}
-
-@Composable
-fun SidebarNavItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    isActive: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .padding(vertical = 4.dp)
-            .size(48.dp)
-            .clip(if (isActive) RoundedCornerShape(16.dp) else CircleShape)
-            .background(if (isActive) Indigo500 else Color.Transparent)
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (isActive) Color.White else Slate400,
-            modifier = Modifier.size(24.dp)
-        )
-    }
 }
 
 @Preview

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RAG Knowledge Graph</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #020617; /* Slate-950 */
+            color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        #network {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+<div id="network"></div>
+<script type="text/javascript">
+    var network = null;
+    var nodes = new vis.DataSet([]);
+    var edges = new vis.DataSet([]);
+
+    function initGraph() {
+        var container = document.getElementById('network');
+        var data = {
+            nodes: nodes,
+            edges: edges
+        };
+        var options = {
+            nodes: {
+                shape: 'dot',
+                size: 20,
+                font: {
+                    size: 14,
+                    color: '#f8fafc'
+                },
+                borderWidth: 2,
+                shadow: true
+            },
+            edges: {
+                width: 1,
+                color: { color: '#334155', highlight: '#64748b' }, // Slate-700 and Slate-500
+                arrows: {
+                    to: { enabled: true, scaleFactor: 0.5 }
+                },
+                smooth: {
+                    type: 'continuous'
+                }
+            },
+            physics: {
+                enabled: true,
+                barnesHut: {
+                    gravitationalConstant: -2000,
+                    centralGravity: 0.3,
+                    springLength: 95,
+                    springConstant: 0.04,
+                    damping: 0.09,
+                    avoidOverlap: 0.1
+                },
+                stabilization: { iterations: 150 }
+            },
+            interaction: {
+                hover: true,
+                zoomView: true,
+                dragView: true
+            }
+        };
+        network = new vis.Network(container, data, options);
+    }
+
+    window.updateGraph = function(jsonDataString) {
+        try {
+            var data = JSON.parse(jsonDataString);
+            
+            nodes.clear();
+            edges.clear();
+            
+            if (data.nodes) {
+                nodes.add(data.nodes.map(node => ({
+                    id: node.id,
+                    label: node.label,
+                    color: {
+                        background: node.type === 'document' ? '#10b981' : '#06b6d4', // Emerald-500 or Cyan-500
+                        border: node.type === 'document' ? '#059669' : '#0891b2',
+                        highlight: {
+                            background: node.type === 'document' ? '#34d399' : '#22d3ee',
+                            border: node.type === 'document' ? '#10b981' : '#06b6d4'
+                        }
+                    }
+                })));
+            }
+            
+            if (data.edges) {
+                edges.add(data.edges);
+            }
+            
+            if (network) {
+                network.fit();
+            }
+        } catch (e) {
+            console.error("Error updating graph:", e);
+        }
+    };
+
+    window.onload = initGraph;
+</script>
+</body>
+</html>

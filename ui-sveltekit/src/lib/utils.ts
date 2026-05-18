@@ -76,18 +76,29 @@ export const mdIt = new MarkdownIt({
 			? highlighter.codeToHtml(code, { lang, theme: 'github-dark' })
 			: `<pre class="shiki github-dark"><code>${mdIt?.utils.escapeHtml(code)}</code></pre>`;
 
-		// Inject the button directly into the shiki-generated pre tag by replacing the opening <pre
-		// This avoids an outer container while keeping the button positioned relative to the code block
-		const buttonHtml = `
-                    <button 
-                        class="copy-button"
-                        data-code="${encodeURIComponent(code)}"
-                        onclick="window.copyToClipboard(this)"
-                        title="Copy code"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="copy-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                    </button>`.trim();
+		const languageName = lang || 'code';
+		const headerHtml = `
+                    <div class="code-block-header">
+                        <span class="code-lang">${languageName}</span>
+                        <div class="code-header-actions">
+                            <button 
+                                class="toggle-button"
+                                onclick="window.toggleCodeBlock(this)"
+                                title="Toggle code"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="toggle-icon"><path d="m6 9 6 6 6-6"/></svg>
+                            </button>
+                            <button 
+                                class="copy-button"
+                                data-code="${encodeURIComponent(code)}"
+                                onclick="window.copyToClipboard(this)"
+                                title="Copy code"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="copy-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                            </button>
+                        </div>
+                    </div>`.trim();
 
-		return highlighted.replace('<pre', `<pre style="position: relative;" `).replace('>', `>${buttonHtml}`);
+		return highlighted.replace('<pre', `<pre style="position: relative; padding-top: 2.5rem;" `).replace('>', `>${headerHtml}`);
 	}
 });
