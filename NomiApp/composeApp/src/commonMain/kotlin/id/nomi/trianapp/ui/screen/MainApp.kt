@@ -26,6 +26,8 @@ import id.nomi.trianapp.MainViewModel
 import id.nomi.trianapp.ui.*
 import id.nomi.trianapp.ui.screen.auth.LoginPage
 import id.nomi.trianapp.ui.screen.chat.PageChat
+import id.nomi.trianapp.ui.screen.SplashPage
+import id.nomi.trianapp.ui.screen.chat.ChatViewModel
 import id.nomi.trianapp.ui.screen.profile.ProfilePage
 import id.nomi.trianapp.ui.screen.rag.RagPage
 import id.nomi.trianapp.ui.screen.workspace.WorkspacePage
@@ -38,10 +40,13 @@ import org.koin.compose.viewmodel.koinViewModel
 @Serializable
 sealed interface Route : NavKey {
     @Serializable
+    data object Splash : Route
+
+    @Serializable
     data object Login : Route
 
     @Serializable
-    data object Chat : Route
+    data class Chat(val conversationId: String? = null) : Route
 
     @Serializable
     data object Profile : Route
@@ -50,12 +55,13 @@ sealed interface Route : NavKey {
     data object Workspace : Route
 
     @Serializable
-    data object Rag : Route
+    data class Rag(val conversationId: String? = null) : Route
 }
 
 private val config = SavedStateConfiguration {
     serializersModule = SerializersModule {
         polymorphic(NavKey::class) {
+            subclass(Route.Splash::class)
             subclass(Route.Login::class)
             subclass(Route.Chat::class)
             subclass(Route.Profile::class)
@@ -71,62 +77,63 @@ fun MainApp() {
     val mainVm = koinViewModel<MainViewModel>()
     val appState by mainVm.appState.collectAsState()
 
-    val backStack = rememberNavBackStack(config, Route.Login)
-
-    LaunchedEffect(appState) {
-        when (appState) {
-            MainAppState.Authenticated -> {
-                if (backStack.last() == Route.Login) {
-                    backStack.add(Route.Chat)
-                }
-            }
-
-            MainAppState.Unauthenticated -> {
-                if (backStack.last() != Route.Login) {
-                    backStack.add(Route.Login)
-                }
-            }
-
-            else -> {}
-        }
-    }
-
-
+    val backStack = rememberNavBackStack(config, Route.Splash)
 
     NavDisplay(
         backStack = backStack,
         onBack = { if (backStack.size > 1) backStack.removeLast() },
         entryProvider = entryProvider {
-            entry<Route.Login> {
-                LoginPage()
+            entry<Route.Splash> {
+                SplashPage(
+                    appState = appState,
+                    onNavigateToLogin = {
+                        backStack.add(Route.Login)
+                    },
+                    onNavigateToChat = {
+                        backStack.add(Route.Chat())
+                    }
+                )
             }
-            entry<Route.Chat> {
-                PageChat(onNavigationClick = {
-                    if (backStack.last() != Route.Workspace) {
-                        backStack.add(Route.Workspace)
-                    }
-                }, onShowRAG = {
-                    if (backStack.last() != Route.Rag) {
-                        backStack.add(Route.Rag)
-                    }
+            entry<Route.Login> {
+                LoginPage(onPairingSuccess = {
+                    mainVm.checkAuthentication()
+                    backStack.add(Route.Chat())
                 })
+            }
+            entry<Route.Chat> { route ->
+                val viewModel = koinViewModel<ChatViewModel>()
+                LaunchedEffect(route) {
+                    val conversationId = route.conversationId
+                    if (conversationId != null) {
+                        viewModel.setConversationId(conversationId)
+                    }else{
+                        viewModel.resetConversation()
+                    }
+                }
+
+                PageChat(
+                    viewModel = viewModel,
+                    onNavigationClick = {
+                        backStack.add(Route.Workspace)
+                    },
+                    onShowRAG = {
+                        backStack.add(Route.Rag(route.conversationId))
+                    }
+                )
             }
             entry<Route.Profile> {
                 ProfilePage()
             }
             entry<Route.Workspace> {
-                WorkspacePage(onConversationSelected = {
-                    if (backStack.last() != Route.Chat) {
-                        backStack.add(Route.Chat)
-                    }
+                WorkspacePage(onConversationSelected = { id ->
+                    backStack.add(Route.Chat(id))
                 })
             }
-            entry<Route.Rag> {
+            entry<Route.Rag> { route ->
                 RagPage(
+                    conversationId = route.conversationId,
                     onNavigationClick = {
-                        if (backStack.last() == Route.Rag) {
-                            backStack.removeLast()
-                        }
+                        backStack.removeLast()
                     }
                 )
             }

@@ -2,11 +2,11 @@ package id.nomi.trianapp.ui.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -14,19 +14,32 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Brain
+import com.composables.icons.lucide.ChevronDown
+import com.composables.icons.lucide.ChevronRight
 import id.nomi.trianapp.ui.*
 import id.nomi.trianapp.util.MarkdownBlock
 import id.nomi.trianapp.util.MarkdownParser
+import id.nomi.trianapp.util.formatTokenCount
 import androidx.compose.ui.tooling.preview.Preview
 
 @Composable
 fun ChatBubble(
+    displayName: String,
     content: String,
-    isFromUser: Boolean,
+    role: String,
     showAvatar: Boolean,
-    senderName: String = if (isFromUser) "You" else "Nomi",
+    totalTokens: Long = 0,
+    thought: String? = null,
     timestamp: String = "12:00 PM"
 ) {
+    val isFromUser = role == "user"
+    var isThoughtExpanded by remember { mutableStateOf(false) }
+
+    if(showAvatar){
+        Spacer(modifier = Modifier.height(16.dp))
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -43,7 +56,7 @@ fun ChatBubble(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = senderName.take(1).uppercase(),
+                    text = if(role != "user") "N" else displayName.take(1).uppercase(),
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
@@ -62,7 +75,7 @@ fun ChatBubble(
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = senderName,
+                    text = if(role != "user") "Nomi" else displayName,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,
@@ -77,6 +90,71 @@ fun ChatBubble(
                         fontSize = 12.sp
                     )
                 )
+                if (!isFromUser && totalTokens > 0) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "·",
+                        color = Slate400,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "${formatTokenCount(totalTokens)} tokens",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = Indigo400,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
+            }
+
+            if (!thought.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    color = Slate900.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { isThoughtExpanded = !isThoughtExpanded }
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Lucide.Brain,
+                                contentDescription = null,
+                                tint = Indigo500,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Deep Thought",
+                                color = Slate400,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            Icon(
+                                imageVector = if (isThoughtExpanded) Lucide.ChevronDown else Lucide.ChevronRight,
+                                contentDescription = null,
+                                tint = Slate400,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                        if (isThoughtExpanded) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = thought,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = Slate400,
+                                    fontSize = 12.sp,
+                                    lineHeight = 18.sp,
+                                    fontWeight = FontWeight.Light
+                                )
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(2.dp))
@@ -120,8 +198,9 @@ fun ChatBubbleUserPreview() {
         Box(modifier = Modifier.background(Slate950)) {
             ChatBubble(
                 content = "This is a **bold** message from the user with `inline code`.",
-                isFromUser = true,
-                showAvatar = true
+                role = "user",
+                showAvatar = true,
+                displayName = "Trian"
             )
         }
     }
@@ -141,8 +220,11 @@ fun ChatBubbleNomiPreview() {
                     }
                     ```
                 """.trimIndent(),
-                isFromUser = false,
-                showAvatar = true
+                role = "assistant",
+                showAvatar = true,
+                totalTokens = 1250,
+                thought = "I need to provide a helpful code example.",
+                displayName = "Trian"
             )
         }
     }
@@ -156,8 +238,9 @@ fun ChatBubbleNomiPreview2() {
         Box(modifier = Modifier.background(Slate950)) {
             ChatBubble(
                 content = "This is a response from Nomi.",
-                isFromUser = true,
-                showAvatar = false
+                role = "assistant",
+                showAvatar = false,
+                displayName = "Trian"
             )
         }
     }

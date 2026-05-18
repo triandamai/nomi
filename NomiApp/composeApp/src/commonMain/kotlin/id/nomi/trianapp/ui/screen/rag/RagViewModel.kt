@@ -1,12 +1,15 @@
 package id.nomi.trianapp.ui.screen.rag
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.nomi.trianapp.data.local.ConversationEntity
 import id.nomi.trianapp.data.model.RagGraphData
 import id.nomi.trianapp.data.model.RagNodeDto
 import id.nomi.trianapp.data.preferences.PreferencesConstant
 import id.nomi.trianapp.data.preferences.PreferencesStorage
 import id.nomi.trianapp.domain.usecase.FetchRagGraphUseCase
+import id.nomi.trianapp.domain.usecase.GetConversationUseCase
 import id.nomi.trianapp.domain.usecase.GetRagKnowledgeGraphUseCase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,9 +60,10 @@ data class ThreeDGraphLink(
 )
 
 class RagViewModel(
+    savedStateHandle: SavedStateHandle,
     private val getRagKnowledgeGraphUseCase: GetRagKnowledgeGraphUseCase,
     private val fetchRagGraphUseCase: FetchRagGraphUseCase,
-    private val preferencesStorage: PreferencesStorage
+    private val getConversationUseCase: GetConversationUseCase
 ) : ViewModel() {
     private val _graphData = MutableStateFlow("")
     val graphData: StateFlow<String> = _graphData.asStateFlow()
@@ -70,16 +74,33 @@ class RagViewModel(
     private val _selectedNodeDetails = MutableStateFlow<RagNodeDto?>(null)
     val selectedNodeDetails: StateFlow<RagNodeDto?> = _selectedNodeDetails.asStateFlow()
 
+    private val _activeConversation = MutableStateFlow<ConversationEntity?>(null)
+    val activeConversation: StateFlow<ConversationEntity?> = _activeConversation.asStateFlow()
+
     // Keep cache of last fetched data to find nodes
     private var lastGraphData: RagGraphData? = null
 
-    init {
-        loadGraphData()
+
+    fun setConversationId(conversationId: String?) {
+        if (conversationId != null) {
+            loadGraphData(conversationId)
+            loadConversation(conversationId)
+        }
     }
 
-    private fun loadGraphData() {
+    private fun loadConversation(conversationId: String?) {
         viewModelScope.launch {
-            val conversationId = preferencesStorage.getString(PreferencesConstant.ACTIVE_CONVERSATION_ID)
+            if (conversationId != null) {
+                getConversationUseCase(conversationId)
+                getConversationUseCase.getLocalConversation(conversationId).collect {
+                    _activeConversation.value = it
+                }
+            }
+        }
+    }
+
+    private fun loadGraphData(conversationId: String?) {
+        viewModelScope.launch {
             if (conversationId != null) {
                 fetchRagGraphUseCase(conversationId).onSuccess { data ->
                     lastGraphData = data
@@ -98,7 +119,7 @@ class RagViewModel(
             _isLoadingDetails.value = true
             // Simulate API latency for fetching full node metadata
             delay(600)
-            
+
             val node = lastGraphData?.nodes?.find { it.id == nodeId }
             if (node != null) {
                 _selectedNodeDetails.value = node
@@ -121,19 +142,19 @@ class RagViewModel(
 
     private suspend fun loadMockGraphData() {
         val originalData = getRagKnowledgeGraphUseCase()
-        
-        val nodes = originalData.nodes.map { 
+
+        val nodes = originalData.nodes.map {
             ThreeDGraphNode(
-                id = it.id, 
-                name = it.label, 
+                id = it.id,
+                name = it.label,
                 `val` = if (it.type == "document") 15 else 8,
                 type = it.type
-            ) 
+            )
         }
-        val links = originalData.edges.map { 
-            ThreeDGraphLink(source = it.from, target = it.to) 
+        val links = originalData.edges.map {
+            ThreeDGraphLink(source = it.from, target = it.to)
         }
-        
+
         val threeDData = ThreeDGraphData(nodes, links)
         _graphData.value = Json.encodeToString(threeDData)
     }

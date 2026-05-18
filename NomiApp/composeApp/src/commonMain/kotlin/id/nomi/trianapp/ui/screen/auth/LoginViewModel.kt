@@ -23,6 +23,7 @@ class LoginViewModel(
     private val _loginState = MutableStateFlow<LoginState>(LoginState.Idle)
     val loginState: StateFlow<LoginState> = _loginState
 
+
     fun sendPairingRequest(pairingCode: String) {
         viewModelScope.launch {
             _loginState.value = LoginState.Loading

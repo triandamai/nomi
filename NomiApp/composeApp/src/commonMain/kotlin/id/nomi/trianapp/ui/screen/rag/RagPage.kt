@@ -29,6 +29,7 @@ import com.multiplatform.webview.web.WebViewNavigator
 import id.nomi.trianapp.ui.Emerald500
 import id.nomi.trianapp.ui.Slate400
 import id.nomi.trianapp.ui.Slate800
+import id.nomi.trianapp.util.formatTokenCount
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -37,11 +38,13 @@ import kotlinx.serialization.json.jsonPrimitive
 @Composable
 fun RagPage(
     viewModel: RagViewModel = koinViewModel(),
+    conversationId: String?=null,
     onNavigationClick: () -> Unit
 ) {
     val graphData by viewModel.graphData.collectAsState()
     val isLoadingDetails by viewModel.isLoadingDetails.collectAsState()
     val selectedNodeDetails by viewModel.selectedNodeDetails.collectAsState()
+    val activeConversation by viewModel.activeConversation.collectAsState()
 
     val navigator = rememberWebViewNavigator()
     val jsBridge = rememberWebViewJsBridge()
@@ -96,6 +99,10 @@ fun RagPage(
         }
     }
 
+    LaunchedEffect(viewModel){
+        viewModel.setConversationId(conversationId)
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -104,7 +111,7 @@ fun RagPage(
                     title = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                "Nomi",
+                                activeConversation?.name ?: "Knowledge Graph",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 17.sp,
@@ -119,11 +126,11 @@ fun RagPage(
                                     modifier = Modifier
                                         .size(6.dp)
                                         .clip(CircleShape)
-                                        .background(Emerald500)
+                                        .background(if (activeConversation != null) Emerald500 else Slate400)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    "Conversation",
+                                    activeConversation?.let { "${formatTokenCount(it.cumulativeTokens)} tokens used" } ?: "Knowledge visualizer",
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         color = Slate400,
                                         fontSize = 11.sp,

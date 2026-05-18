@@ -53,13 +53,18 @@ class PairingCodeTransformation : VisualTransformation {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginPage() {
+fun LoginPage(
+    onPairingSuccess: () -> Unit = {}
+) {
     val viewModel: LoginViewModel = koinViewModel()
     val state by viewModel.loginState.collectAsState()
     var pairingCode by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(state) {
+        if (state is LoginState.Success) {
+            onPairingSuccess()
+        }
         if (state is LoginState.Error) {
             snackbarHostState.showSnackbar(
                 message = (state as LoginState.Error).message,

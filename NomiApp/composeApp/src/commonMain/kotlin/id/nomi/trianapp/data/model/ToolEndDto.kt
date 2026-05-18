@@ -12,7 +12,7 @@ data class ToolEndDto(
     @SerialName("name")
     val name: String,
     @SerialName("text")
-    val text: String,
+    val text: String?=null,
     @SerialName("success")
-    val success: Boolean
+    val success: Boolean? = null
 )

@@ -79,6 +79,12 @@ interface NomiDao {
     @Query("SELECT * FROM conversations")
     fun getConversations(): Flow<List<ConversationEntity>>
 
+    @Query("SELECT * FROM conversations WHERE id = :id")
+    fun getConversation(id: String): Flow<ConversationEntity?>
+
+    @Query("SELECT * FROM conversations WHERE id = :id")
+    suspend fun getConversationSync(id: String): ConversationEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<MessageEntity>)
 

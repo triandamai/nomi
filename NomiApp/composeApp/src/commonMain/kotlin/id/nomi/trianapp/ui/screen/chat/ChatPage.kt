@@ -1,7 +1,9 @@
 package id.nomi.trianapp.ui.screen.chat
 
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -21,6 +23,10 @@ import androidx.compose.ui.unit.sp
 import com.composables.icons.lucide.*
 import id.nomi.trianapp.ui.*
 import id.nomi.trianapp.ui.component.ChatBubble
+import id.nomi.trianapp.ui.component.ShimmerChatLoading
+import id.nomi.trianapp.util.formatTokenCount
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,17 +34,30 @@ import org.koin.compose.viewmodel.koinViewModel
 fun PageChat(
     viewModel: ChatViewModel = koinViewModel(),
     onNavigationClick: () -> Unit,
-    onShowRAG:()-> Unit
+    onShowRAG: () -> Unit
 ) {
-    val messages by viewModel.messages.collectAsState()
-    val activeConversationId by viewModel.activeConversationId.collectAsState()
+    val activeConversation by viewModel.activeConversation.collectAsState()
     val thought by viewModel.thought.collectAsState()
     val activeTool by viewModel.activeTool.collectAsState()
     val isTyping by viewModel.isTyping.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
+    val isAtBottom by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val visibleItemsInfo = layoutInfo.visibleItemsInfo
+            if (visibleItemsInfo.isEmpty()) {
+                true
+            } else {
+                val lastVisibleItem = visibleItemsInfo.last()
+                lastVisibleItem.index >= layoutInfo.totalItemsCount - 3
+            }
+        }
+    }
 
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = false
@@ -48,14 +67,22 @@ fun PageChat(
         bottomSheetState = sheetState
     )
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+    LaunchedEffect(viewModel.messages.size, thought, activeTool, isTyping) {
+        if (isAtBottom && (viewModel.messages.isNotEmpty() || thought != null || activeTool != null || isTyping)) {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            if (totalItems > 0) {
+                listState.animateScrollToItem(totalItems - 1)
+            }
         }
     }
-    LaunchedEffect(viewModel) {
+    LaunchedEffect(viewModel){
         sheetState.show()
+        val totalItems = listState.layoutInfo.totalItemsCount
+        if (totalItems > 0) {
+            listState.animateScrollToItem(totalItems - 1)
+        }
     }
+
 
     BottomSheetScaffold(
         scaffoldState = scaffoldState,
@@ -68,7 +95,7 @@ fun PageChat(
                     title = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                "Nomi",
+                                activeConversation?.name ?: "Nomi",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 17.sp,
@@ -83,11 +110,12 @@ fun PageChat(
                                     modifier = Modifier
                                         .size(6.dp)
                                         .clip(CircleShape)
-                                        .background(if (activeConversationId != null) Emerald500 else Slate400)
+                                        .background(Emerald500)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    if (activeConversationId != null) "Active now" else "Select a conversation",
+                                    activeConversation?.let { "${formatTokenCount(it.cumulativeTokens)} tokens used" }
+                                        ?: "Select a conversation",
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         color = Slate400,
                                         fontSize = 11.sp,
@@ -123,24 +151,29 @@ fun PageChat(
                 Divider(color = Slate800, thickness = 0.5.dp)
             }
         },
-        sheetContainerColor = Slate700,
-        sheetShape = RoundedCornerShape(24.dp),
+        sheetContainerColor = Color.Transparent,
+        sheetShape = RoundedCornerShape(topStart = 35.dp, topEnd = 35.dp),
         sheetPeekHeight = 120.dp,
+        sheetContentColor = Slate700,
         sheetContent = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 35.dp, topEnd = 35.dp))
+                    .background(Color.Transparent)
+                    .padding(horizontal = 0.dp, vertical = 2.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp)),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     TextField(
                         value = inputText,
                         onValueChange = { inputText = it },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(0.85f),
                         maxLines = 2,
                         minLines = 2,
                         placeholder = {
@@ -162,46 +195,59 @@ fun PageChat(
                             fontSize = 15.sp
                         )
                     )
-                    IconButton(
-                        onClick = {
-                            if (inputText.isNotBlank()) {
-                                // Implement send logic if needed, for now just clear
-                                inputText = ""
-                            }
-                        },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(if (inputText.isBlank()) Slate700 else Indigo500),
-                        enabled = inputText.isNotBlank()
+                    Box(
+                        modifier = Modifier.weight(0.1f)
                     ) {
-                        Icon(
-                            imageVector = Lucide.Send,
-                            contentDescription = "Send",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        IconButton(
+                            onClick = {
+                                if (inputText.isNotBlank()) {
+                                    viewModel.sendMessage(inputText)
+                                    inputText = ""
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(if (inputText.isBlank()) Slate700 else Indigo500),
+                            enabled = inputText.isNotBlank()
+                        ) {
+                            Icon(
+                                imageVector = Lucide.Send,
+                                contentDescription = "Send",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).background(Slate950)) {
-            if (activeConversationId == null || messages.isEmpty()) {
-                EmptyStateComponent()
-            } else {
+//            if (isLoading && viewModel.messages.isEmpty()) {
+//                ShimmerChatLoading()
+//            } else if (!isLoading && viewModel.messages.isEmpty()) {
+//                EmptyStateComponent()
+//            } else {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.Top,
+                    reverseLayout = false,
                     contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp)
                 ) {
-                    itemsIndexed(messages) { idx,message ->
-                        val prevMessage = if(idx <= 0) null else messages[idx - 1]
+                    itemsIndexed(
+                        viewModel.messages,
+                        key = { idx, item -> item.id }
+                    ) { idx, message ->
+                        val prevMessage = if (idx <= 0) null else viewModel.messages[idx - 1]
                         ChatBubble(
+                            displayName = message.displayName,
                             content = message.content,
-                            isFromUser = message.role == "user",
-                            showAvatar = prevMessage?.userId !== message.userId
+                            role = message.role,
+                            showAvatar = prevMessage?.userId != message.userId,
+                            totalTokens = message.totalTokens,
+                            thought = message.thought
                         )
                     }
 
@@ -212,16 +258,49 @@ fun PageChat(
                     }
 
                     if (activeTool != null) {
-                        item {
+                        item{
                             ToolBadgeComponent(activeTool!!)
                         }
                     }
 
                     if (isTyping) {
-                        item {
+                        item{
                             TypingIndicatorRow()
                         }
                     }
+                }
+//            }
+
+            AnimatedVisibility(
+                visible = !isAtBottom,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp),
+                enter = fadeIn() + scaleIn(),
+                exit = fadeOut() + scaleOut()
+            ) {
+                FloatingActionButton(
+                    onClick = {
+                        scope.launch {
+                            val totalItems = listState.layoutInfo.totalItemsCount
+                            if (totalItems > 0) {
+                                listState.animateScrollToItem(totalItems - 1)
+                            }
+                        }
+                    },
+                    containerColor = Slate800,
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .border(1.dp, Indigo500, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Lucide.ArrowDown,
+                        contentDescription = "Scroll to Bottom",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }
@@ -254,62 +333,86 @@ fun EmptyStateComponent() {
 
 @Composable
 fun ThinkingBubbleComponent(thought: String) {
-    Surface(
-        color = Slate900.copy(alpha = 0.5f),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()
-    ) {
-        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
-            Icon(
-                Lucide.Brain,
-                contentDescription = null,
-                tint = Indigo500,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(thought, color = Slate400, fontSize = 13.sp, fontWeight = FontWeight.Light)
+    Row {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape),
+            contentAlignment = Alignment.Center
+        ) {}
+        Surface(
+            color = Slate900.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()
+        ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+                Icon(
+                    Lucide.Brain,
+                    contentDescription = null,
+                    tint = Indigo500,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(thought, color = Slate400, fontSize = 13.sp, fontWeight = FontWeight.Light)
+            }
         }
     }
 }
 
 @Composable
 fun ToolBadgeComponent(toolName: String) {
-    Surface(
-        color = Indigo500.copy(alpha = 0.1f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Indigo500.copy(alpha = 0.3f)),
-        shape = RoundedCornerShape(8.dp),
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+    Row {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape),
+            contentAlignment = Alignment.Center
+        ) {}
+        Surface(
+            color = Indigo500.copy(alpha = 0.1f),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Indigo500.copy(alpha = 0.3f)),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
         ) {
-            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Indigo500))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                "Running $toolName...",
-                color = Indigo500,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Indigo500))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    "Running $toolName...",
+                    color = Indigo500,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 }
 
 @Composable
 fun TypingIndicatorRow() {
-    Row(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        repeat(3) { index ->
-            Box(
-                modifier = Modifier
-                    .padding(horizontal = 2.dp)
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(Slate400.copy(alpha = 0.6f))
-            )
+    Row {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape),
+            contentAlignment = Alignment.Center
+        ) {}
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            repeat(3) { index ->
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 2.dp)
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(Slate400.copy(alpha = 0.6f))
+                )
+            }
         }
     }
 }

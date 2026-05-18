@@ -17,11 +17,12 @@ val dataModule = module {
     single { SendPairingRequestUseCase(get(), get(), get()) }
     single { GetConversationsUseCase(get(), get()) }
     single { SetActiveConversationUseCase(get()) }
-    single { GetActiveConversationUseCase(get()) }
     single { FetchMessagesUseCase(get(), get()) }
     single { GetRagKnowledgeGraphUseCase() }
     single { FetchRagGraphUseCase(get()) }
-    factory { GetProfileUseCase(get()) }
+    single { SendMessageUseCase(get()) }
+    single { GetConversationUseCase(get(), get()) }
+    factory { GetProfileUseCase(get(), get()) }
     factory { GetProfileSyncUseCase(get()) }
     factory { LogoutUseCase(get(), get()) }
 }
@@ -32,8 +33,10 @@ val viewModelModule = module {
     }
     viewModel { LoginViewModel(get()) }
     viewModel { WorkspaceViewModel(get(), get(), get(), get()) }
-    viewModel { ChatViewModel(get(), get(), get(), get()) }
-    viewModel { RagViewModel(get(), get(), get()) }
+    viewModel {
+        ChatViewModel(get(), get(), get(), get(), get(), get())
+    }
+    viewModel { RagViewModel(get(), get(), get(), get()) }
 }
 
 val allModules = listOf(platformModule, networkModule, dataModule, viewModelModule)

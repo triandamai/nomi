@@ -4,9 +4,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class ThoughtDto(
+data class SendMessageRequest(
     @SerialName("conversation_id")
     val conversationId: String,
-    @SerialName("text")
-    val text: String?=null
+    @SerialName("message")
+    val message: String
 )

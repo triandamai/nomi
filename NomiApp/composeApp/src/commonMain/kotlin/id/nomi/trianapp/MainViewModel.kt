@@ -71,6 +71,11 @@ class MainViewModel(
     }
 
     fun connect(userId: String, deviceId: String) {
+        val sseJson = Json {
+            ignoreUnknownKeys = true
+            coerceInputValues = true
+            isLenient = true
+        }
         viewModelScope.launch {
             sseClient.listenToSse("/api/realtime?user_id=$userId&device_id=$deviceId")
                 .catch {
@@ -80,7 +85,7 @@ class MainViewModel(
                     val nomiEvent = when (event.event) {
                         "metadata" -> {
                             if (event.data != null) {
-                                val data = Json.decodeFromString<MetadataDto>(event.data ?: "{}");
+                                val data = sseJson.decodeFromString<MetadataDto>(event.data ?: "{}");
                                 NomiEvent.Metadata(data)
                             } else {
                                 NomiEvent.Error("failed parsing")
@@ -89,7 +94,7 @@ class MainViewModel(
 
                         "thought" -> {
                             if (event.data != null) {
-                                val data = Json.decodeFromString<ThoughtDto>(event.data ?: "{}");
+                                val data = sseJson.decodeFromString<ThoughtDto>(event.data ?: "{}");
                                 NomiEvent.Thought(data)
                             } else {
                                 NomiEvent.Error("failed parsing")
@@ -98,7 +103,7 @@ class MainViewModel(
 
                         "message" -> {
                             if (event.data != null) {
-                                val data = Json.decodeFromString<MessageDto>(event.data ?: "{}");
+                                val data = sseJson.decodeFromString<MessageDto>(event.data ?: "{}");
                                 NomiEvent.Message(data)
                             } else {
                                 NomiEvent.Error("failed parsing")
@@ -116,7 +121,7 @@ class MainViewModel(
                         "token_update" -> {
                             if (event.data != null) {
                                 val data =
-                                    Json.decodeFromString<TokenUpdateDto>(event.data ?: "{}");
+                                    sseJson.decodeFromString<TokenUpdateDto>(event.data ?: "{}");
                                 NomiEvent.TokenUpdate(data)
                             } else {
                                 NomiEvent.Error("failed parsing")
@@ -125,7 +130,7 @@ class MainViewModel(
 
                         "tool_start" -> {
                             if (event.data != null) {
-                                val data = Json.decodeFromString<ToolStartDto>(event.data ?: "{}");
+                                val data = sseJson.decodeFromString<ToolStartDto>(event.data ?: "{}");
                                 NomiEvent.ToolStart(data)
                             } else {
                                 NomiEvent.Error("failed parsing")
@@ -134,7 +139,7 @@ class MainViewModel(
 
                         "tool_end" -> {
                             if (event.data != null) {
-                                val data = Json.decodeFromString<ToolEndDto>(event.data ?: "{}");
+                                val data = sseJson.decodeFromString<ToolEndDto>(event.data ?: "{}");
                                 NomiEvent.ToolEnd(data)
                             } else {
                                 NomiEvent.Error("failed parsing")

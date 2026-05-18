@@ -38,11 +38,11 @@ data class MessageDto(
     val thought: String? = null,
 
     @SerialName("total_tokens")
-    val totalTokens: Long?=0,
+    val totalTokens: Long? = null,
     @SerialName("answer_tokens")
-    val answerTokens: Long?=0,
+    val answerTokens: Long? = null,
     @SerialName("prompt_tokens")
-    val promptTokens: Long?=0,
+    val promptTokens: Long? = null,
 
     @SerialName("user_id")
     val userId: String?=null,

@@ -36,10 +36,12 @@ class WorkspaceViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val profile: StateFlow<ProfileEntity?> = getProfileUseCase()
-        .map { it.getOrNull() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     init {
+       viewModelScope.launch {
+           getProfileUseCase.fetchProfile()
+       }
        viewModelScope.launch {
            eventBus.events.collect {
                 println("WORKSPACE LISTENING ${it}")
