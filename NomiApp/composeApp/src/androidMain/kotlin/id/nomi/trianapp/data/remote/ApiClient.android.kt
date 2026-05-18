@@ -17,6 +17,7 @@ import id.nomi.trianapp.data.model.MetaResponse
 import io.ktor.client.call.body
 import io.ktor.client.plugins.sse.SSE
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlin.time.Duration
 
@@ -24,6 +25,7 @@ actual suspend inline fun <reified R> handleError(block: () -> HttpResponse): Ap
     return try {
         val response = block()
         if (response.status.isSuccess()) {
+            println("${response.bodyAsText()}")
             response.body()
         } else {
             try {

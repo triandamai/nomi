@@ -44,6 +44,7 @@ class SendPairingRequestUseCase(
                     id = it.id,
                     name = it.name,
                     cumulativeTokens = it.cumulativeTokens,
+                    maxTokenUsage = it.maxTokenUsage,
                     createdAt = it.createdAt,
                     updatedAt = it.updatedAt
                 )

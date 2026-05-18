@@ -2,9 +2,15 @@ package id.nomi.trianapp.di
 
 import id.nomi.trianapp.MainViewModel
 import id.nomi.trianapp.domain.usecase.*
+import id.nomi.trianapp.ui.screen.admin.UserManagementViewModel
 import id.nomi.trianapp.ui.screen.auth.LoginViewModel
 import id.nomi.trianapp.ui.screen.chat.ChatViewModel
 import id.nomi.trianapp.ui.screen.rag.RagViewModel
+import id.nomi.trianapp.ui.screen.workspace.ConversationMonitoringViewModel
+import id.nomi.trianapp.ui.screen.workspace.MoneyTrackingViewModel
+import id.nomi.trianapp.ui.screen.workspace.RemindersViewModel
+import id.nomi.trianapp.ui.screen.workspace.SoulTimelineViewModel
+import id.nomi.trianapp.ui.screen.workspace.StorageManagementViewModel
 import id.nomi.trianapp.ui.screen.workspace.WorkspaceViewModel
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
@@ -22,9 +28,18 @@ val dataModule = module {
     single { FetchRagGraphUseCase(get()) }
     single { SendMessageUseCase(get()) }
     single { GetConversationUseCase(get(), get()) }
+    single { GetRemindersUseCase(get(), get()) }
+    single { GetMoneyHistoryUseCase(get(), get()) }
     factory { GetProfileUseCase(get(), get()) }
     factory { GetProfileSyncUseCase(get()) }
     factory { LogoutUseCase(get(), get()) }
+    single { GetAdminUsersUseCase(get()) }
+    single { GetAdminUserDetailUseCase(get()) }
+    single { GetSoulHistoryUseCase(get()) }
+    single { RestoreSoulUseCase(get()) }
+    single { UpdateConversationUseCase(get()) }
+    single { ExploreStorageUseCase(get()) }
+    single { DeleteStorageFileUseCase(get()) }
 }
 
 val viewModelModule = module {
@@ -37,6 +52,12 @@ val viewModelModule = module {
         ChatViewModel(get(), get(), get(), get(), get(), get())
     }
     viewModel { RagViewModel(get(), get(), get(), get()) }
+    viewModel { RemindersViewModel(get()) }
+    viewModel { MoneyTrackingViewModel(get()) }
+    viewModel { UserManagementViewModel(get(), get()) }
+    viewModel { SoulTimelineViewModel(get(), get(), get()) }
+    viewModel { ConversationMonitoringViewModel(get(), get()) }
+    viewModel { StorageManagementViewModel(get(), get()) }
 }
 
 val allModules = listOf(platformModule, networkModule, dataModule, viewModelModule)

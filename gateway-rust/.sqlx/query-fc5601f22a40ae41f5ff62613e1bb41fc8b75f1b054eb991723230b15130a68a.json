@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT c.id, c.title, c.created_at, c.updated_at,c.cumulative_tokens\n        FROM conversations c\n        INNER JOIN conversation_members cm ON c.id = cm.conversation_id\n        WHERE cm.user_id = $1\n        ORDER BY c.updated_at DESC\n        ",
+  "query": "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at,max_token_usage,cumulative_tokens",
   "describe": {
     "columns": [
       {
@@ -25,12 +25,18 @@
       },
       {
         "ordinal": 4,
+        "name": "max_token_usage",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
         "name": "cumulative_tokens",
         "type_info": "Int4"
       }
     ],
     "parameters": {
       "Left": [
+        "Text",
         "Uuid"
       ]
     },
@@ -39,8 +45,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "589625a519b1d0f68a828490250c5f1d6c6a72d2f844b721e397bb4ff997f4d7"
+  "hash": "fc5601f22a40ae41f5ff62613e1bb41fc8b75f1b054eb991723230b15130a68a"
 }

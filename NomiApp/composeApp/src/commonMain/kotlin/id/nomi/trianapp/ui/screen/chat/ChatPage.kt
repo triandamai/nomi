@@ -60,14 +60,18 @@ fun PageChat(
     }
 
     val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = false
+        skipPartiallyExpanded = false,
+        confirmValueChange = {
+            if (it == SheetValue.Hidden) false
+            else true
+        }
     )
 
     val scaffoldState = rememberBottomSheetScaffoldState(
         bottomSheetState = sheetState
     )
 
-    LaunchedEffect(viewModel.messages.size, thought, activeTool, isTyping) {
+    suspend fun shouldScrollToBottom() {
         if (isAtBottom && (viewModel.messages.isNotEmpty() || thought != null || activeTool != null || isTyping)) {
             val totalItems = listState.layoutInfo.totalItemsCount
             if (totalItems > 0) {
@@ -75,7 +79,10 @@ fun PageChat(
             }
         }
     }
-    LaunchedEffect(viewModel){
+    LaunchedEffect(viewModel.messages.size, thought, activeTool, isTyping) {
+        shouldScrollToBottom()
+    }
+    LaunchedEffect(viewModel) {
         sheetState.show()
         val totalItems = listState.layoutInfo.totalItemsCount
         if (totalItems > 0) {
@@ -151,16 +158,16 @@ fun PageChat(
                 Divider(color = Slate800, thickness = 0.5.dp)
             }
         },
-        sheetContainerColor = Color.Transparent,
-        sheetShape = RoundedCornerShape(topStart = 35.dp, topEnd = 35.dp),
-        sheetPeekHeight = 120.dp,
+        sheetContainerColor = Slate700,
+        sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         sheetContentColor = Slate700,
+        sheetPeekHeight = 120.dp,
         sheetContent = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 35.dp, topEnd = 35.dp))
-                    .background(Color.Transparent)
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                    .background(Slate700)
                     .padding(horizontal = 0.dp, vertical = 2.dp)
             ) {
                 Row(
@@ -223,53 +230,90 @@ fun PageChat(
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).background(Slate950)) {
-//            if (isLoading && viewModel.messages.isEmpty()) {
-//                ShimmerChatLoading()
-//            } else if (!isLoading && viewModel.messages.isEmpty()) {
-//                EmptyStateComponent()
-//            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Top,
-                    reverseLayout = false,
-                    contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp)
-                ) {
-                    itemsIndexed(
-                        viewModel.messages,
-                        key = { idx, item -> item.id }
-                    ) { idx, message ->
-                        val prevMessage = if (idx <= 0) null else viewModel.messages[idx - 1]
-                        ChatBubble(
-                            displayName = message.displayName,
-                            content = message.content,
-                            role = message.role,
-                            showAvatar = prevMessage?.userId != message.userId,
-                            totalTokens = message.totalTokens,
-                            thought = message.thought
-                        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Slate950)
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Top,
+                reverseLayout = false,
+                contentPadding = PaddingValues(top = 16.dp, bottom = 0.dp)
+            ) {
+                if (isLoading && viewModel.messages.isEmpty()) {
+                    item {
+                        ShimmerChatLoading()
                     }
-
-                    if (thought != null) {
-                        item {
-                            ThinkingBubbleComponent(thought!!)
-                        }
-                    }
-
-                    if (activeTool != null) {
-                        item{
-                            ToolBadgeComponent(activeTool!!)
-                        }
-                    }
-
-                    if (isTyping) {
-                        item{
-                            TypingIndicatorRow()
+                }
+                if (!isLoading && viewModel.messages.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier.fillParentMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Lucide.MessageSquare,
+                                contentDescription = null,
+                                tint = Slate400,
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "No messages yet. Start your conversation with Nomi!",
+                                color = Slate400,
+                                textAlign = TextAlign.Center,
+                                fontSize = 16.sp,
+                                modifier = Modifier.padding(horizontal = 32.dp)
+                            )
                         }
                     }
                 }
-//            }
+                itemsIndexed(
+                    viewModel.messages,
+                    key = { idx, item -> item.id }
+                ) { idx, message ->
+                    val prevMessage = if (idx <= 0) null else viewModel.messages[idx - 1]
+                    ChatBubble(
+                        displayName = message.displayName,
+                        content = message.content,
+                        role = message.role,
+                        showAvatar = prevMessage?.userId != message.userId,
+                        totalTokens = message.totalTokens,
+                        thought = message.thought,
+                        onShowThought = {
+                            scope.launch {
+                                shouldScrollToBottom()
+                            }
+                        }
+                    )
+                }
+
+                if (thought != null) {
+                    item {
+                        ThinkingBubbleComponent(thought!!)
+                    }
+                }
+
+                if (activeTool != null) {
+                    item {
+                        ToolBadgeComponent(activeTool!!)
+                    }
+                }
+
+                if (isTyping) {
+                    item {
+                        TypingIndicatorRow()
+                    }
+                }
+                item {
+                    Spacer(
+                        modifier = Modifier.height(126.dp)
+                    )
+                }
+            }
 
             AnimatedVisibility(
                 visible = !isAtBottom,
@@ -307,29 +351,6 @@ fun PageChat(
     }
 }
 
-@Composable
-fun EmptyStateComponent() {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(
-            imageVector = Lucide.MessageSquare,
-            contentDescription = null,
-            tint = Slate400,
-            modifier = Modifier.size(64.dp)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            "No messages yet. Start your conversation with Nomi!",
-            color = Slate400,
-            textAlign = TextAlign.Center,
-            fontSize = 16.sp,
-            modifier = Modifier.padding(horizontal = 32.dp)
-        )
-    }
-}
 
 @Composable
 fun ThinkingBubbleComponent(thought: String) {

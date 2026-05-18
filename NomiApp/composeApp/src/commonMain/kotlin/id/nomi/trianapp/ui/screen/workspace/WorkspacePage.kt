@@ -17,6 +17,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import coil3.compose.AsyncImage
 import id.nomi.trianapp.MainViewModel
 import id.nomi.trianapp.data.local.ConversationEntity
@@ -52,9 +53,8 @@ fun WorkspacePage(
     ) {
         Sidebar(
             currentRoute = Route.Workspace,
-            onNavigate = { route ->
-
-            }
+            selectedMenu = selectedMenu,
+            onMenuSelected = { selectedMenu = it }
         )
         // Crisp vertical divider mimicking web aesthetics
         VerticalDivider(
@@ -76,6 +76,24 @@ fun WorkspacePage(
                                 onConversationSelected(id)
                             }
                         )
+                    }
+                    WorkspaceMenu.Reminders -> {
+                        RemindersPage()
+                    }
+                    WorkspaceMenu.MoneyTracking -> {
+                        MoneyTrackingPage()
+                    }
+                    WorkspaceMenu.ConversationMonitoring -> {
+                        id.nomi.trianapp.ui.screen.workspace.ConversationMonitoringPage()
+                    }
+                    WorkspaceMenu.UserDirectory -> {
+                        id.nomi.trianapp.ui.screen.admin.UserManagementPage()
+                    }
+                    WorkspaceMenu.Storage -> {
+                        id.nomi.trianapp.ui.screen.workspace.StorageManagementPage()
+                    }
+                    WorkspaceMenu.SoulTimeline -> {
+                        id.nomi.trianapp.ui.screen.workspace.SoulTimelinePage()
                     }
 
                     else -> {
@@ -164,19 +182,28 @@ fun ConversationItem(
                     conversation.name,
                     color = Color.White,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     "${conversation.cumulativeTokens} tokens",
                     color = Color.Gray,
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Column(horizontalAlignment = Alignment.End) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.widthIn(min = 64.dp)
+            ) {
                 Text(
                     conversation.updatedAt.split("T").firstOrNull() ?: "",
                     color = Color.Gray,
-                    fontSize = 12.sp
+                    fontSize = 12.sp,
+                    maxLines = 1
                 )
                 Icon(
                     Lucide.ChevronRight,
@@ -191,7 +218,11 @@ fun ConversationItem(
 
 
 @Composable
-fun Sidebar(currentRoute: Route, onNavigate: (Route) -> Unit) {
+fun Sidebar(
+    currentRoute: Route,
+    selectedMenu: WorkspaceMenu,
+    onMenuSelected: (WorkspaceMenu) -> Unit
+) {
     Column(
         modifier = Modifier
             .width(72.dp)
@@ -206,57 +237,74 @@ fun Sidebar(currentRoute: Route, onNavigate: (Route) -> Unit) {
 
         }
 
-        SidebarNavItem(Lucide.MessageSquare, true) {
-
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        SidebarNavItem(Lucide.Bell, false) {
-
+        SidebarNavItem(
+            Lucide.MessageSquare,
+            selectedMenu == WorkspaceMenu.Conversations
+        ) {
+            onMenuSelected(WorkspaceMenu.Conversations)
         }
         Spacer(modifier = Modifier.height(8.dp))
         SidebarNavItem(
-
-            Lucide.Wallet,
-            false
+            Lucide.Bell,
+            selectedMenu == WorkspaceMenu.Reminders
         ) {
-
+            onMenuSelected(WorkspaceMenu.Reminders)
         }
         Spacer(modifier = Modifier.height(8.dp))
-        SidebarNavItem(Lucide.Layers, false) {
-
+        SidebarNavItem(
+            Lucide.Wallet,
+            selectedMenu == WorkspaceMenu.MoneyTracking
+        ) {
+            onMenuSelected(WorkspaceMenu.MoneyTracking)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        SidebarNavItem(
+            Lucide.Layers,
+            selectedMenu == WorkspaceMenu.Channel
+        ) {
+            onMenuSelected(WorkspaceMenu.Channel)
         }
         Spacer(modifier = Modifier.height(8.dp))
         SidebarNavItem(
             Lucide.Activity,
-            false
+            selectedMenu == WorkspaceMenu.ConversationMonitoring
         ) {
-
+            onMenuSelected(WorkspaceMenu.ConversationMonitoring)
         }
         Spacer(modifier = Modifier.height(8.dp))
         SidebarNavItem(
             Lucide.Users,
-            false
+            selectedMenu == WorkspaceMenu.UserDirectory
         ) {
-
+            onMenuSelected(WorkspaceMenu.UserDirectory)
         }
         Spacer(modifier = Modifier.height(8.dp))
-        SidebarNavItem(Lucide.Database, false) {
-
+        SidebarNavItem(
+            Lucide.Database,
+            selectedMenu == WorkspaceMenu.Storage
+        ) {
+            onMenuSelected(WorkspaceMenu.Storage)
         }
         Spacer(modifier = Modifier.height(8.dp))
-        SidebarNavItem(Lucide.Rss, false) {
-
+        SidebarNavItem(
+            Lucide.Rss,
+            selectedMenu == WorkspaceMenu.PubSubTest
+        ) {
+            onMenuSelected(WorkspaceMenu.PubSubTest)
         }
         Spacer(modifier = Modifier.height(8.dp))
-        SidebarNavItem(Lucide.HeartPulse, false) {
-
+        SidebarNavItem(
+            Lucide.HeartPulse,
+            selectedMenu == WorkspaceMenu.Health
+        ) {
+            onMenuSelected(WorkspaceMenu.Health)
         }
         Spacer(modifier = Modifier.height(8.dp))
         SidebarNavItem(
             Lucide.History,
-            false
+            selectedMenu == WorkspaceMenu.SoulTimeline
         ) {
-
+            onMenuSelected(WorkspaceMenu.SoulTimeline)
         }
 
         Divider(
@@ -269,7 +317,7 @@ fun Sidebar(currentRoute: Route, onNavigate: (Route) -> Unit) {
         SidebarNavItem(
             icon = Lucide.Settings,
             isActive = currentRoute == Route.Workspace,
-            onClick = { onNavigate(Route.Workspace) }
+            onClick = { }
         )
     }
 }

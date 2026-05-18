@@ -15,9 +15,11 @@ import kotlinx.coroutines.IO
         ProfileEntity::class,
         ChannelEntity::class,
         ConversationEntity::class,
-        MessageEntity::class
+        MessageEntity::class,
+        ReminderEntity::class,
+        MoneyTrackingEntity::class
     ],
-    version = 11,
+    version = 13,
     autoMigrations = [],
     exportSchema = true
 )

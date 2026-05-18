@@ -1,12 +1,10 @@
 package id.nomi.trianapp
 
-import android.os.Build
-
-class AndroidPlatform : Platform {
-    override val name: String = "Android ${Build.VERSION.SDK_INT}"
+class JvmPlatform : Platform {
+    override val name: String = "Java ${System.getProperty("java.version")}"
 }
 
-actual fun getPlatform(): Platform = AndroidPlatform()
+actual fun getPlatform(): Platform = JvmPlatform()
 
 actual fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"

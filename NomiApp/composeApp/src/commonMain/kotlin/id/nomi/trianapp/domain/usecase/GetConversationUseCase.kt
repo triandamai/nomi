@@ -19,6 +19,7 @@ class GetConversationUseCase(
                     id = dto.id,
                     name = dto.name,
                     cumulativeTokens = dto.cumulativeTokens,
+                    maxTokenUsage = dto.maxTokenUsage,
                     createdAt = dto.createdAt,
                     updatedAt = dto.updatedAt
                 )

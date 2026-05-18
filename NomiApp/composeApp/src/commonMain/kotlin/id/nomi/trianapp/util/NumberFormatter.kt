@@ -36,3 +36,15 @@ fun formatTokenCount(count: Long): String {
         }
     }
 }
+
+/**
+ * Formats monetary amounts with thousand separators (e.g., 245.000)
+ */
+fun formatAmount(amount: Long): String {
+    return amount.toString()
+        .reversed()
+        .chunked(3)
+        .joinToString(".")
+        .reversed()
+}
+

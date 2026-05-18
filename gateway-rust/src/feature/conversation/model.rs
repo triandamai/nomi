@@ -27,6 +27,7 @@ pub struct ConversationResponse {
     pub id: Uuid,
     pub name: String,
     pub cumulative_tokens: Option<i32>,
+    pub max_token_usage: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

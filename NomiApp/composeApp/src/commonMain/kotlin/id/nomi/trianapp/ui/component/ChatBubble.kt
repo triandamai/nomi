@@ -32,7 +32,8 @@ fun ChatBubble(
     showAvatar: Boolean,
     totalTokens: Long = 0,
     thought: String? = null,
-    timestamp: String = "12:00 PM"
+    timestamp: String = "12:00 PM",
+    onShowThought:()-> Unit
 ) {
     val isFromUser = role == "user"
     var isThoughtExpanded by remember { mutableStateOf(false) }
@@ -116,7 +117,12 @@ fun ChatBubble(
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .clickable { isThoughtExpanded = !isThoughtExpanded }
+                        .clickable {
+                            isThoughtExpanded = !isThoughtExpanded
+                            if(isThoughtExpanded){
+                                onShowThought()
+                            }
+                        }
                 ) {
                     Column(modifier = Modifier.padding(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -200,7 +206,8 @@ fun ChatBubbleUserPreview() {
                 content = "This is a **bold** message from the user with `inline code`.",
                 role = "user",
                 showAvatar = true,
-                displayName = "Trian"
+                displayName = "Trian",
+                onShowThought = {}
             )
         }
     }
@@ -224,7 +231,8 @@ fun ChatBubbleNomiPreview() {
                 showAvatar = true,
                 totalTokens = 1250,
                 thought = "I need to provide a helpful code example.",
-                displayName = "Trian"
+                displayName = "Trian",
+                onShowThought = {}
             )
         }
     }
@@ -240,7 +248,8 @@ fun ChatBubbleNomiPreview2() {
                 content = "This is a response from Nomi.",
                 role = "assistant",
                 showAvatar = false,
-                displayName = "Trian"
+                displayName = "Trian",
+                onShowThought = {}
             )
         }
     }

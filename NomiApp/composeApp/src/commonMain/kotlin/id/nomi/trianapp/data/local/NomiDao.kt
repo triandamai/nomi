@@ -23,6 +23,7 @@ data class ConversationEntity(
     @PrimaryKey val id: String,
     val name: String,
     val cumulativeTokens: Long,
+    val maxTokenUsage: Long,
     val createdAt: String,
     val updatedAt: String
 )
@@ -45,6 +46,32 @@ data class MessageEntity(
     val stickerUrl: String?,
     val userId: String?,
     val createdAt: String
+)
+
+@Entity(tableName = "reminders")
+data class ReminderEntity(
+    @PrimaryKey val id: String,
+    val taskType: String,
+    val content: String,
+    val dueAt: String,
+    val frequency: String,
+    val status: String,
+    val userDisplayName: String,
+    val conversationTitle: String,
+    val createdAt: String
+)
+
+@Entity(tableName = "money_tracking")
+data class MoneyTrackingEntity(
+    @PrimaryKey val id: String,
+    val merchantName: String,
+    val category: String,
+    val description: String?,
+    val totalAmount: Long,
+    val createdAt: String,
+    val itemsJson: String, // JSON representation of List<TransactionItemDto>
+    val userDisplayName: String,
+    val conversationTitle: String
 )
 
 @Dao
@@ -93,6 +120,24 @@ interface NomiDao {
 
     @Query("DELETE FROM messages WHERE conversationId = :conversationId")
     suspend fun deleteMessagesByConversation(conversationId: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReminders(reminders: List<ReminderEntity>)
+
+    @Query("SELECT * FROM reminders ORDER BY dueAt ASC")
+    fun getReminders(): Flow<List<ReminderEntity>>
+
+    @Query("DELETE FROM reminders")
+    suspend fun deleteReminders()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMoneyTracking(items: List<MoneyTrackingEntity>)
+
+    @Query("SELECT * FROM money_tracking ORDER BY createdAt DESC")
+    fun getMoneyTracking(): Flow<List<MoneyTrackingEntity>>
+
+    @Query("DELETE FROM money_tracking")
+    suspend fun deleteMoneyTracking()
     
     @Transaction
     suspend fun clearAndInsertData(

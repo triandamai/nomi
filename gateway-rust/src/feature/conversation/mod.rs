@@ -223,7 +223,7 @@ pub async fn handle_pairing_handshake(
     // Fetch Conversations
     let conv_rows = sqlx::query!(
         r#"
-        SELECT c.id, c.title, c.created_at, c.updated_at, c.cumulative_tokens
+        SELECT c.id, c.title, c.created_at, c.updated_at,c.max_token_usage, c.cumulative_tokens
         FROM conversations c
         INNER JOIN conversation_members cm ON c.id = cm.conversation_id
         WHERE cm.user_id = $1
@@ -241,6 +241,7 @@ pub async fn handle_pairing_handshake(
         .map(|row| ConversationResponse {
             id: row.id,
             cumulative_tokens: row.cumulative_tokens,
+            max_token_usage:row.max_token_usage,
             name: row.title.unwrap_or_default(),
             created_at: row.created_at.unwrap_or_else(Utc::now),
             updated_at: row.updated_at.unwrap_or_else(Utc::now),
@@ -439,7 +440,7 @@ pub async fn handle_get_conversations(
 
     let result = sqlx::query!(
         r#"
-        SELECT c.id, c.title, c.created_at, c.updated_at,c.cumulative_tokens
+        SELECT c.id, c.title, c.created_at,c.max_token_usage, c.updated_at,c.cumulative_tokens
         FROM conversations c
         INNER JOIN conversation_members cm ON c.id = cm.conversation_id
         WHERE cm.user_id = $1
@@ -457,6 +458,7 @@ pub async fn handle_get_conversations(
                 .map(|row| ConversationResponse {
                     id: row.id,
                     cumulative_tokens: row.cumulative_tokens,
+                    max_token_usage: row.max_token_usage,
                     name: row.title.unwrap_or_default(),
                     created_at: row.created_at.unwrap_or_else(Utc::now),
                     updated_at: row.updated_at.unwrap_or_else(Utc::now),
@@ -473,9 +475,7 @@ pub async fn handle_get_conversations(
 
 pub async fn handle_create_conversation(
     State(state): State<AppState>,
-    axum::extract::Extension(claims): axum::extract::Extension<
-        crate::feature::conversation::auth::Claims,
-    >,
+    axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
     Json(payload): Json<CreateConversationRequest>,
 ) -> ApiResponse<ConversationResponse> {
     let user_id = match Uuid::parse_str(&claims.sub) {
@@ -497,7 +497,7 @@ pub async fn handle_create_conversation(
         let conv_type = payload.conversation_type.unwrap_or_else(|| "private".to_string());
 
         let row = sqlx::query!(
-            "INSERT INTO conversations (id, title, soul_content, bootstrap_content, cumulative_tokens, conversation_type) VALUES ($1, $2, $3, $4, 0, $5) RETURNING id, title, created_at, updated_at, cumulative_tokens",
+            "INSERT INTO conversations (id, title, soul_content, bootstrap_content, cumulative_tokens, conversation_type) VALUES ($1, $2, $3, $4, 0, $5) RETURNING id, title,max_token_usage, created_at, updated_at, cumulative_tokens",
             id,
             title,
             payload.soul_content,
@@ -520,6 +520,7 @@ pub async fn handle_create_conversation(
         Ok(ConversationResponse {
             id: row.id,
             cumulative_tokens: row.cumulative_tokens,
+            max_token_usage:row.max_token_usage,
             name: row.title.unwrap_or_default(),
             created_at: row.created_at.unwrap_or_else(Utc::now),
             updated_at: row.updated_at.unwrap_or_else(Utc::now),
@@ -575,7 +576,7 @@ pub async fn handle_update_conversation(
     info!(conversation_id = %id, user_id = %user_id, "Updating conversation");
 
     let result = sqlx::query!(
-        "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at,cumulative_tokens",
+        "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at,max_token_usage,cumulative_tokens",
         payload.name,
         id
     )
@@ -587,6 +588,7 @@ pub async fn handle_update_conversation(
             ConversationResponse {
                 id: row.id,
                 cumulative_tokens: row.cumulative_tokens,
+                max_token_usage: row.max_token_usage,
                 name: row.title.unwrap_or_default(),
                 created_at: row.created_at.unwrap_or_else(Utc::now),
                 updated_at: row.updated_at.unwrap_or_else(Utc::now),
