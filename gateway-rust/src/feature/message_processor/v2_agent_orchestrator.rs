@@ -7,7 +7,7 @@ use crate::common::identity::UserIdentity;
 use crate::common::repository::message_repo::save_message;
 use crate::common::tools::ToolDispatcher;
 use crate::feature::message_processor::v2_orchestrator::{
-    send_message_to_subscriber, send_status_presence_update, send_status_update,
+    send_message_to_subscriber, send_status_presence_update, send_status_update, send_tool_update,
 };
 use crate::feature::{MessageSource, UnifiedMessage};
 use crate::models::Conversation;
@@ -469,7 +469,9 @@ impl V2AgentOrchestrator {
                         .map(|v| v.clone())
                         .collect(),
                     conversation_id,
-                    MessageSource::Web {name:"web".to_string()},
+                    MessageSource::Web {
+                        name: "web".to_string(),
+                    },
                     msg.is_group,
                     "thought".to_string(),
                     crate::prompts::StatusRegistry::random_thinking_phrase(),
@@ -592,17 +594,19 @@ impl V2AgentOrchestrator {
 
                     // Status: Tool checking
                     for call in &current_calls {
-                        let _ = send_status_update(
+                        let _ = send_tool_update(
                             &state,
                             self.conversation_member_ids
                                 .iter()
                                 .map(|v| v.clone())
                                 .collect(),
                             conversation_id,
-                            MessageSource::Web {name:"web".to_string()},
+                            MessageSource::Web {
+                                name: "web".to_string(),
+                            },
                             msg.is_group,
                             "tool_start".to_string(),
-                            crate::prompts::StatusRegistry::random_action_phrase(&call.name),
+                            call.name.clone(),
                         )
                         .await;
                     }
@@ -660,12 +664,13 @@ impl V2AgentOrchestrator {
                             .collect(),
                         conversation_id,
                         MessageSource::Web {
-                            name:"web".to_string()
+                            name: "web".to_string(),
                         },
                         false,
                         "error".to_string(),
-                        "Oops, something went wrong.".to_string()
-                    ).await;
+                        "Oops, something went wrong.".to_string(),
+                    )
+                    .await;
                     break;
                 }
             }
@@ -695,8 +700,6 @@ impl V2AgentOrchestrator {
             )
             .await
             {
-
-
                 let _ = send_message_to_subscriber(
                     &state,
                     self.conversation_member_ids
@@ -922,7 +925,8 @@ impl V2AgentOrchestrator {
                     }
 
                     let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
-                    let tool_results = execute_tools(&dispatcher, current_calls.clone(), task_prompt).await;
+                    let tool_results =
+                        execute_tools(&dispatcher, current_calls.clone(), task_prompt).await;
 
                     tool_turns.push((current_calls, tool_results));
                 }

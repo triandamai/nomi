@@ -317,6 +317,7 @@ impl StatusRegistry {
             "send_direct_message" => "dispatching a message",
             "make_sticker" => "crafting a sticker",
             "analyze_media" => "inspecting the media file",
+            "classification" => "working my magic",
             _ => "working my magic",
         };
 

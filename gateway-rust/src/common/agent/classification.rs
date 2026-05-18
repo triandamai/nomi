@@ -1,6 +1,7 @@
 use crate::common::agent::agent_model::{ExpenseData, MaintenanceData, MediaClassification};
+use crate::feature::message_processor::v2_orchestrator::send_tool_update;
 use crate::feature::{MessageSource, UnifiedMessage};
-use crate::prompts::{PromptRegistry, StatusRegistry};
+use crate::prompts::PromptRegistry;
 use crate::rag::classify_media_context;
 use crate::{AppState, rag};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
@@ -9,7 +10,6 @@ use gemini_rust::{Content, Message};
 use serde_json::json;
 use tracing::info;
 use uuid::Uuid;
-use crate::feature::message_processor::v2_orchestrator::send_status_update;
 
 pub async fn classification(
     state: &AppState,
@@ -32,15 +32,18 @@ pub async fn classification(
                 image_url
             );
 
-            let _ = send_status_update(
+            let _ = send_tool_update(
                 &state,
                 members.clone(),
                 conversation_id,
-                MessageSource::Web {name:"web".to_string()},
+                MessageSource::Web {
+                    name: "web".to_string(),
+                },
                 msg.is_group,
                 "tool_start".to_string(),
-                StatusRegistry::random_action_phrase("analyze_media"),
-            ).await;
+                "classification".to_string(),
+            )
+            .await;
 
             let classification =
                 classify_media_context(&state, &image_url, Some(text_content.clone()))
@@ -482,7 +485,6 @@ pub(crate) async fn fetch_media_from_storage(
     let b64 = BASE64.encode(data.to_vec());
     Ok((mime_type, b64))
 }
-
 
 pub(crate) async fn classify_intent(
     gemini: &gemini_rust::Gemini,
