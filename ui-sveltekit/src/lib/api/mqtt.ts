@@ -62,8 +62,8 @@ class MqttClient {
         if (!this.client || !this.userId) return;
 
         const topics = [
-            `arta/users/${this.userId}/#`,
-            `arta/broadcast/#`
+            `nomi/users/${this.userId}/#`,
+            `nomi/broadcast/#`
         ];
 
         this.client.subscribe(topics, (err) => {
@@ -80,13 +80,13 @@ class MqttClient {
 
         // Unsubscribe from previous conversation
         if (this.currentConversationId && this.currentConversationId !== conversationId) {
-            this.client.unsubscribe(`arta/conversations/${this.currentConversationId}/#`);
+            this.client.unsubscribe(`nomi/conversations/${this.currentConversationId}/#`);
         }
 
         this.currentConversationId = conversationId;
 
         if (this.currentConversationId) {
-            this.client.subscribe(`arta/conversations/${this.currentConversationId}/#`, (err) => {
+            this.client.subscribe(`nomi/conversations/${this.currentConversationId}/#`, (err) => {
                 if (err) {
                     console.error('MQTT: Conversation subscription error', err);
                 } else {

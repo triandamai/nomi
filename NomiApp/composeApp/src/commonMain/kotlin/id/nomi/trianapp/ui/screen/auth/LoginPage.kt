@@ -210,7 +210,7 @@ fun LoginPage(
 
                 // Footer info
                 Text(
-                    text = "Secure pairing powered by Arta AI",
+                    text = "Secure pairing powered by Nomi AI",
                     style = MaterialTheme.typography.labelSmall.copy(
                         color = Slate700,
                         fontWeight = FontWeight.Normal

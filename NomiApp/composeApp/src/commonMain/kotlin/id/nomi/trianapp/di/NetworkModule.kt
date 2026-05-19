@@ -1,6 +1,7 @@
 package id.nomi.trianapp.di
 
 import id.nomi.trianapp.data.remote.ApiClient
+import id.nomi.trianapp.data.remote.NomiMqttClient
 import id.nomi.trianapp.data.remote.SseClient
 import id.nomi.trianapp.util.EventBus
 import io.ktor.client.*
@@ -15,4 +16,5 @@ val networkModule = module {
     single { EventBus() }
     single { ApiClient(get()) }
     single { SseClient(get()) }
+    single { NomiMqttClient(get()) }
 }

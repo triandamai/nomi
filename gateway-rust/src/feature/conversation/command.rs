@@ -428,7 +428,7 @@ pub async fn process_group_registration(
         let _ = send_message(
             state,
             msg,
-            "Access restricted. Only registered Arta users can pair groups. Please sign up to continue! 🛡️".to_string(),
+            "Access restricted. Only registered Nomi users can pair groups. Please sign up to continue! 🛡️".to_string(),
             None,
         ).await;
         return Ok(());
@@ -439,7 +439,7 @@ pub async fn process_group_registration(
         let _ = send_message(
             state,
             msg,
-            "Access restricted. Only registered Arta users can pair groups. Please sign up to continue! 🛡️".to_string(),
+            "Access restricted. Only registered Nomi users can pair groups. Please sign up to continue! 🛡️".to_string(),
             None,
         ).await;
         return Ok(());

@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Bootstraps our independent background worker loop without touching existing engines
     let mqtt_manager = services::mqtt_service::MqttManager::init(
-        "arta_gateway_prod", 
+        "nomi_gateway_prod", 
         mqtt_host.as_str(),
         8883,
         Some(mqtt_user.as_str()),

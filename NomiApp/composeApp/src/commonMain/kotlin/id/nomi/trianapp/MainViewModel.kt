@@ -10,6 +10,7 @@ import id.nomi.trianapp.data.model.ToolEndDto
 import id.nomi.trianapp.data.model.ToolStartDto
 import id.nomi.trianapp.data.preferences.PreferencesConstant
 import id.nomi.trianapp.data.preferences.PreferencesStorage
+import id.nomi.trianapp.data.remote.NomiMqttClient
 import id.nomi.trianapp.data.remote.SseClient
 import id.nomi.trianapp.domain.usecase.GetProfileSyncUseCase
 import id.nomi.trianapp.domain.usecase.LogoutUseCase
@@ -31,6 +32,7 @@ sealed class MainAppState {
 
 class MainViewModel(
     private val sseClient: SseClient,
+    private val mqttClient: NomiMqttClient,
     private val preferencesStorage: PreferencesStorage,
     private val logoutUseCase: LogoutUseCase,
     private val getProfileSyncUseCase: GetProfileSyncUseCase,
@@ -64,6 +66,7 @@ class MainViewModel(
                     u_id,
                     uuid.toString()
                 )
+                mqttClient.connect(u_id)
             }
         } else {
             _appState.emit(MainAppState.Unauthenticated)

@@ -2,7 +2,7 @@
 
 ## Project Summary
 
-**Open Agent** (internally referred to as **Arta** or **Nomi**) is a sophisticated AI-driven agentic workspace designed for seamless human-AI collaboration. It features a high-performance **Rust** backend (Gateway) that orchestrates interactions between **Google Gemini LLMs**, a **PostgreSQL** database with **pgvector** for long-term hierarchical memory, and multiple communication channels including a **SvelteKit** web UI, **WhatsApp**, and **Telegram**.
+**Nomi** (formerly Arta or Open Agent) is a sophisticated AI-driven agentic workspace designed for seamless human-AI collaboration. It features a high-performance **Rust** backend (Gateway) that orchestrates interactions between **Google Gemini LLMs**, a **PostgreSQL** database with **pgvector** for long-term hierarchical memory, and multiple communication channels including a **SvelteKit** web UI, **WhatsApp**, and **Telegram**.
 
 The system's core capability is its **autonomous orchestration loop**, which allows the agent to not only chat but also execute complex tools—such as querying its own database, searching the web, managing user memories, and even generating media—while maintaining a persistent and evolving persona (the "Soul").
 

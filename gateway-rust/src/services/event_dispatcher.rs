@@ -81,7 +81,7 @@ pub async fn dispatch(state: &AppState, event: AppEvent) -> anyhow::Result<()> {
             )).await;
 
             // 3. MQTT Dispatch
-            let topic = format!("arta/users/{}/{}", user_id, event.name);
+            let topic = format!("nomi/users/{}/{}", user_id, event.name);
             let _ = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await;
         }
         EventScope::Conversation(conv_id) => {
@@ -92,7 +92,7 @@ pub async fn dispatch(state: &AppState, event: AppEvent) -> anyhow::Result<()> {
             )).await;
 
             // 3. MQTT Dispatch
-            let topic = format!("arta/conversations/{}/{}", conv_id, event.name);
+            let topic = format!("nomi/conversations/{}/{}", conv_id, event.name);
             let _ = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await;
         }
         EventScope::Broadcast => {
@@ -103,7 +103,7 @@ pub async fn dispatch(state: &AppState, event: AppEvent) -> anyhow::Result<()> {
             )).await;
 
             // 3. MQTT Dispatch
-            let topic = format!("arta/broadcast/{}", event.name);
+            let topic = format!("nomi/broadcast/{}", event.name);
             let _ = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await;
         }
     }

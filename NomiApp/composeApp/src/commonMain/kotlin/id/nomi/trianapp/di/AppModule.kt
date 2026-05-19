@@ -44,12 +44,12 @@ val dataModule = module {
 
 val viewModelModule = module {
     viewModel {
-        MainViewModel(get(), get(), get(), get(), get())
+        MainViewModel(get(), get(), get(), get(), get(), get())
     }
     viewModel { LoginViewModel(get()) }
     viewModel { WorkspaceViewModel(get(), get(), get(), get()) }
     viewModel {
-        ChatViewModel(get(), get(), get(), get(), get(), get())
+        ChatViewModel(get(), get(), get(), get(), get(), get(), get())
     }
     viewModel { RagViewModel(get(), get(), get(), get()) }
     viewModel { RemindersViewModel(get()) }

@@ -9,6 +9,7 @@ import id.nomi.trianapp.data.local.MessageEntity
 import id.nomi.trianapp.data.local.NomiDb
 import id.nomi.trianapp.data.local.ProfileEntity
 import id.nomi.trianapp.data.model.MessageDto
+import id.nomi.trianapp.data.remote.NomiMqttClient
 import id.nomi.trianapp.domain.usecase.*
 import id.nomi.trianapp.util.EventBus
 import id.nomi.trianapp.util.NomiEvent
@@ -21,6 +22,7 @@ class ChatViewModel(
     private val getConversationUseCase: GetConversationUseCase,
     private val getProfileUseCase: GetProfileUseCase,
     private val sendMessageUseCase: SendMessageUseCase,
+    private val mqttClient: NomiMqttClient,
     private val nomiDb: NomiDb,
     private val eventBus: EventBus
 ) : ViewModel() {
@@ -50,6 +52,7 @@ class ChatViewModel(
 
     fun setConversationId(id: String) {
         conversationId = id
+        mqttClient.setConversation(id)
         viewModelScope.launch {
             _isLoading.value = true
             fetchConversation(id)

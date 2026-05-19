@@ -39,7 +39,7 @@ impl AppState {
             .await;
 
         // Shadow Publish to MQTT
-        let topic = format!("arta/users/{}/{}", user_id, event_name);
+        let topic = format!("nomi/users/{}/{}", user_id, event_name);
         let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
         Ok(())
@@ -61,7 +61,7 @@ impl AppState {
             .await;
         
         // Shadow Publish to MQTT
-        let topic = format!("arta/users/{}/{}", user_id, event_name);
+        let topic = format!("nomi/users/{}/{}", user_id, event_name);
         let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
         let _ = self.publish_outbond(redis_data).await;
@@ -83,7 +83,7 @@ impl AppState {
             .await;
 
         // Shadow Publish to MQTT
-        let topic = format!("arta/broadcast/{}", event_name);
+        let topic = format!("nomi/broadcast/{}", event_name);
         let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
         Ok(())
@@ -109,7 +109,7 @@ impl AppState {
             .await;
 
         // Shadow Publish to MQTT
-        let topic = format!("arta/conversations/{}/token_update", conversation_id);
+        let topic = format!("nomi/conversations/{}/token_update", conversation_id);
         let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
         Ok(())
@@ -131,7 +131,7 @@ impl AppState {
             .await;
 
         // Shadow Publish to MQTT
-        let topic = format!("arta/broadcast/{}", event_name);
+        let topic = format!("nomi/broadcast/{}", event_name);
         let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
         let _ = self.publish_outbond(redis_data).await;

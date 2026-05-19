@@ -16,10 +16,10 @@ impl MqttManager {
             mqttoptions.set_credentials(u, p);
         }
 
-        // 💡 Use Native-TLS configurations that explicitly support SNI targeting for Cloud Providers
+        // 💡 Use Rustls configurations (default) for SNI targeting
         // Standard for EMQX Cloud / HiveMQ Cloud / AWS IoT
         if port == 8883 || host.contains("cloud") || host.contains("pakaiarta.id") || host.contains("emqxsl.com") {
-            let tls_config = rumqttc::TlsConfiguration::Native;
+            let tls_config = rumqttc::TlsConfiguration::default();
             mqttoptions.set_transport(Transport::Tls(tls_config));
         }
 
@@ -30,7 +30,7 @@ impl MqttManager {
 
         tokio::spawn(async move {
             // Connect and listen for client inbound actions natively
-            if let Err(e) = subscription_client.subscribe("arta/conversations/+/commands", QoS::AtLeastOnce).await {
+            if let Err(e) = subscription_client.subscribe("nomi/conversations/+/commands", QoS::AtLeastOnce).await {
                 eprintln!("🛑 EMQX Subscription failure: {:?}", e);
             }
 
