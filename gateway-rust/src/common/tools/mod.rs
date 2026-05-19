@@ -11,7 +11,9 @@ use crate::common::tools::plugins::get_reminder_stats::GetReminderStatsPlugin;
 use crate::common::tools::plugins::health::HealthPlugin;
 use crate::common::tools::plugins::modify_reminder::ModifyReminderPlugin;
 use crate::common::tools::plugins::read_web_page::ReadWebPagePlugin;
+use crate::common::tools::plugins::retrieve_knowledge::RetrieveKnowledgePlugin;
 use crate::common::tools::plugins::schedule_task::ScheduleTaskPlugin;
+use crate::common::tools::plugins::update_knowledge::UpdateKnowledgeBasePlugin;
 use crate::common::tools::plugins::user::UserPlugin;
 use crate::common::tools::plugins::web_search::WebSearchPlugin;
 use crate::common::tools::tools_model::{
@@ -23,10 +25,9 @@ use crate::common::tools::tools_model::{
     UpdateConversationTitleParameters, UpdateConversationTitleResponse,
     UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse,
 };
-use crate::prompts::PromptRegistry;
 use chrono_tz::Tz;
 use dotenvy::var;
-use gemini_rust::{FunctionDeclaration, Tool, UsageMetadata};
+use gemini_rust::{FunctionDeclaration, Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sqlx::{Column, Pool, Postgres, Row};
@@ -57,16 +58,6 @@ pub enum NomiTool {
     #[serde(rename = "update_nomi_soul")]
     UpdateConversationSoul {
         params: UpdateConversationSoulParameters,
-        user_message: String,
-    },
-    #[serde(rename = "update_knowledge_base")]
-    UpdateKnowledgeBase {
-        params: UpdateKnowledgeBaseParameters,
-        user_message: String,
-    },
-    #[serde(rename = "retrieve_knowledge")]
-    RetrieveKnowledge {
-        params: tools_model::RetrieveKnowledgeParameters,
         user_message: String,
     },
     #[serde(rename = "evolve_bootstrap_content")]
@@ -136,6 +127,8 @@ impl ToolDispatcher {
         plugins.insert("schedule_task", Arc::new(ScheduleTaskPlugin));
         plugins.insert("modify_reminder", Arc::new(ModifyReminderPlugin));
         plugins.insert("get_reminder_stats", Arc::new(GetReminderStatsPlugin));
+        plugins.insert("update_knowledge_base", Arc::new(UpdateKnowledgeBasePlugin));
+        plugins.insert("retrieve_knowledge", Arc::new(RetrieveKnowledgePlugin));
 
         Self {
             pool,
@@ -170,14 +163,6 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.update_nomi_soul(params, user_message).await,
-            NomiTool::UpdateKnowledgeBase {
-                params,
-                user_message,
-            } => self.update_knowledge_base(params, user_message).await,
-            NomiTool::RetrieveKnowledge {
-                params,
-                user_message,
-            } => self.retrieve_knowledge(params, user_message).await,
             NomiTool::EvolveBootstrap {
                 params,
                 user_message,
@@ -303,8 +288,7 @@ impl ToolDispatcher {
                     // Handled by HealthPlugin
                 }
                 "STORAGE" => {
-                    tools.push(update_knowledge_base.clone());
-                    tools.push(retrieve_knowledge.clone());
+                    // Handled by Plugins
                     tools.push(read_workspace_file.clone());
                     tools.push(execute_read_query.clone());
                 }
@@ -326,7 +310,6 @@ impl ToolDispatcher {
                 "DASHBOARD" => {
                     tools.push(get_inbox_summary.clone());
                     tools.push(update_conversation_title.clone());
-                    tools.push(retrieve_knowledge.clone());
                     tools.push(evolve_bootstrap_content.clone());
                     tools.push(update_nomi_soul.clone());
                 }
@@ -774,273 +757,6 @@ impl ToolDispatcher {
         }
     }
 
-    async fn retrieve_knowledge(
-        &self,
-        params: tools_model::RetrieveKnowledgeParameters,
-        user_message: String,
-    ) -> ToolResult {
-        info!("Retrieving knowledge for query: {}", params.query);
-
-        let start_date = params.start_date.and_then(|s| {
-            chrono::DateTime::parse_from_rfc3339(&s)
-                .ok()
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-        });
-        let end_date = params.end_date.and_then(|s| {
-            chrono::DateTime::parse_from_rfc3339(&s)
-                .ok()
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-        });
-
-        info!("Search from :{:?} => {:?}", start_date, end_date);
-        let embedding_res = crate::rag::get_embedding(&self.gemini_api_key, &params.query).await;
-
-        match embedding_res {
-            Ok(embedding) => {
-                let results = crate::utils::rag::hybrid_retrieve(
-                    &self.pool,
-                    &params.query,
-                    embedding.embedding.values,
-                    self.conversation_id,
-                    start_date,
-                    end_date,
-                )
-                .await;
-
-                match results {
-                    Ok(memories) => {
-                        let content = memories.join("\n---\n");
-                        ToolResult {
-                            error: "".to_string(),
-                            success: true,
-                            content: content.clone(),
-                            follow_up_prompt: build_follow_up_prompt(
-                                user_message,
-                                content,
-                                "retrieve_knowledge".to_string(),
-                            ),
-                        }
-                    }
-                    Err(e) => ToolResult {
-                        error: format!("Error retrieving knowledge: {}", e),
-                        success: false,
-                        content: "".to_string(),
-                        follow_up_prompt: "".to_string(),
-                    },
-                }
-            }
-            Err(e) => ToolResult {
-                error: format!("Error generating embedding: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
-        }
-    }
-
-    async fn update_knowledge_base(
-        &self,
-        params: UpdateKnowledgeBaseParameters,
-        user_message: String,
-    ) -> ToolResult {
-        // Intent-Media Linking
-        let image_url = if let Some(url) = params.image_url {
-            Some(self.storage.get_full_url(&url))
-        } else if let Some(conv_id) = self.conversation_id {
-            match crate::common::repository::pending_media_repo::get_pending_media(
-                &self.pool, conv_id,
-            )
-            .await
-            {
-                Ok(Some(media)) => Some(media.media_url),
-                _ => None,
-            }
-        } else {
-            None
-        };
-
-        let summarizer_prompt =
-            PromptRegistry::memory_consolidation_summarizer(params.content.as_str());
-
-        let summary_res = self
-            .gemini
-            .generate_content()
-            .with_user_message(summarizer_prompt)
-            .execute()
-            .await;
-
-        let parsed_data = match summary_res {
-            Ok(ref resp) => {
-                let raw_json = resp.text();
-                if let Some(start) = raw_json.find('{') {
-                    if let Some(end) = raw_json.rfind('}') {
-                        serde_json::from_str(&raw_json[start..=end]).unwrap_or(serde_json::json!({
-                            "summary": params.content,
-                            "nodes": [],
-                            "edges": []
-                        }))
-                    } else {
-                        json!({"summary": params.content, "nodes": [], "edges": []})
-                    }
-                } else {
-                    json!({"summary": params.content, "nodes": [], "edges": []})
-                }
-            }
-            Err(_) => {
-                json!({"summary": params.content, "nodes": [], "edges": []})
-            }
-        };
-
-        let summary_text = parsed_data["summary"]
-            .as_str()
-            .unwrap_or(&params.content)
-            .to_string();
-
-        if let Ok(embedding) = crate::rag::get_embedding(&self.gemini_api_key, &summary_text).await
-        {
-            let metadata = json!({
-                "type": "memory",
-                "category": params.category,
-                "image_url": image_url,
-                "graph": {
-                    "nodes": parsed_data["nodes"],
-                    "links": parsed_data["edges"]
-                }
-            });
-
-            let usage = summary_res.map(|s| s.usage_metadata).map_or_else(
-                |_| UsageMetadata {
-                    prompt_token_count: None,
-                    candidates_token_count: None,
-                    total_token_count: None,
-                    thoughts_token_count: None,
-                    prompt_tokens_details: None,
-                    cached_content_token_count: None,
-                    cache_tokens_details: None,
-                },
-                |r| {
-                    r.unwrap_or(UsageMetadata {
-                        prompt_token_count: None,
-                        candidates_token_count: None,
-                        total_token_count: None,
-                        thoughts_token_count: None,
-                        prompt_tokens_details: None,
-                        cached_content_token_count: None,
-                        cache_tokens_details: None,
-                    })
-                },
-            );
-            let p_tokens = usage.prompt_token_count.unwrap_or(0);
-            let a_tokens = usage.candidates_token_count.unwrap_or(0);
-            let t_tokens = usage.total_token_count.unwrap_or(0);
-
-            if let Ok(mut tx) = self.pool.begin().await {
-                let save_result = crate::rag::save_to_knowledge_base(
-                    &self.pool,
-                    &summary_text,
-                    embedding.embedding.values,
-                    Some(metadata),
-                    self.conversation_id,
-                    p_tokens,
-                    a_tokens,
-                    t_tokens,
-                )
-                .await;
-
-                match save_result {
-                    Ok(_) => {
-                        if let Some(conv_id) = self.conversation_id {
-                            let updated_convo = sqlx::query!(
-                                "UPDATE conversations SET cumulative_tokens = cumulative_tokens + $1 WHERE id = $2 RETURNING cumulative_tokens",
-                                t_tokens,
-                                conv_id
-                            )
-                                .fetch_one(&mut *tx)
-                                .await;
-
-                            if let Ok(row) = updated_convo {
-                                // Dispatch token update
-                                let _ = self
-                                    .app_state
-                                    .dispatch(
-                                        crate::services::event_dispatcher::AppEvent::conversation(
-                                            conv_id,
-                                            "token_update",
-                                            serde_json::json!({
-                                                "conversation_id": conv_id,
-                                                "cumulative_tokens": row.cumulative_tokens
-                                            }),
-                                        ),
-                                    )
-                                    .await;
-                            }
-
-                            // Cleanup: Clear pending media from table
-                            let _ =
-                                crate::common::repository::pending_media_repo::delete_pending_media(
-                                    &self.pool, conv_id,
-                                )
-                                    .await;
-                        }
-
-                        let _ = tx.commit().await;
-
-                        let msg = format!(
-                            "Successfully saved to knowledge base: {}. Linked image cleared from pending queue.",
-                            params.category
-                        );
-                        ToolResult {
-                            error: "".to_string(),
-                            success: true,
-                            content: msg.clone(),
-                            follow_up_prompt: build_follow_up_prompt(
-                                user_message,
-                                msg,
-                                "update_knowledge_base".to_string(),
-                            ),
-                        }
-                    }
-                    Err(e) => {
-                        let msg = format!("Error saving to knowledge base: {}", e);
-                        ToolResult {
-                            error: msg.clone(),
-                            success: false,
-                            content: "".to_string(),
-                            follow_up_prompt: build_follow_up_prompt(
-                                user_message,
-                                msg,
-                                "update_knowledge_base".to_string(),
-                            ),
-                        }
-                    }
-                }
-            } else {
-                let msg = "Error generating embedding for knowledge base update.".to_string();
-                ToolResult {
-                    error: msg.clone(),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: build_follow_up_prompt(
-                        user_message,
-                        msg,
-                        "update_knowledge_base".to_string(),
-                    ),
-                }
-            }
-        } else {
-            let msg = "Error generating embedding for knowledge base update.".to_string();
-            ToolResult {
-                error: msg.clone(),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: build_follow_up_prompt(
-                    user_message,
-                    msg,
-                    "update_knowledge_base".to_string(),
-                ),
-            }
-        }
-    }
     async fn get_inbox_summary(
         &self,
         params: GetInboxSummaryParameters,

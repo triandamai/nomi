@@ -8,3 +8,5 @@ pub mod web_search;
 pub mod schedule_task;
 pub mod modify_reminder;
 pub mod get_reminder_stats;
+pub mod update_knowledge;
+pub mod retrieve_knowledge;
