@@ -3,73 +3,117 @@ package id.nomi.trianapp.data.remote
 import id.nomi.trianapp.data.model.*
 import id.nomi.trianapp.util.EventBus
 import id.nomi.trianapp.util.NomiEvent
-import io.github.davidefioravanti.kmqtt.client.MqttClient
-import io.github.davidefioravanti.kmqtt.client.MqttClientConfig
-import io.github.davidefioravanti.kmqtt.client.MqttMessage
+import io.github.davidepianca98.MQTTClient
+import io.github.davidepianca98.mqtt.MQTTVersion
+import io.github.davidepianca98.mqtt.Subscription
+import io.github.davidepianca98.mqtt.packets.Qos
+import io.github.davidepianca98.mqtt.packets.mqttv5.ReasonCode
+import io.github.davidepianca98.mqtt.packets.mqttv5.SubscriptionOptions
+import io.github.davidepianca98.socket.tls.TLSClientSettings
+import io.ktor.utils.io.core.toByteArray
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 class NomiMqttClient(
     private val eventBus: EventBus
 ) {
-    private var client: MqttClient? = null
+    private var client: MQTTClient? = null
+
     private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
         isLenient = true
     }
     private val scope = CoroutineScope(Dispatchers.IO)
+    private var currentUserId: String? = null
 
-    fun connect(userId: String) {
+    @OptIn(ExperimentalUnsignedTypes::class)
+    fun connect(userId: String, deviceId: String) {
         if (client != null) return
+        this.currentUserId = userId
 
-        // Using a hierarchical client ID allows EMQX ACLs to use %c wildcards easily
-        val uniqueClientId = "nomi/users/$userId/mobile"
+        // Format: nomi/users/{userId}/mobile_{deviceId}
+        val uniqueClientId = "nomi/users/$userId/mobile_$deviceId"
 
-        val config = MqttClientConfig(
-            brokerHost = "b1fec516.ala.eu-central-1.emqxsl.com",
-            brokerPort = 8084,
-            clientId = uniqueClientId,
-            userName = "nomi-client-app",
-            password = "NomiPublicPass2026",
-            isTls = true,
-            isWss = true,
-            path = "/mqtt",
-            cleanSession = false // Broker remembers subscriptions
-        )
+        scope.launch {
+            try {
+                // 💡 FIX: Perform all network-sensitive initialization on Dispatchers.IO
+                withContext(Dispatchers.IO) {
+                    val setting = TLSClientSettings(
 
-        client = MqttClient(config)
+                    )
+//                    val settings = MQTTClientSettings(
+//                        clientId = uniqueClientId,
+//                        userName = "nomi-client-app",
+//                        password = "NomiPublicPass2026".toByteArray().toUByteArray(),
+//                        tlsSettings = TLSSettings(), // Required for WSS (8084)
+//                        websocketPath = "/mqtt",
+//                        cleanSession = false
+//                    )
 
-        client?.onMessageArrived = { topic, message ->
-            handleMessage(topic, message)
+                   val cl= MQTTClient(
+                        MQTTVersion.MQTT3_1_1,
+                        "b1fec516.ala.eu-central-1.emqxsl.com",
+                        8084,
+                        setting,
+                        webSocket = "/mqtt",
+                        userName = "nomi-client-app",
+                        password = "NomiPublicPass2026".toByteArray().toUByteArray()
+
+                    ) { message ->
+                        handleMessage(message.topicName, message.payload?.toByteArray()?.decodeToString() ?: "")
+                    }
+
+                    client = cl
+                    println("MQTT: Starting loop for $uniqueClientId")
+
+                    cl.run()
+                    subscribe()
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                println("MQTT: Connection failed: ${e}")
+                client = null
+            }
         }
-
-        client?.onConnected = {
-            println("MQTT: Connected as $userId")
-            subscribe(userId)
-        }
-
-        client?.onConnectionFailed = {
-            println("MQTT: Connection failed")
-        }
-
-        client?.connect()
     }
 
-    private fun subscribe(userId: String) {
-        client?.subscribe("nomi/users/$userId/#")
-        client?.subscribe("nomi/broadcast/#")
+    private suspend fun subscribe() {
+      withContext(Dispatchers.IO){
+          val subscriptions = listOf(
+              Subscription("nomi/users/$currentUserId/#", SubscriptionOptions(Qos.AT_LEAST_ONCE)),
+              Subscription("nomi/broadcast/#", SubscriptionOptions(Qos.AT_LEAST_ONCE))
+          )
+          client?.subscribe(subscriptions)
+      }
     }
 
-    fun setConversation(conversationId: String) {
-        client?.subscribe("nomi/conversations/$conversationId/#")
+    suspend fun setConversation(conversationId: String) {
+        if (currentUserId == null){
+            println("USER ID IS NULL")
+            return
+        }
+        withContext(Dispatchers.IO) {
+            val subscriptions = listOf(
+                Subscription("nomi/users/$currentUserId/#", SubscriptionOptions(Qos.AT_LEAST_ONCE)),
+                Subscription("nomi/broadcast/#", SubscriptionOptions(Qos.AT_LEAST_ONCE)),
+                Subscription(
+                    "nomi/conversations/$conversationId/#",
+                    SubscriptionOptions(Qos.AT_LEAST_ONCE)
+                )
+            )
+
+            client?.subscribe(subscriptions)
+        }
     }
 
-    private fun handleMessage(topic: String, message: MqttMessage) {
-        val payload = message.payload.decodeToString()
+    private fun handleMessage(topic: String, payload: String) {
+        println("EVENT ${topic} payload: ${payload}")
         val parts = topic.split("/")
         val eventName = parts.last()
 
@@ -108,7 +152,8 @@ class NomiMqttClient(
     }
 
     fun disconnect() {
-        client?.disconnect()
+        client?.disconnect(reasonCode = ReasonCode.RE_AUTHENTICATE)
         client = null
+        currentUserId = null
     }
 }

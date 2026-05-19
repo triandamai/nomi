@@ -52,8 +52,9 @@ class ChatViewModel(
 
     fun setConversationId(id: String) {
         conversationId = id
-        mqttClient.setConversation(id)
+
         viewModelScope.launch {
+            mqttClient.setConversation(id)
             _isLoading.value = true
             fetchConversation(id)
             observeLocalConversation(id)

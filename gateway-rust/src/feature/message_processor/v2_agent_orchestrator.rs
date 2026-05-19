@@ -979,7 +979,7 @@ impl V2AgentOrchestrator {
                         "web".to_string(),
                     ],
                 },
-                json!({}),
+                msg.to_sse_json(total_tokens),
                 msg,
             )
             .await;
