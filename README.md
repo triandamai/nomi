@@ -90,7 +90,7 @@ A dedicated security firewall to protect Nomi from adversarial manipulation and 
 ```mermaid
 graph TD
     In[Inbound Message] --> P1{Tier 1: Pattern Matching}
-    P1 -->|English/Indonesian/Slang Hit| Block[Return true: Attack Detected]
+    P1 -->|English/Indonesian/Slang Hit| Block[Return true: Trigger Rejection]
     P1 -->|No Hit| P2[Tier 2: Semantic Vector Lookup]
     P2 --> P3{Tier 3: Security Threshold}
     P3 -->|Highest Similarity >= 0.65| Block
@@ -100,7 +100,8 @@ graph TD
 **Security Evaluation Layers:**
 - **Tier 1 (Mechanical)**: Scans for high-frequency injection keywords in English (*"ignore previous"*), formal Indonesian (*"abaikan perintah"*), and local slang (*"lupain aja"*).
 - **Tier 2 (Semantic)**: Uses cross-lingual embeddings to map the message context against a known library of prompt injection patterns (type: `prompt_injection_patterns`) in the database.
-- **Tier 3 (Tripwire)**: A strict security threshold (**0.65**) triggers an alert and blocks the message if semantic similarity to known attacks is detected.
+- **Tier 3 (Tripwire)**: A strict security threshold (**0.65**) triggers an alert.
+- **Dynamic Rejection**: If an attack is detected, the message is NOT dropped. Instead, a specialized `guardrail_rejection` prompt is injected into the LLM orchestrator. This instructs Nomi to politely and diplomatically reject the request while maintaining her warm, witty persona (e.g., *"Nice try, but those system overrides don't work on me! ✨"*).
 
 ### 4. Agentic Reasoning Loop (V2AgentOrchestrator)
 The core "brain" loop that enables autonomous multi-turn reasoning.
