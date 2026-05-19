@@ -3,7 +3,7 @@ use crate::common::identity::UserIdentity;
 use crate::common::repository::message_repo::save_message;
 use crate::feature::OutboundMessage;
 use crate::feature::message_processor::v2_agent_orchestrator::V2AgentOrchestrator;
-use crate::models::Conversation;
+use crate::feature::Conversation;
 use crate::services::event_dispatcher::AppEvent;
 use chrono::{DateTime, Duration, Months, Utc};
 use chrono_tz::Tz;

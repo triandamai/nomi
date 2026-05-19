@@ -16,6 +16,7 @@ use sqlx::{Error, Pool, Postgres};
 use tracing::info;
 use uuid::Uuid;
 
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchResult {
     pub content: String,

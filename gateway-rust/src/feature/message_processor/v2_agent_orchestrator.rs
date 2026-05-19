@@ -9,8 +9,7 @@ use crate::common::tools::ToolDispatcher;
 use crate::feature::message_processor::v2_orchestrator::{
     send_message_to_subscriber, send_status_presence_update, send_status_update, send_tool_update,
 };
-use crate::feature::{MessageSource, UnifiedMessage};
-use crate::models::Conversation;
+use crate::feature::{Conversation, MessageSource, UnifiedMessage};
 use crate::rag::trigger_memory_consolidation;
 use crate::services::event_dispatcher::AppEvent;
 use crate::services::intent_classifier::{ClassificationResult, IntentClassifierService};

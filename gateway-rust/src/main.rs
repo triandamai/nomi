@@ -1,6 +1,5 @@
 pub mod common;
 pub mod feature;
-pub mod models;
 pub mod prompts;
 pub mod rag;
 pub mod routes;

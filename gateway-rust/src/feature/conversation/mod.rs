@@ -6,8 +6,7 @@ use crate::feature::conversation::model::{
     RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest,
 };
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
-use crate::feature::{MessageSource, UnifiedMessage};
-use crate::models::Conversation;
+use crate::feature::{Conversation, MessageSource, UnifiedMessage};
 use crate::services::event_dispatcher::AppEvent;
 use crate::{AppState, common};
 use axum::Json;

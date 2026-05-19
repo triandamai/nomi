@@ -5,12 +5,9 @@ use crate::common::repository::channel_repo::is_group_registered;
 use crate::feature::conversation::command::{
     get_help_command, process_generate_pairing, process_login, process_pairing, process_register,
 };
-use crate::services::event_dispatcher::AppEvent;
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
-use crate::feature::{
-    FallBackPayload, InboundMessage, MessageSource, OutboundMessage, UnifiedMessage,
-};
-use crate::models::Conversation;
+use crate::feature::{Conversation, FallBackPayload, InboundMessage, MessageSource, OutboundMessage, UnifiedMessage};
+use crate::services::event_dispatcher::AppEvent;
 use rust_decimal::prelude::ToPrimitive;
 use serde_json::json;
 use tokio_stream::StreamExt;
@@ -109,7 +106,24 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             return Ok(());
         }
     }
+    // ======== Interaction Gate (Pre-Filtering for Groups) ========//
+    if msg.is_group && !msg.is_mentioned {
+        let gate = crate::services::interaction_gate::InteractionGateService::new(
+            state.pool.clone(),
+            state.gemini_api_key.clone(),
+        );
 
+        match gate.should_respond_to_group_message(&text, false).await {
+            Ok(true) => info!("Interaction Gate: Passed, continuing to process group message."),
+            Ok(false) => {
+                info!("Interaction Gate: Dropping ambient message in group {}", msg.conversation_id);
+                return Ok(());
+            }
+            Err(e) => {
+                error!("Interaction Gate: Error during evaluation: {}. Continuing as fallback.", e);
+            }
+        }
+    }
     // ================================== BEGIN COMMAND ============================//
     // 3. Check for Pairing/Register/Login
     if text.to_uppercase().starts_with("/pair ") {
@@ -205,9 +219,10 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
     // ============== START AUTHENTICATED USER ============= /
     let display_name = match &msg.metadata {
         None => msg.sender_id.clone(),
-        Some(meta) => meta
-            .get("display_name")
-            .map_or_else(|| msg.sender_id.clone(), |v| v.as_str().unwrap_or("").to_string()),
+        Some(meta) => meta.get("display_name").map_or_else(
+            || msg.sender_id.clone(),
+            |v| v.as_str().unwrap_or("").to_string(),
+        ),
     };
 
     let user_id = identity::resolve_identity(
@@ -224,7 +239,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         return Ok(());
     }
     let user_id = user_id?;
-    info!("[USER]{}",user_id);
+    info!("[USER]{}", user_id);
     let conv_info = sqlx::query!(
         "SELECT
                 id,
@@ -296,7 +311,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         let unified_msg = UnifiedMessage {
             is_group: msg.is_group,
             is_mentioned: msg.is_mentioned,
-            display_name:Some(display_name),
+            display_name: Some(display_name),
             conversation_id,
             user_id: Some(user_id.id.clone()),
             text_content: user_text,

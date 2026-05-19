@@ -3,8 +3,9 @@ use crate::common::identity::UserIdentity;
 use crate::common::repository::message_repo::save_message;
 use crate::feature::conversation::model::MessageItem;
 use crate::feature::message_processor::v2_agent_orchestrator::V2AgentOrchestrator;
-use crate::feature::{MessageSource, OutboundMessage, PresenceMessage, UnifiedMessage};
-use crate::models::Conversation;
+use crate::feature::{
+    Conversation, MessageSource, OutboundMessage, PresenceMessage, UnifiedMessage,
+};
 use crate::prompts::StatusRegistry;
 use crate::services::event_dispatcher::AppEvent;
 use anyhow::anyhow;
