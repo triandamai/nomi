@@ -5,6 +5,7 @@ use crate::prompts::PromptRegistry;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::{FunctionDeclaration, UsageMetadata};
 use serde_json::{json, Value};
+use tracing::error;
 
 pub struct UpdateKnowledgeBasePlugin;
 
@@ -138,6 +139,7 @@ impl NomiToolPlugin for UpdateKnowledgeBasePlugin {
 
                     match save_result {
                         Ok(_) => {
+                            let mut cumulative_tokens = None;
                             if let Some(conv_id) = dispatcher.conversation_id {
                                 let updated_convo = sqlx::query!(
                                     "UPDATE conversations SET cumulative_tokens = cumulative_tokens + $1 WHERE id = $2 RETURNING cumulative_tokens",
@@ -148,18 +150,7 @@ impl NomiToolPlugin for UpdateKnowledgeBasePlugin {
                                     .await;
 
                                 if let Ok(row) = updated_convo {
-                                    // Dispatch token update
-                                    let _ = dispatcher
-                                        .app_state
-                                        .dispatch(crate::services::event_dispatcher::AppEvent::conversation(
-                                            conv_id,
-                                            "token_update",
-                                            serde_json::json!({
-                                                "conversation_id": conv_id,
-                                                "cumulative_tokens": row.cumulative_tokens
-                                            }),
-                                        ))
-                                        .await;
+                                    cumulative_tokens = row.cumulative_tokens;
                                 }
 
                                 // Cleanup: Clear pending media from table
@@ -170,7 +161,49 @@ impl NomiToolPlugin for UpdateKnowledgeBasePlugin {
                                         .await;
                             }
 
-                            let _ = tx.commit().await;
+                            if let Err(e) = tx.commit().await {
+                                error!("Failed to commit knowledge update: {}", e);
+                                return Ok("Error updating conversation memory.".to_string());
+                            }
+
+                            // Post-commit tasks
+                            if let Some(conv_id) = dispatcher.conversation_id {
+                                if let Some(c_tokens) = cumulative_tokens {
+                                    // Parallel background telemetry logging (Moved AFTER commit)
+                                    let pool_clone = dispatcher.pool.clone();
+                                    let conv_id_clone = conv_id.clone();
+                                    let i_tokens = p_tokens as i64;
+                                    let o_tokens = a_tokens as i64;
+                                    let tot_tokens = t_tokens as i64;
+                                    
+                                    tokio::spawn(async move {
+                                        let _ = crate::services::ambient_soul::AmbientSoulService::log_token_transaction(
+                                            &pool_clone,
+                                            Some(conv_id_clone),
+                                            None,
+                                            None,
+                                            "knowledge",
+                                            "system",
+                                            i_tokens,
+                                            o_tokens,
+                                            tot_tokens,
+                                        ).await;
+                                    });
+
+                                    // Dispatch token update
+                                    let _ = dispatcher
+                                        .app_state
+                                        .dispatch(crate::services::event_dispatcher::AppEvent::conversation(
+                                            conv_id,
+                                            "token_update",
+                                            serde_json::json!({
+                                                "conversation_id": conv_id,
+                                                "cumulative_tokens": c_tokens
+                                            }),
+                                        ))
+                                        .await;
+                                }
+                            }
 
                             Ok(format!(
                                 "Successfully saved to knowledge base: {}. Linked image cleared from pending queue.",

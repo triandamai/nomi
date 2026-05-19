@@ -88,7 +88,6 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         return Ok(());
     }
     // ======== END WA CHANNEL GUARD ===========//
-
     // ======== Group Filtering & Registration Check ========//
     if msg.is_group {
         let registered = is_group_registered(&state.pool, &msg.conversation_id, &msg.channel).await;
@@ -106,7 +105,6 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             return Ok(());
         }
     }
-
     // ================================== BEGIN COMMAND ============================//
     // 3. Check for Pairing/Register/Login
     if text.to_uppercase().starts_with("/pair ") {
@@ -122,6 +120,33 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
     }
 
     // ================================== NOT REGISTERED STOP HERE ============================//
+
+    let mut is_ambient = false;
+
+    // ======== Interaction Gate & Ambient Soul (Pre-Filtering for Groups) ========//
+    if msg.is_group && !msg.is_mentioned {
+        let gate = crate::services::interaction_gate::InteractionGateService::new(
+            state.pool.clone(),
+            state.gemini_api_key.clone(),
+        );
+
+        match gate.should_respond_to_group_message(&text, false).await {
+            Ok(true) => {
+                info!("Interaction Gate: Passed, processing as active participation.");
+                // Let it flow through as a normal message
+            },
+            Ok(false) => {
+                info!("Interaction Gate: Dropping ambient message in group {}. Queuing for Ambient Soul.", msg.conversation_id);
+                is_ambient = true;
+                // We don't return early here; we let it process minimally for ambient memory,
+                // but we will flag it so it doesn't trigger the main orchestrator loop.
+            }
+            Err(e) => {
+                error!("Interaction Gate: Error during evaluation: {}. Continuing as fallback.", e);
+            }
+        }
+    }
+
 
     // 2. Resolve Identity and Channel Info
     let (conversation_id, cumulative_tokens, max_token_usage) = if msg.is_group {
@@ -297,16 +322,16 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             display_name: Some(display_name),
             conversation_id,
             user_id: Some(user_id.id.clone()),
-            text_content: user_text,
+            text_content: user_text.clone(),
             image_url,
             audio_url,
             video_url,
             sticker_url,
             doc_url: document_url,
-            source: match msg.channel.as_str() {
-                "telegram" => MessageSource::Telegram { name: msg.channel },
-                "whatsapp" => MessageSource::WhatsApp { name: msg.channel },
-                _ => MessageSource::Other { name: msg.channel },
+            source: match channel.as_str() {
+                "telegram" => MessageSource::Telegram { name: channel.clone() },
+                "whatsapp" => MessageSource::WhatsApp { name: channel.clone() },
+                _ => MessageSource::Other { name: channel.clone() },
             },
             v2: true,
         };
@@ -320,8 +345,68 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             created_at: conv_info.created_at,
             updated_at: conv_info.updated_at,
         };
-        if let Err(e) = process_v2_message(state, map_convo, unified_msg).await {
-            error!("Failed to process inbound message: {}", e.backtrace());
+
+        if is_ambient {
+            info!("Processing as AMBIENT SOUL message");
+            let ambient_soul = crate::services::ambient_soul::AmbientSoulService::new(
+                state_clone.pool.clone(),
+                state_clone.redis.clone(),
+                state_clone.gemini.clone(),
+                state_clone.gemini_api_key.clone(),
+            );
+            
+            // 1. Process Ambient Memory
+            if let Err(e) = ambient_soul.process_ambient_memory(
+                user_id.id.clone(),
+                conversation_id,
+                &user_text,
+            ).await {
+                error!("Ambient Soul Memory processing failed: {}", e);
+            }
+
+            // 2. Evaluate Initiative (Proactive interaction)
+            // We use a dummy interaction score of 1.0 for testing, in a real scenario
+            // this would come from the IntentClassifier or InteractionGate
+            match ambient_soul.evaluate_initiative(conversation_id, &user_text, 1.0).await {
+                Ok(initiative) => {
+                    if let Some(proactive_text) = initiative.response_text {
+                        info!("Ambient Soul: Proactive initiative triggered!");
+                        // Save the proactive message to DB
+                        let _ = crate::common::repository::message_repo::save_message(
+                            &state_clone.pool,
+                            conversation_id,
+                            "assistant",
+                            &proactive_text,
+                            None,
+                            None,
+                            initiative.tokens.input_tokens as i32,
+                            initiative.tokens.output_tokens as i32,
+                            initiative.tokens.total_tokens as i32,
+                            None, None, None, None, None
+                        ).await;
+
+                        // Send back to the channel
+                        let _ = state_clone.publish_outbond(&OutboundMessage {
+                            is_group: true,
+                            sender_id: "nomi_ambient".to_string(),
+                            conversation_id: conversation_id.to_string(),
+                            text: proactive_text,
+                            channel: channel.clone(),
+                            video_url: None,
+                            image_url: None,
+                            audio_url: None,
+                            doc_url: None,
+                            sticker_url: None,
+                            metadata: None,
+                        }).await;
+                    }
+                }
+                Err(e) => error!("Ambient Soul Initiative evaluation failed: {}", e),
+            }
+        } else {
+            if let Err(e) = process_v2_message(state_clone, map_convo, unified_msg).await {
+                error!("Failed to process inbound message: {}", e.backtrace());
+            }
         }
     });
 

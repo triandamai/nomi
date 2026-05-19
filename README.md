@@ -12,8 +12,9 @@ The central orchestrator of the Nomi ecosystem.
 - **Intent Classification**: A dedicated `IntentClassifierService` provides high-accuracy, token-optimized classification using a two-step hybrid layout (Vector Coarse-Filtering + LLM Fine-Tuning).
 - **Interaction Gate**: A lightweight `InteractionGateService` acts as a pre-filtering node for ambient group chat messages. It uses a 3-tier evaluation pass (Mechanical, Semantic, and Threshold) to decide if Nomi should chime in without an explicit mention.
 - **Guardrail Service**: A security firewall (`GuardrailService`) that detects prompt injection and jailbreak attempts using multilingual pattern matching and semantic vector analysis.
+- **Ambient Soul Service**: A background intelligence worker (`AmbientSoulService`) that passively extracts long-term memories from group chats and controls proactive, autonomous agent initiatives using a Redis TTL cooldown state lock.
 - **Real-time Communication**: Uses **MQTT** to stream thoughts, tool execution status, and final responses to clients.
-- **Database**: PostgreSQL with `pgvector` (halfvec 3072) for long-term memory and RAG.
+- **Database**: PostgreSQL with `pgvector` (halfvec 3072) for long-term memory and RAG, plus a dedicated `token_usage_history` ledger for tracking LLM token metrics system-wide.
 
 ### 2. Channel Service (`channel-rust`)
 A bridge service for external messaging platforms.
@@ -103,7 +104,31 @@ graph TD
 - **Tier 3 (Tripwire)**: A strict security threshold (**0.65**) triggers an alert.
 - **Dynamic Rejection**: If an attack is detected, the message is NOT dropped. Instead, a specialized `guardrail_rejection` prompt is injected into the LLM orchestrator. This instructs Nomi to politely and diplomatically reject the request while maintaining her warm, witty persona (e.g., *"Nice try, but those system overrides don't work on me! ✨"*).
 
-### 4. Agentic Reasoning Loop (V2AgentOrchestrator)
+### 4. Ambient Soul Flow (Background Intelligence)
+An asynchronous background worker that enables Nomi to passively observe, learn, and occasionally interject in group chats without explicit mentions.
+
+```mermaid
+graph TD
+    In[Ambient Group Message] --> Gate{Interaction Gate}
+    Gate -->|Rejected| Ambient[Route to Ambient Soul]
+    Ambient --> Mem[Node A: Passive Memory Extraction]
+    Mem --> |Extract Facts| DB[(knowledge_base)]
+    Ambient --> Init[Node B: Proactive Initiative]
+    Init --> TTL{Redis Cooldown Lock}
+    TTL -->|Active| Drop[Silent Drop]
+    TTL -->|Expired| Rel{Relevance > 0.75?}
+    Rel -->|Yes| Roll{20% Probability Roll}
+    Roll -->|Pass| Respond[Generate Proactive Response]
+    Respond --> SetTTL[Set 15m Cooldown]
+    SetTTL --> Send[Broadcast to Channel]
+```
+
+**Operational Mechanics:**
+- **Zero-Blocking Architecture**: Runs entirely inside asynchronous `tokio::spawn` tasks to prevent blocking the primary message routing pipelines.
+- **Node A (Passive Memory)**: Uses a low-temperature Gemini call to sift through ambient logs. If it extracts a concrete user fact (e.g., *"User bought a new bike"*), it immediately generates an embedding and upserts it to the RAG memory store.
+- **Node B (Proactive Initiative)**: Evaluates if Nomi should chime into the conversation unprompted. It enforces a strict **15-minute global cooldown** via a Redis `SET EX 900` state lock, a 0.75 semantic relevance guard, and a 20% randomized probability roll to prevent Nomi from becoming noisy or spammy.
+
+### 5. Agentic Reasoning Loop (V2AgentOrchestrator)
 The core "brain" loop that enables autonomous multi-turn reasoning.
 
 ```mermaid

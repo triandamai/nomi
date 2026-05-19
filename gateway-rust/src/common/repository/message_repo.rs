@@ -107,6 +107,31 @@ pub async fn save_message(
     match tx.commit().await {
         Ok(_) => {
             info!("Successfully saved message");
+            
+            // Parallel background telemetry logging (Moved AFTER commit to prevent FK violations and orphaned logs)
+            let pool_clone = pool.clone();
+            let conv_id = conversation_id.clone();
+            let msg_id = row.id.clone();
+            let u_id = user_id.clone();
+            let role_clone = role.to_string();
+            let i_tokens = prompt_tokens as i64;
+            let o_tokens = answer_tokens as i64;
+            let t_tokens = total_tokens as i64;
+            
+            tokio::spawn(async move {
+                let _ = crate::services::ambient_soul::AmbientSoulService::log_token_transaction(
+                    &pool_clone,
+                    Some(conv_id),
+                    Some(msg_id),
+                    u_id,
+                    "message",
+                    &role_clone,
+                    i_tokens,
+                    o_tokens,
+                    t_tokens,
+                ).await;
+            });
+
             Ok(MessageItem {
                 id: row.id,
                 conversation_id,

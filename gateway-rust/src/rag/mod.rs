@@ -278,11 +278,34 @@ pub(crate) async fn trigger_memory_consolidation(
         let _ = tx.rollback().await;
         return Err(anyhow!("Error update row {}", err));
     }
+    
     if let Err(err) = tx.commit().await {
         info!("Error update row  {}", err);
         return Err(anyhow!("Error update row  {}", err));
     }
     let updated_row = updated_row.unwrap();
+
+    // Parallel background telemetry logging (Moved AFTER commit)
+    let pool_clone = pool.clone();
+    let conv_id = conversation_id.clone();
+    let input_tokens = p_tokens as i64;
+    let output_tokens = a_tokens as i64;
+    let tot_tokens = t_tokens as i64;
+    
+    tokio::spawn(async move {
+        let _ = crate::services::ambient_soul::AmbientSoulService::log_token_transaction(
+            &pool_clone,
+            Some(conv_id),
+            None,
+            None,
+            "knowledge",
+            "system",
+            input_tokens,
+            output_tokens,
+            tot_tokens,
+        ).await;
+    });
+
     info!(
         conversation_id = %conversation_id,
         total_tokens = %updated_row.cumulative_tokens.unwrap_or(0),
