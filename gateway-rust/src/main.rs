@@ -8,7 +8,6 @@ pub mod services;
 pub mod utils;
 
 use crate::common::app_state::AppState;
-use crate::common::sse::sse_emitter::SseBroadcaster;
 use axum::Router;
 use dotenvy::dotenv;
 use gemini_rust::{Gemini, Model};
@@ -75,10 +74,8 @@ async fn main() -> anyhow::Result<()> {
     let gemini = Gemini::with_model(&gemini_api_key, Model::Gemini25Flash)
         .expect("Failed to create Gemini client");
     let gemini = Arc::new(gemini);
-    let sse = SseBroadcaster::create();
 
     let state = AppState {
-        sse,
         pool,
         gemini,
         gemini_api_key,

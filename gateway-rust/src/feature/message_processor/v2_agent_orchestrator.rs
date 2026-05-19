@@ -334,7 +334,6 @@ impl V2AgentOrchestrator {
             Some(conversation_id),
             state.gemini.clone(),
             state.gemini_api_key.clone(),
-            state.sse.clone(),
             state.storage.clone(),
             state.clone(),
         );
@@ -500,10 +499,18 @@ impl V2AgentOrchestrator {
                         let payload =
                             json!({ "thought": chunk.thought, "conversation_id": conversation_id });
                         let _ = match user_id {
-                            None => state.dispatch(AppEvent::broadcast("thought", payload)).await,
+                            None => {
+                                state
+                                    .dispatch(AppEvent::broadcast("thought", payload))
+                                    .await
+                            }
                             Some(ref id) => {
                                 state
-                                    .dispatch(AppEvent::user(id.to_string().as_str(), "thought", payload))
+                                    .dispatch(AppEvent::user(
+                                        id.to_string().as_str(),
+                                        "thought",
+                                        payload,
+                                    ))
                                     .await
                             }
                         };
@@ -727,13 +734,14 @@ impl V2AgentOrchestrator {
                 .await
                 {
                     let _ = state
-                        .broadcast_sse(
+                        .dispatch(AppEvent::conversation(
+                            conversation_id,
                             "token_update",
                             json!({
                                 "conversation_id": conversation_id,
                                 "cumulative_tokens": row.cumulative_tokens
                             }),
-                        )
+                        ))
                         .await;
                 }
             }
@@ -741,16 +749,11 @@ impl V2AgentOrchestrator {
             let pool = state.pool.clone();
             let gemini = state.gemini.clone();
             let gemini_api_key = state.gemini_api_key.clone();
-            let sse = state.sse.clone();
             tokio::spawn(async move {
-                let _ = trigger_memory_consolidation(
-                    pool,
-                    gemini,
-                    gemini_api_key,
-                    conversation_id,
-                    sse,
-                )
-                .await;
+                if let Ok(((_convo_id, _total_token))) =
+                    trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id)
+                        .await {
+                }
             });
 
             let _ = send_status_presence_update(
@@ -802,7 +805,6 @@ impl V2AgentOrchestrator {
             Some(conversation_id.clone()),
             self.state.gemini.clone(),
             self.state.gemini_api_key.clone(),
-            self.state.sse.clone(),
             self.state.storage.clone(),
             self.state.clone(),
         );

@@ -9,7 +9,6 @@ use crate::feature::conversation::{
     handle_restore_conversation_soul, handle_update_conversation, handle_upload_file,
 };
 use crate::feature::graph::{handle_get_graph, handle_search_graph};
-use crate::feature::realtime::register_public_sse;
 use crate::feature::reminder::handle_get_reminders;
 use crate::feature::waitlist::handle_waitlist;
 use axum::extract::DefaultBodyLimit;
@@ -144,7 +143,6 @@ pub fn create_router(state: AppState) -> Router {
         .route("/auth/verify-otp", post(handle_verify_otp))
         .route("/auth/pair", post(handle_pairing_handshake))
         .route("/waitlist", post(handle_waitlist))
-        .route("/realtime", get(register_public_sse))
         .route("/files/{filename}", get(handle_get_file))
         .route("/files/{path}/{filename}", get(handle_get_path_file))
         .nest("/v1/admin", admin_routes)

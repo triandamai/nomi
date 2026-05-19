@@ -1,6 +1,4 @@
 use crate::common;
-use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
-use crate::common::sse::sse_emitter::SseBroadcaster;
 use crate::feature::{ OutboundMessage, PresenceMessage};
 use gemini_rust::Gemini;
 use serde_json::json;
@@ -11,7 +9,6 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub sse: Arc<SseBroadcaster>,
     pub pool: Pool<Postgres>,
     pub gemini: Arc<Gemini>,
     pub gemini_api_key: String,
@@ -29,16 +26,7 @@ impl AppState {
         event_name: &str,
         sse_data: serde_json::Value,
     ) -> anyhow::Result<()> {
-        // info!("sending with sse and publish to subs");
-        let _ = self
-            .sse
-            .send(SseBuilder::new(
-                SseTarget::sent_to_user(user_id.to_string(), event_name.to_string()),
-                sse_data.clone(),
-            ))
-            .await;
-
-        // Shadow Publish to MQTT
+        // Publish to MQTT
         let topic = format!("nomi/users/{}/{}", user_id, event_name);
         let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
@@ -51,16 +39,7 @@ impl AppState {
         sse_data: serde_json::Value,
         redis_data: &OutboundMessage,
     ) -> anyhow::Result<()> {
-        // info!("sending with sse and publish to subs");
-        let _ = self
-            .sse
-            .send(SseBuilder::new(
-                SseTarget::sent_to_user(user_id.to_string(), event_name.to_string()),
-                sse_data.clone(),
-            ))
-            .await;
-        
-        // Shadow Publish to MQTT
+        // Publish to MQTT
         let topic = format!("nomi/users/{}/{}", user_id, event_name);
         let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
@@ -73,16 +52,7 @@ impl AppState {
         event_name: &str,
         sse_data: serde_json::Value,
     ) -> anyhow::Result<()> {
-        // info!("sending with sse and publish to subs");
-        let _ = self
-            .sse
-            .send(SseBuilder::new(
-                SseTarget::broadcast(event_name.to_string()),
-                sse_data.clone(),
-            ))
-            .await;
-
-        // Shadow Publish to MQTT
+        // Publish to MQTT
         let topic = format!("nomi/broadcast/{}", event_name);
         let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
@@ -99,16 +69,7 @@ impl AppState {
             "cumulative_tokens": cumulative_tokens
         });
 
-        // info!("sending with sse and publish to subs");
-        let _ = self
-            .sse
-            .send(SseBuilder::new(
-                SseTarget::broadcast("token_update".to_string()),
-                sse_data.clone(),
-            ))
-            .await;
-
-        // Shadow Publish to MQTT
+        // Publish to MQTT
         let topic = format!("nomi/conversations/{}/token_update", conversation_id);
         let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
@@ -121,16 +82,7 @@ impl AppState {
         sse_data: serde_json::Value,
         redis_data: &OutboundMessage,
     ) -> anyhow::Result<()> {
-        // info!("sending with sse and publish to subs");
-        let _ = self
-            .sse
-            .send(SseBuilder::new(
-                SseTarget::broadcast(event_name.to_string()),
-                sse_data.clone(),
-            ))
-            .await;
-
-        // Shadow Publish to MQTT
+        // Publish to MQTT
         let topic = format!("nomi/broadcast/{}", event_name);
         let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
@@ -144,14 +96,10 @@ impl AppState {
         sse_data: serde_json::Value,
         redis_data: &PresenceMessage,
     ) -> anyhow::Result<()> {
-        // info!("sending with sse and publish to subs");
-        let _ = self
-            .sse
-            .send(SseBuilder::new(
-                SseTarget::sent_to_user(user_id.to_string(), "presence".to_string()),
-                sse_data,
-            ))
-            .await;
+        // Publish to MQTT
+        let topic = format!("nomi/users/{}/presence", user_id);
+        let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
+
         let _ = self.publish_presence(redis_data).await;
         Ok(())
     }
@@ -161,26 +109,18 @@ impl AppState {
         sse_data: serde_json::Value,
         redis_data: &PresenceMessage,
     ) -> anyhow::Result<()> {
-        let _ = self
-            .sse
-            .send(SseBuilder::new(
-                SseTarget::broadcast("presence".to_string()),
-                sse_data,
-            ))
-            .await;
+        // Publish to MQTT
+        let topic = "nomi/broadcast/presence".to_string();
+        let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
         let _ = self.publish_presence(redis_data).await;
         Ok(())
     }
 
     pub async fn broadcast_presence_sse(&self, sse_data: serde_json::Value) -> anyhow::Result<()> {
-        let _ = self
-            .sse
-            .send(SseBuilder::new(
-                SseTarget::broadcast("presence".to_string()),
-                sse_data,
-            ))
-            .await;
+        // Publish to MQTT
+        let topic = "nomi/broadcast/presence".to_string();
+        let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
         Ok(())
     }
     pub async fn send_presence_sse_to_user(
@@ -188,13 +128,9 @@ impl AppState {
         user_id: &str,
         sse_data: serde_json::Value,
     ) -> anyhow::Result<()> {
-        let _ = self
-            .sse
-            .send(SseBuilder::new(
-                SseTarget::sent_to_user(user_id.to_string(), "presence".to_string()),
-                sse_data,
-            ))
-            .await;
+        // Publish to MQTT
+        let topic = format!("nomi/users/{}/presence", user_id);
+        let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
         Ok(())
     }
 

@@ -6,7 +6,6 @@ pub mod admin;
 pub mod conversation;
 pub mod graph;
 pub mod message_processor;
-pub mod realtime;
 pub mod redis;
 pub mod waitlist;
 pub mod health_tracking;

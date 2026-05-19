@@ -1,5 +1,4 @@
 use crate::common::app_state::AppState;
-use crate::common::sse::sse_builder::{SseBuilder, SseTarget};
 use crate::feature::{OutboundMessage, PresenceMessage};
 use rumqttc::QoS;
 use serde_json::Value;
@@ -74,35 +73,17 @@ pub async fn dispatch(state: &AppState, event: AppEvent) -> anyhow::Result<()> {
 
     match event.scope {
         EventScope::User(user_id) => {
-            // 2. SSE Dispatch
-            let _ = state.sse.send(SseBuilder::new(
-                SseTarget::sent_to_user(user_id.clone(), event.name.clone()),
-                event.payload,
-            )).await;
-
-            // 3. MQTT Dispatch
+            // 2. MQTT Dispatch
             let topic = format!("nomi/users/{}/{}", user_id, event.name);
             let _ = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await;
         }
         EventScope::Conversation(conv_id) => {
-            // 2. SSE Dispatch
-            let _ = state.sse.send(SseBuilder::new(
-                SseTarget::broadcast(event.name.clone()),
-                event.payload,
-            )).await;
-
-            // 3. MQTT Dispatch
+            // 2. MQTT Dispatch
             let topic = format!("nomi/conversations/{}/{}", conv_id, event.name);
             let _ = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await;
         }
         EventScope::Broadcast => {
-            // 2. SSE Dispatch
-            let _ = state.sse.send(SseBuilder::new(
-                SseTarget::broadcast(event.name.clone()),
-                event.payload,
-            )).await;
-
-            // 3. MQTT Dispatch
+            // 2. MQTT Dispatch
             let topic = format!("nomi/broadcast/{}", event.name);
             let _ = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await;
         }

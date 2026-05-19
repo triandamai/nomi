@@ -5,7 +5,7 @@ use crate::common::repository::channel_repo::is_group_registered;
 use crate::feature::conversation::command::{
     get_help_command, process_generate_pairing, process_login, process_pairing, process_register,
 };
-use crate::feature::conversation::model::ChatStreamChunk;
+use crate::services::event_dispatcher::AppEvent;
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
 use crate::feature::{
     FallBackPayload, InboundMessage, MessageSource, OutboundMessage, UnifiedMessage,
@@ -245,21 +245,14 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         info!("Conversation not exist:{}", err);
         let error_msg = "Workspace Conversation doesn exist".to_string();
         let _ = state
-            .send_sse_to_user(
-                user_id.to_string().as_str(),
-                "message",
-                json!(ChatStreamChunk {
-                    content: "No workspace detected.".to_string(),
-                    thought: "".to_string(),
-                    code_block: "".to_string(),
-                    tool_call: None,
-                    prompt_tokens: 0,
-                    answer_tokens: 0,
-                    total_tokens: 0,
-                    finish_reason: Some("error".to_string()),
-                    error: Some(error_msg.clone()),
+            .dispatch(AppEvent::user(
+                user_id.id.to_string().as_str(),
+                "error",
+                json!({
+                    "conversation_id": conversation_id,
+                    "message": error_msg,
                 }),
-            )
+            ))
             .await;
 
         return Ok(());

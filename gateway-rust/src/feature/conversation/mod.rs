@@ -1,10 +1,11 @@
 use crate::common::api_response::ApiResponse;
 use crate::common::identity::auth_model::{AuthResponse, UserProfile};
 use crate::feature::conversation::model::{
-    ChannelStatus, ChatRequest, ChatStreamChunk, ConversationResponse, CreateConversationRequest,
+    ChannelStatus, ChatRequest, ConversationResponse, CreateConversationRequest,
     MessageItem, MessageListParams, MessageListResponse, PairingRequest, PairingResponse, RestoreSoulRequest,
     RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest,
 };
+use crate::services::event_dispatcher::AppEvent;
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
 use crate::models::Conversation;
 use crate::{AppState, common};
@@ -890,21 +891,14 @@ pub async fn handle_chat_stream(
                 );
                 if let Some(uid) = user_id {
                     let _ = state
-                        .send_sse_to_user(
+                        .dispatch(AppEvent::user(
                             uid.to_string().as_str(),
-                            "chat_stream",
-                            json!(ChatStreamChunk {
-                                content: "".to_string(),
-                                thought: "".to_string(),
-                                code_block: "".to_string(),
-                                tool_call: None,
-                                prompt_tokens: 0,
-                                answer_tokens: 0,
-                                total_tokens: 0,
-                                finish_reason: Some("error".to_string()),
-                                error: Some(error_msg.clone()),
+                            "error",
+                            json!({
+                                "conversation_id": payload.conversation_id,
+                                "message": error_msg,
                             }),
-                        )
+                        ))
                         .await;
                 }
                 return ApiResponse::create(1000, "Failed".to_string(), &error_msg);

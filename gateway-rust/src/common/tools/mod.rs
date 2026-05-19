@@ -123,7 +123,6 @@ pub struct ToolDispatcher {
     pub conversation_id: Option<Uuid>,
     pub gemini: Arc<gemini_rust::Gemini>,
     pub gemini_api_key: String,
-    pub sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
     pub storage: crate::common::storage::StorageClient,
     pub app_state: crate::common::app_state::AppState,
     pub plugins: HashMap<&'static str, Arc<dyn NomiToolPlugin>>,
@@ -137,7 +136,6 @@ impl ToolDispatcher {
         conversation_id: Option<Uuid>,
         gemini: Arc<gemini_rust::Gemini>,
         gemini_api_key: String,
-        sse: Arc<crate::common::sse::sse_emitter::SseBroadcaster>,
         storage: crate::common::storage::StorageClient,
         app_state: crate::common::app_state::AppState,
     ) -> Self {
@@ -157,7 +155,6 @@ impl ToolDispatcher {
             conversation_id,
             gemini,
             gemini_api_key,
-            sse,
             storage,
             app_state,
             plugins,
@@ -991,13 +988,11 @@ impl ToolDispatcher {
                     }
                 }
 
-                // Broadcast SSE
+                // Dispatch internal update
                 let _ = self
-                    .sse
-                    .send(crate::common::sse::sse_builder::SseBuilder::new(
-                        crate::common::sse::sse_builder::SseTarget::broadcast(
-                            "evolution".to_string(),
-                        ),
+                    .app_state
+                    .dispatch(crate::services::event_dispatcher::AppEvent::broadcast(
+                        "evolution",
                         serde_json::json!({
                             "conversation_id": conversation_id,
                             "message": "Nomi has updated her core instructions to better suit your needs. ✨",
@@ -1231,13 +1226,12 @@ impl ToolDispatcher {
                                 .await;
 
                             if let Ok(row) = updated_convo {
-                                // Broadcast SSE update
+                                // Dispatch token update
                                 let _ = self
-                                    .sse
-                                    .send(crate::common::sse::sse_builder::SseBuilder::new(
-                                        crate::common::sse::sse_builder::SseTarget::broadcast(
-                                            "token_update".to_string(),
-                                        ),
+                                    .app_state
+                                    .dispatch(crate::services::event_dispatcher::AppEvent::conversation(
+                                        conv_id,
+                                        "token_update",
                                         serde_json::json!({
                                             "conversation_id": conv_id,
                                             "cumulative_tokens": row.cumulative_tokens
