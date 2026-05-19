@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                (1.0 - (embedding <=> $1::vector))::float8 as \"score!\"\n            FROM knowledge_base\n            WHERE metadata->>'type' = 'interaction_triggers'\n            ORDER BY embedding <=> $1::vector\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "score!",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "vector",
+            "kind": "Simple"
+          }
+        }
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "48c35ffda8159794c36989a898225ac684cd7ab0176871e30baa26e92b8202d3"
+}
