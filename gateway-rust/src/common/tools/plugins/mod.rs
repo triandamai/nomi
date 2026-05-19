@@ -1,7 +1,10 @@
+pub mod communication;
 pub mod dice;
+pub mod finance;
 pub mod health;
 pub mod read_web_page;
-pub mod web_search;
-pub mod finance;
 pub mod user;
-pub mod communication;
+pub mod web_search;
+pub mod schedule_task;
+pub mod modify_reminder;
+pub mod get_reminder_stats;

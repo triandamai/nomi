@@ -1,28 +1,29 @@
-pub mod tools_model;
 pub mod plugin_trait;
 pub mod plugins;
+pub mod tools_model;
 
 use crate::Arc;
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::plugins::dice::DicePlugin;
 use crate::common::tools::plugins::communication::CommunicationPlugin;
+use crate::common::tools::plugins::dice::DicePlugin;
 use crate::common::tools::plugins::finance::FinancePlugin;
+use crate::common::tools::plugins::get_reminder_stats::GetReminderStatsPlugin;
 use crate::common::tools::plugins::health::HealthPlugin;
-use crate::common::tools::plugins::user::UserPlugin;
+use crate::common::tools::plugins::modify_reminder::ModifyReminderPlugin;
 use crate::common::tools::plugins::read_web_page::ReadWebPagePlugin;
+use crate::common::tools::plugins::schedule_task::ScheduleTaskPlugin;
+use crate::common::tools::plugins::user::UserPlugin;
 use crate::common::tools::plugins::web_search::WebSearchPlugin;
 use crate::common::tools::tools_model::{
     EvolveBootstrapParameters, EvolveBootstrapResponse, ExecuteReadQueryParameters,
     ExecuteReadQueryResponse, GetInboxSummaryParameters, GetInboxSummaryResponse,
-    GetLatestMediaContextParameters, GetReminderStatsParameters, GetReminderStatsResponse,
-    MakeStickerParameters, MakeStickerResponse, ModifyReminderParameters, ModifyReminderResponse,
-    ParseToJsonParameters, ReadWorkSpaceParameters,
-    ReadWorkSpaceResponse, ScheduleTaskParameters, ScheduleTaskResponse, ToolResult, UpdateConversationSoulParameters,
-    UpdateConversationSoulResponse, UpdateConversationTitleParameters,
-    UpdateConversationTitleResponse, UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse,
+    GetLatestMediaContextParameters, MakeStickerParameters, MakeStickerResponse,
+    ParseToJsonParameters, ReadWorkSpaceParameters, ReadWorkSpaceResponse, ToolResult,
+    UpdateConversationSoulParameters, UpdateConversationSoulResponse,
+    UpdateConversationTitleParameters, UpdateConversationTitleResponse,
+    UpdateKnowledgeBaseParameters, UpdateKnowledgeBaseResponse,
 };
 use crate::prompts::PromptRegistry;
-use chrono::{Utc, TimeZone, NaiveDateTime};
 use chrono_tz::Tz;
 use dotenvy::var;
 use gemini_rust::{FunctionDeclaration, Tool, UsageMetadata};
@@ -73,24 +74,9 @@ pub enum NomiTool {
         params: EvolveBootstrapParameters,
         user_message: String,
     },
-    #[serde(rename = "schedule_task")]
-    ScheduleTask {
-        params: ScheduleTaskParameters,
-        user_message: String,
-    },
-    #[serde(rename = "modify_reminder")]
-    ModifyReminder {
-        params: ModifyReminderParameters,
-        user_message: String,
-    },
     #[serde(rename = "get_inbox_summary")]
     GetInboxSummary {
         params: GetInboxSummaryParameters,
-        user_message: String,
-    },
-    #[serde(rename = "get_reminder_stats")]
-    GetReminderStats {
-        params: GetReminderStatsParameters,
         user_message: String,
     },
     #[serde(rename = "make_sticker")]
@@ -115,7 +101,7 @@ pub enum NomiTool {
     },
 }
 
-    #[derive(Clone)]
+#[derive(Clone)]
 pub struct ToolDispatcher {
     pub pool: Pool<Postgres>,
     pub workspace_root: PathBuf,
@@ -147,6 +133,9 @@ impl ToolDispatcher {
         plugins.insert("send_message", Arc::new(CommunicationPlugin));
         plugins.insert("web_search", Arc::new(WebSearchPlugin));
         plugins.insert("read_web_page", Arc::new(ReadWebPagePlugin));
+        plugins.insert("schedule_task", Arc::new(ScheduleTaskPlugin));
+        plugins.insert("modify_reminder", Arc::new(ModifyReminderPlugin));
+        plugins.insert("get_reminder_stats", Arc::new(GetReminderStatsPlugin));
 
         Self {
             pool,
@@ -193,22 +182,10 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.evolve_bootstrap(params, user_message).await,
-            NomiTool::ScheduleTask {
-                params,
-                user_message,
-            } => self.schedule_task(params, user_message).await,
-            NomiTool::ModifyReminder {
-                params,
-                user_message,
-            } => self.modify_reminder(params, user_message).await,
             NomiTool::GetInboxSummary {
                 params,
                 user_message,
             } => self.get_inbox_summary(params, user_message).await,
-            NomiTool::GetReminderStats {
-                params,
-                user_message,
-            } => self.get_reminder_stats(params, user_message).await,
             NomiTool::MakeSticker {
                 params,
                 user_message,
@@ -225,6 +202,12 @@ impl ToolDispatcher {
                 params,
                 user_message,
             } => self.update_conversation_title(params, user_message).await,
+            // _ => ToolResult {
+            //     error: "No  tool match".to_string(),
+            //     success: false,
+            //     content: "".to_string(),
+            //     follow_up_prompt: "".to_string(),
+            // },
         }
     }
 
@@ -243,7 +226,6 @@ impl ToolDispatcher {
             FunctionDeclaration::new("execute_read_query", "Execute Read Only SQL Query", None)
                 .with_parameters::<ExecuteReadQueryParameters>()
                 .with_response::<ExecuteReadQueryResponse>();
-
 
         let update_nomi_soul =
             FunctionDeclaration::new(
@@ -280,22 +262,6 @@ impl ToolDispatcher {
         .with_parameters::<EvolveBootstrapParameters>()
         .with_response::<EvolveBootstrapResponse>();
 
-        let schedule_task = FunctionDeclaration::new(
-            "schedule_task",
-            "Schedule a background task (Reminders, DMs, or Agent actions). Recurrence (daily, weekly, monthly) is supported. The `due_at` field has a STRICT FORMAT: 'YYYY-MM-DD HH:MM'. Explicitly calculate this timestamp relative to the [SYSTEM TIME ANCHOR] provided in the system prompt. For example, if current time is 2026-05-14 20:27 WIB and the user says 'in 10 minutes', you MUST output exactly '2026-05-14 20:37'. Never include trailing 'Z', offsets, or seconds. The user is in WIB (UTC+7).",
-            None,
-        )
-            .with_parameters::<ScheduleTaskParameters>()
-            .with_response::<ScheduleTaskResponse>();
-
-        let modify_reminder = FunctionDeclaration::new(
-            "modify_reminder",
-            "Modify an existing reminder: snooze it to a new time, cancel it, or mark it as done.",
-            None,
-        )
-        .with_parameters::<ModifyReminderParameters>()
-        .with_response::<ModifyReminderResponse>();
-
         let get_inbox_summary = FunctionDeclaration::new(
             "get_inbox_summary",
             "Retrieves a summary of recent messages from users. Use this when User asks: 'Any new DMs?', 'Who messaged me?', or 'Are there any strangers?'",
@@ -303,14 +269,6 @@ impl ToolDispatcher {
         )
             .with_parameters::<GetInboxSummaryParameters>()
             .with_response::<GetInboxSummaryResponse>();
-
-        let get_reminder_stats = FunctionDeclaration::new(
-            "get_reminder_stats",
-            "Get stats about existing reminders, optionally filtered by DateTime ranges. Examples: 'What's left for the rest of the day?', 'Any reminders for this weekend?'",
-            None,
-        )
-            .with_parameters::<GetReminderStatsParameters>()
-            .with_response::<GetReminderStatsResponse>();
 
         let make_sticker = FunctionDeclaration::new(
             "make_sticker",
@@ -351,9 +309,7 @@ impl ToolDispatcher {
                     tools.push(execute_read_query.clone());
                 }
                 "REMINDER" => {
-                    tools.push(schedule_task.clone());
-                    tools.push(modify_reminder.clone());
-                    tools.push(get_reminder_stats.clone());
+                    // Handled by Plugins
                 }
                 "WEB" => {
                     // Handled by Plugins
@@ -368,7 +324,6 @@ impl ToolDispatcher {
                     return Tool::google_search();
                 }
                 "DASHBOARD" => {
-                    tools.push(get_reminder_stats.clone());
                     tools.push(get_inbox_summary.clone());
                     tools.push(update_conversation_title.clone());
                     tools.push(retrieve_knowledge.clone());
@@ -378,14 +333,12 @@ impl ToolDispatcher {
                 "COMMUNICATION" => {
                     tools.push(get_inbox_summary.clone());
                     tools.push(update_conversation_title.clone());
-                    tools.push(schedule_task.clone());
                 }
                 "GENERAL" => {
                     tools.push(update_conversation_title.clone());
                     tools.push(retrieve_knowledge.clone());
                     tools.push(evolve_bootstrap_content.clone());
                     tools.push(update_nomi_soul.clone());
-                    tools.push(schedule_task.clone());
                 }
                 _ => {}
             }
@@ -404,10 +357,7 @@ impl ToolDispatcher {
                 update_knowledge_base,
                 retrieve_knowledge,
                 evolve_bootstrap_content,
-                schedule_task,
-                modify_reminder,
                 get_inbox_summary,
-                get_reminder_stats,
                 make_sticker,
                 analyze_media,
                 update_conversation_title,
@@ -457,222 +407,6 @@ impl ToolDispatcher {
         }
 
         Tool::with_functions(unique_tools)
-    }
-
-
-    async fn schedule_task(
-        &self,
-        params: ScheduleTaskParameters,
-        _user_message: String,
-    ) -> ToolResult {
-        info!("Scheduling task: {:?}", params.task_type);
-
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                return ToolResult {
-                    error: "User ID not found in context".to_string(),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        let tz_wib: Tz = "Asia/Jakarta".parse().unwrap();
-        let due_at_utc = match NaiveDateTime::parse_from_str(&params.due_at, "%Y-%m-%d %H:%M") {
-            Ok(naive) => {
-                // Assume LLM sent time in WIB (UTC+7)
-                match tz_wib.from_local_datetime(&naive).single() {
-                    Some(dt) => dt.with_timezone(&Utc),
-                    None => {
-                        return ToolResult {
-                            error: "Ambiguous or invalid time for WIB timezone".to_string(),
-                            success: false,
-                            content: "".to_string(),
-                            follow_up_prompt: "".to_string(),
-                        };
-                    }
-                }
-            }
-            Err(e) => {
-                return ToolResult {
-                    error: format!("Invalid date format: {}. Please use 'YYYY-MM-DD HH:MM'.", e),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        let due_at_wib = due_at_utc.with_timezone(&tz_wib);
-        let frequency = params.frequency.unwrap_or_else(|| "once".to_string());
-
-        let task_description = match params.task_type.to_uppercase().as_str() {
-            "REMINDER" => format!(
-                "reminder: '{}'",
-                params
-                    .payload
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("No description")
-            ),
-            "SEND_DM" => {
-                let recipient = params
-                    .payload
-                    .get("recipient_jid")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("someone");
-                format!("automated DM to be sent to {}", recipient)
-            }
-            "TRIGGER_AGENT" => "background agent execution".to_string(),
-            _ => format!("task of type {}", params.task_type),
-        };
-
-        let result = sqlx::query!(
-            "INSERT INTO reminders (user_id, conversation_id, task_type, payload, due_at, frequency, max_repeats,content)
-             VALUES ($1, $2, $3, $4, $5, $6, $7,$8) RETURNING id",
-            user_id,
-            self.conversation_id,
-            params.task_type.to_uppercase(),
-            params.payload,
-            due_at_utc,
-            frequency,
-            params.max_repeats,
-            task_description.clone(),
-        )
-            .fetch_one(&self.pool)
-            .await;
-
-        match result {
-            Ok(_) => {
-                // Get user name for personalized response
-                let display_name: String = sqlx::query_scalar(
-                    "SELECT COALESCE(display_name, 'Trian') FROM users WHERE id = $1",
-                )
-                .bind(user_id)
-                .fetch_one(&self.pool)
-                .await
-                .unwrap_or_else(|_| "Trian".to_string());
-
-                let content = format!(
-                    "Got it, {}! I've scheduled your {} for {}.",
-                    display_name, task_description, due_at_wib.format("%H:%M WIB").to_string()
-                );
-
-                ToolResult {
-                    error: "".to_string(),
-                    success: true,
-                    content,
-                    follow_up_prompt: "".to_string(),
-                }
-            }
-            Err(e) => ToolResult {
-                error: format!("Failed to schedule task: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
-        }
-    }
-
-    async fn modify_reminder(
-        &self,
-        params: ModifyReminderParameters,
-        _user_message: String,
-    ) -> ToolResult {
-        info!(
-            "Modifying reminder: {} with action: {}",
-            params.reminder_id, params.action
-        );
-
-        let reminder_id = match Uuid::parse_str(&params.reminder_id) {
-            Ok(id) => id,
-            Err(e) => {
-                return ToolResult {
-                    error: format!("Invalid reminder ID: {}", e),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        let result = match params.action.as_str() {
-            "done" | "completed" => {
-                sqlx::query!(
-                    "UPDATE reminders SET status = 'completed', updated_at = NOW() WHERE id = $1",
-                    reminder_id
-                )
-                .execute(&self.pool)
-                .await
-            }
-            "cancel" | "archived" => {
-                sqlx::query!(
-                    "UPDATE reminders SET status = 'archived', updated_at = NOW() WHERE id = $1",
-                    reminder_id
-                )
-                .execute(&self.pool)
-                .await
-            }
-            "snooze" => {
-                let snooze_until = match params.snooze_until {
-                    Some(ref s) => match chrono::DateTime::parse_from_rfc3339(s) {
-                        Ok(dt) => dt.with_timezone(&chrono::Utc),
-                        Err(e) => {
-                            return ToolResult {
-                                error: format!(
-                                    "Invalid snooze date format: {}. Please use ISO 8601.",
-                                    e
-                                ),
-                                success: false,
-                                content: "".to_string(),
-                                follow_up_prompt: "".to_string(),
-                            };
-                        }
-                    },
-                    None => {
-                        return ToolResult {
-                            error: "Snooze action requires 'snooze_until' parameter.".to_string(),
-                            success: false,
-                            content: "".to_string(),
-                            follow_up_prompt: "".to_string(),
-                        };
-                    }
-                };
-
-                sqlx::query!(
-                    "UPDATE reminders SET due_at = $1, status = 'pending', snooze_count = snooze_count + 1, updated_at = NOW() WHERE id = $2",
-                    snooze_until,
-                    reminder_id
-                )
-                    .execute(&self.pool)
-                    .await
-            }
-            _ => {
-                return ToolResult {
-                    error: format!("Invalid action: {}", params.action),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        match result {
-            Ok(_) => ToolResult {
-                error: "".to_string(),
-                success: true,
-                content: format!("Reminder {} successfully.", params.action),
-                follow_up_prompt: "".to_string(),
-            },
-            Err(e) => ToolResult {
-                error: format!("Failed to modify reminder: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
-        }
     }
 
     async fn read_workspace_file(&self, path: String, user_message: String) -> ToolResult {
@@ -793,7 +527,6 @@ impl ToolDispatcher {
             },
         }
     }
-
 
     async fn update_nomi_soul(
         &self,
@@ -1059,7 +792,7 @@ impl ToolDispatcher {
                 .map(|dt| dt.with_timezone(&chrono::Utc))
         });
 
-        info!("Search from :{:?} => {:?}",start_date,end_date);
+        info!("Search from :{:?} => {:?}", start_date, end_date);
         let embedding_res = crate::rag::get_embedding(&self.gemini_api_key, &params.query).await;
 
         match embedding_res {
@@ -1212,7 +945,7 @@ impl ToolDispatcher {
                     a_tokens,
                     t_tokens,
                 )
-                    .await;
+                .await;
 
                 match save_result {
                     Ok(_) => {
@@ -1229,14 +962,16 @@ impl ToolDispatcher {
                                 // Dispatch token update
                                 let _ = self
                                     .app_state
-                                    .dispatch(crate::services::event_dispatcher::AppEvent::conversation(
-                                        conv_id,
-                                        "token_update",
-                                        serde_json::json!({
-                                            "conversation_id": conv_id,
-                                            "cumulative_tokens": row.cumulative_tokens
-                                        }),
-                                    ))
+                                    .dispatch(
+                                        crate::services::event_dispatcher::AppEvent::conversation(
+                                            conv_id,
+                                            "token_update",
+                                            serde_json::json!({
+                                                "conversation_id": conv_id,
+                                                "cumulative_tokens": row.cumulative_tokens
+                                            }),
+                                        ),
+                                    )
                                     .await;
                             }
 
@@ -1292,10 +1027,10 @@ impl ToolDispatcher {
                     ),
                 }
             }
-        }else {
+        } else {
             let msg = "Error generating embedding for knowledge base update.".to_string();
             ToolResult {
-                error:msg.clone(),
+                error: msg.clone(),
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: build_follow_up_prompt(
@@ -1432,129 +1167,6 @@ impl ToolDispatcher {
                 content,
                 "get_inbox_summary".to_string(),
             ),
-        }
-    }
-
-    async fn get_reminder_stats(
-        &self,
-        params: GetReminderStatsParameters,
-        user_message: String,
-    ) -> ToolResult {
-        info!("Executing get_reminder_stats");
-
-        let user_id = match self.user_id {
-            Some(id) => id,
-            None => {
-                return ToolResult {
-                    error: "User ID not found in context".to_string(),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                };
-            }
-        };
-
-        let start_after = match params.start_after {
-            Some(ref s) => match chrono::DateTime::parse_from_rfc3339(s) {
-                Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
-                Err(e) => {
-                    return ToolResult {
-                        error: format!("Invalid start_after format: {}. Please use ISO 8601.", e),
-                        success: false,
-                        content: "".to_string(),
-                        follow_up_prompt: "".to_string(),
-                    };
-                }
-            },
-            None => None,
-        };
-
-        let end_before = match params.end_before {
-            Some(ref s) => match chrono::DateTime::parse_from_rfc3339(s) {
-                Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
-                Err(e) => {
-                    return ToolResult {
-                        error: format!("Invalid end_before format: {}. Please use ISO 8601.", e),
-                        success: false,
-                        content: "".to_string(),
-                        follow_up_prompt: "".to_string(),
-                    };
-                }
-            },
-            None => None,
-        };
-
-        let limit = params.limit.unwrap_or(20) as i64;
-
-        let query_result = sqlx::query!(
-            r#"
-            SELECT 
-                id,
-                COALESCE(payload->>'message', content) as "content!",
-                (due_at AT TIME ZONE 'Asia/Jakarta') as due_at,
-                status,
-                frequency,
-                current_runs
-            FROM reminders
-            WHERE user_id = $1
-              AND task_type = 'REMINDER'
-              AND ($2::TIMESTAMPTZ IS NULL OR due_at >= $2)
-              AND ($3::TIMESTAMPTZ IS NULL OR due_at <= $3)
-              AND ($4::TEXT IS NULL OR status = $4)
-            ORDER BY due_at ASC
-            LIMIT $5;
-            "#,
-            user_id,
-            start_after,
-            end_before,
-            params.status_filter,
-            limit
-        )
-        .fetch_all(&self.pool)
-        .await;
-
-        match query_result {
-            Ok(rows) => {
-                let mut results = Vec::new();
-                let tz: Tz = "Asia/Jakarta".parse().unwrap_or(chrono_tz::UTC);
-                for row in rows {
-                    let due_at_naive = row.due_at.unwrap();
-                    let due_at_utc = tz.from_local_datetime(&due_at_naive).single().unwrap().with_timezone(&Utc);
-                    let item = json!({
-                        "id": row.id.to_string(),
-                        "content": row.content,
-                        "due_at_utc": due_at_utc.to_rfc3339(),
-                        "due_at_local": due_at_naive.format("%Y-%m-%d %H:%M:%S").to_string(),
-                        "status": row.status,
-                        "frequency": row.frequency,
-                        "current_runs": row.current_runs
-                    });
-                    results.push(item);
-                }
-
-                let content = if results.is_empty() {
-                    "No reminders found for the given criteria.".to_string()
-                } else {
-                    serde_json::to_string_pretty(&results).unwrap_or_default()
-                };
-
-                ToolResult {
-                    error: "".to_string(),
-                    success: true,
-                    content: content.clone(),
-                    follow_up_prompt: build_follow_up_prompt(
-                        user_message,
-                        content,
-                        "get_reminder_stats".to_string(),
-                    ),
-                }
-            }
-            Err(e) => ToolResult {
-                error: format!("Database error fetching reminders: {}", e),
-                success: false,
-                content: "".to_string(),
-                follow_up_prompt: "".to_string(),
-            },
         }
     }
 
