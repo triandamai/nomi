@@ -1,7 +1,7 @@
 import mqtt from 'mqtt';
-import { eventBus } from '$lib/utils';
-import { getSession } from '$lib/stores/profile.svelte';
-import { env } from '$env/dynamic/public';
+import {eventBus} from '$lib/utils';
+import {getSession} from '$lib/stores/profile.svelte';
+import {env} from '$env/dynamic/public';
 
 const MQTT_URL = env.PUBLIC_MQTT_URL || 'wss://broker.pakaiarta.id';
 
@@ -12,6 +12,7 @@ class MqttClient {
 
     connect() {
         if (this.client) return;
+        console.log("Starting mqtt")
 
         const [token, userId] = getSession();
         if (!userId) {
@@ -30,27 +31,50 @@ class MqttClient {
             }
         }
 
-        console.log('MQTT: Connecting to', finalUrl);
+        const existingDeviceID = sessionStorage.getItem("13caZza")
+        const candidateDeviceId = crypto.randomUUID().slice(0, 8);
+
+        const deviceId = ()=>{
+            if (existingDeviceID){
+                return existingDeviceID
+            }
+            sessionStorage.setItem("13caZza",candidateDeviceId)
+            return candidateDeviceId
+        }
+        // const deviceId = crypto.randomUUID().slice(0, 8);
+        // Using a hierarchical client ID allows EMQX ACLs to use %c wildcards easily
+        const clientId = `nomi/users/${this.userId}/web_${deviceId()}`;
+
+        console.log('MQTT: Connecting to', finalUrl, 'with clientId', clientId);
 
         this.client = mqtt.connect(finalUrl, {
-            clientId: this.userId, // Use the real User UUID for ACL mapping
-            clean: true,
+            clientId: clientId, 
+            clean: false,       
             username: env.PUBLIC_MQTT_USER,
-            password:  env.PUBLIC_MQTT_PASSWORD,
+            password: env.PUBLIC_MQTT_PASSWORD,
             connectTimeout: 10000,
-            reconnectPeriod: 2000,
+            reconnectPeriod: 2000, 
             protocolVersion: 4,
         });
 
         this.client.on('connect', () => {
             console.log('MQTT: Connected');
-            eventBus.emit('gateway-status', { online: true, transport: 'mqtt' });
+            eventBus.emit('gateway-status', {online: true, transport: 'mqtt'});
             this.subscribeToBasicTopics();
         });
 
+        this.client.on('disconnect', () => {
+            console.log('MQTT: Disconnected');
+        })
+        this.client.on('reconnect', () => {
+            console.log('MQTT: Reconnected');
+        })
+        this.client.on('offline', () => {
+            console.log('MQTT: Offline');
+        })
         this.client.on('error', (err) => {
             console.error('MQTT: Connection error', err);
-            eventBus.emit('gateway-status', { online: false, transport: 'mqtt' });
+            eventBus.emit('gateway-status', {online: false, transport: 'mqtt'});
         });
 
         this.client.on('message', (topic, payload) => {

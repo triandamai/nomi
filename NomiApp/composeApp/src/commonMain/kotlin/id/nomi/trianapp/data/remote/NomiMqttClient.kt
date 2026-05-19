@@ -26,15 +26,19 @@ class NomiMqttClient(
     fun connect(userId: String) {
         if (client != null) return
 
+        // Using a hierarchical client ID allows EMQX ACLs to use %c wildcards easily
+        val uniqueClientId = "nomi/users/$userId/mobile"
+
         val config = MqttClientConfig(
             brokerHost = "b1fec516.ala.eu-central-1.emqxsl.com",
             brokerPort = 8084,
-            clientId = userId,
+            clientId = uniqueClientId,
             userName = "nomi-client-app",
             password = "NomiPublicPass2026",
             isTls = true,
             isWss = true,
-            path = "/mqtt"
+            path = "/mqtt",
+            cleanSession = false // Broker remembers subscriptions
         )
 
         client = MqttClient(config)

@@ -45,13 +45,14 @@ async fn main() -> anyhow::Result<()> {
         })?;
     info!("Database connection established.");
 
+    let mqtt_client_id = var("MQTT_CLIENT_ID").expect("MQTT_CLIENT_ID must be set");
     let mqtt_host = var("MQTT_HOST").expect("MQTT_HOST must be set");
     let mqtt_user = var("MQTT_USER").expect("MQTT_USER must be set");
     let mqtt_password = var("MQTT_PASSWORD").expect("MQTT_PASSWORD must be set");
 
     // Bootstraps our independent background worker loop without touching existing engines
     let mqtt_manager = services::mqtt_service::MqttManager::init(
-        "nomi_gateway_prod", 
+        mqtt_client_id.as_str(),
         mqtt_host.as_str(),
         8883,
         Some(mqtt_user.as_str()),
