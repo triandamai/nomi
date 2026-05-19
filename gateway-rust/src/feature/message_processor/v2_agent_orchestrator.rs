@@ -750,7 +750,7 @@ impl V2AgentOrchestrator {
             let gemini = state.gemini.clone();
             let gemini_api_key = state.gemini_api_key.clone();
             tokio::spawn(async move {
-                if let Ok(((_convo_id, _total_token))) =
+                if let Ok((_convo_id, _total_token)) =
                     trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id)
                         .await {
                 }
