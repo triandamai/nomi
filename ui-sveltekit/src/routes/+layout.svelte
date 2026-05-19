@@ -3,6 +3,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { onMount } from 'svelte';
 	import { chatApi } from '$lib/api/client';
+	import { mqttClient } from '$lib/api/mqtt';
 	import PopupManager from '$lib/components/PopupManager.svelte';
 	import DiscordSidebar from "$lib/components/DiscordSidebar.svelte"
 	import Header from '$lib/components/Header.svelte';
@@ -16,7 +17,6 @@
 
 	let { children } = $props();
 
-	let closing: (() => void) | null = null;
 	let opening = false;
 
 	async function open() {
@@ -34,10 +34,8 @@
 
 			try {
 				await conversationStore.loadConversations();
-				// Close existing connection if any
-				if (closing) closing();
-				//@ts-ignore
-				closing = chatApi.streamEvent();
+				// Initialize MQTT connection
+				mqttClient.connect();
 			} finally {
 				opening = false;
 			}
@@ -49,21 +47,12 @@
 		const unsubscribe = eventBus.subscribe("load", open);
 		return () => {
 			unsubscribe();
-			if (closing) closing();
+			mqttClient.disconnect();
 		};
 	});
 
-	beforeNavigate(() => {
-		if (closing) {
-			closing();
-			closing = null;
-		}
-	});
-
 	afterNavigate(() => {
-		if (!closing) {
-			open();
-		}
+		open();
 	});
 </script>
 

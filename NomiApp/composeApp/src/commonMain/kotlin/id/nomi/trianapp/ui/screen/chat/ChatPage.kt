@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -155,7 +156,7 @@ fun PageChat(
                         }
                     }
                 )
-                Divider(color = Slate800, thickness = 0.5.dp)
+                HorizontalDivider(Modifier, thickness = 0.5.dp, color = Slate800)
             }
         },
         sheetContainerColor = Slate700,

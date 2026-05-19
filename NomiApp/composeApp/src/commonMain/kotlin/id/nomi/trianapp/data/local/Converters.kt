@@ -2,10 +2,6 @@ package id.nomi.trianapp.data.local
 
 import androidx.room.TypeConverter
 import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.Instant
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toInstant
-import kotlinx.datetime.toLocalDateTime
 
 class Converters {
     @TypeConverter

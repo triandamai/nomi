@@ -12,6 +12,7 @@ use crate::feature::message_processor::v2_orchestrator::{
 use crate::feature::{MessageSource, UnifiedMessage};
 use crate::models::Conversation;
 use crate::rag::trigger_memory_consolidation;
+use crate::services::event_dispatcher::AppEvent;
 use crate::{AppState, rag};
 use anyhow::anyhow;
 use chrono::Utc;
@@ -96,11 +97,11 @@ impl V2AgentOrchestrator {
             info!("notify user message saved :{}", member);
             saved_message.display_name = Some(msg.display_name.clone().unwrap());
             let _ = state
-                .send_sse_to_user(
+                .dispatch(AppEvent::user(
                     member.to_string().as_str(),
                     "message",
                     saved_message.to_sse_json(0),
-                )
+                ))
                 .await;
         }
         // Group is registered, only respond if mentioned
@@ -128,10 +129,14 @@ impl V2AgentOrchestrator {
         .await
         {
             let _ = state
-                .broadcast_sse_token_update(
-                    &conversation_id,
-                    &row.cumulative_tokens.unwrap_or(0).to_u64().unwrap_or(0),
-                )
+                .dispatch(AppEvent::conversation(
+                    conversation_id,
+                    "token_update",
+                    serde_json::json!({
+                        "conversation_id": conversation_id,
+                        "cumulative_tokens": row.cumulative_tokens.unwrap_or(0).to_u64().unwrap_or(0)
+                    }),
+                ))
                 .await;
         }
 
@@ -495,10 +500,10 @@ impl V2AgentOrchestrator {
                         let payload =
                             json!({ "thought": chunk.thought, "conversation_id": conversation_id });
                         let _ = match user_id {
-                            None => state.broadcast_sse("thought", payload).await,
+                            None => state.dispatch(AppEvent::broadcast("thought", payload)).await,
                             Some(ref id) => {
                                 state
-                                    .send_sse_to_user(id.to_string().as_str(), "thought", payload)
+                                    .dispatch(AppEvent::user(id.to_string().as_str(), "thought", payload))
                                     .await
                             }
                         };

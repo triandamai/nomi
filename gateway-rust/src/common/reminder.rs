@@ -4,6 +4,7 @@ use crate::common::repository::message_repo::save_message;
 use crate::feature::OutboundMessage;
 use crate::feature::message_processor::v2_agent_orchestrator::V2AgentOrchestrator;
 use crate::models::Conversation;
+use crate::services::event_dispatcher::AppEvent;
 use chrono::{DateTime, Duration, Months, Utc};
 use chrono_tz::Tz;
 use serde_json::json;
@@ -172,7 +173,7 @@ async fn handle_reminder_task(state: &AppState, task: &TaskData) -> anyhow::Resu
             .await
             {
                 let _ = state
-                    .send_sse_to_user(
+                    .dispatch(AppEvent::user(
                         task.user_id.to_string().as_str(),
                         "message",
                         json!({
@@ -184,7 +185,7 @@ async fn handle_reminder_task(state: &AppState, task: &TaskData) -> anyhow::Resu
                             "user_id": m.user_id,
                             "created_at": m.created_at,
                         }),
-                    )
+                    ))
                     .await;
             }
 
@@ -209,7 +210,7 @@ async fn handle_reminder_task(state: &AppState, task: &TaskData) -> anyhow::Resu
                         "type": "reminder"
                     })),
                 };
-                let _ = state.publish_outbond(&outbound).await;
+                let _ = state.dispatch(AppEvent::user(task.user_id.to_string().as_str(), "reminder", json!({"text": outbound_text})).with_redis_outbound(outbound)).await;
             }
         }
     }
@@ -243,7 +244,7 @@ async fn handle_send_dm_task(state: &AppState, task: &TaskData) -> anyhow::Resul
                     "type": "automated_dm"
                 })),
             };
-            state.publish_outbond(&outbound).await;
+            let _ = state.dispatch(AppEvent::user(task.user_id.to_string().as_str(), "dm", json!({"text": msg})).with_redis_outbound(outbound)).await;
         }
     }
     Ok(())
@@ -374,7 +375,7 @@ async fn handle_trigger_agent_task(state: &AppState, task: &TaskData) -> anyhow:
                 "type": "agent_trigger_response"
             })),
         };
-        state.publish_outbond(&outbound).await;
+        let _ = state.dispatch(AppEvent::user(task.user_id.to_string().as_str(), "agent_response", json!({"text": final_text})).with_redis_outbound(outbound)).await;
     }
 
     Ok(())

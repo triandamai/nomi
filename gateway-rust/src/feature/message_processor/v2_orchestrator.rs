@@ -5,6 +5,7 @@ use crate::common::repository::message_repo::save_message;
 use crate::feature::{MessageSource, OutboundMessage, PresenceMessage, UnifiedMessage};
 use crate::feature::message_processor::v2_agent_orchestrator::V2AgentOrchestrator;
 use crate::models::Conversation;
+use crate::services::event_dispatcher::AppEvent;
 use tracing::info;
 use uuid::Uuid;
 use crate::feature::conversation::model::MessageItem;
@@ -86,15 +87,15 @@ pub async fn process_v2_message(
         .await;
 
         if let Ok(saved_message) = save_user_message {
-            // 2. Broadcast to members via SSE
+            // 2. Broadcast to members via unified dispatcher
             for member in members {
                 info!("notify user:{:?} with new message",member);
                 let _ = state
-                    .send_sse_to_user(
+                    .dispatch(AppEvent::user(
                         member.user_id.to_string().as_str(),
                         "message",
                         saved_message.to_sse_json(0),
-                    ).await;
+                    )).await;
             }
         }
 
@@ -230,14 +231,14 @@ pub async fn send_status_update(
                 info!("send_status_update web");
                 for member in members {
                     let _ = state
-                        .send_sse_to_user(
+                        .dispatch(AppEvent::user(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({
                                     "conversation_id": conversation_id,
                                     "text":text
                                 }),
-                        )
+                        ))
                         .await;
                 }
 
@@ -268,20 +269,20 @@ pub async fn send_status_update(
                             sticker_url: None,
                             metadata: None,
                         };
-                        let _ = state.publish_outbond(&outbound).await;
+                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"text": text})).with_redis_outbound(outbound)).await;
                     }
                 }
             } else {
                 for member in members {
                     let _ = state
-                        .send_sse_to_user(
+                        .dispatch(AppEvent::user(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({
                                     "conversation_id": conversation_id,
                                     "text":text
                                 }),
-                        )
+                        ))
                         .await;
                 }
 
@@ -312,7 +313,7 @@ pub async fn send_status_update(
                             sticker_url: None,
                             metadata: None,
                         };
-                        let _ = state.publish_outbond(&outbound).await;
+                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"text": text})).with_redis_outbound(outbound)).await;
                     }
                 }
             }
@@ -358,7 +359,7 @@ pub async fn send_tool_update(
                 info!("send_status_update web");
                 for member in members {
                     let _ = state
-                        .send_sse_to_user(
+                        .dispatch(AppEvent::user(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({
@@ -366,7 +367,7 @@ pub async fn send_tool_update(
                                     "name":tool_name,
                                     "text":StatusRegistry::random_action_phrase(tool_name.as_str())
                                 }),
-                        )
+                        ))
                         .await;
                 }
 
@@ -397,13 +398,13 @@ pub async fn send_tool_update(
                             sticker_url: None,
                             metadata: None,
                         };
-                        let _ = state.publish_outbond(&outbound).await;
+                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"name": tool_name, "text": StatusRegistry::random_action_phrase(tool_name.as_str())})).with_redis_outbound(outbound)).await;
                     }
                 }
             } else {
                 for member in members {
                     let _ = state
-                        .send_sse_to_user(
+                        .dispatch(AppEvent::user(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({
@@ -411,7 +412,7 @@ pub async fn send_tool_update(
                                     "name":tool_name,
                                     "text":StatusRegistry::random_action_phrase(tool_name.as_str())
                                 }),
-                        )
+                        ))
                         .await;
                 }
 
@@ -442,7 +443,7 @@ pub async fn send_tool_update(
                             sticker_url: None,
                             metadata: None,
                         };
-                        let _ = state.publish_outbond(&outbound).await;
+                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"name": tool_name})).with_redis_outbound(outbound)).await;
                     }
                 }
             }
@@ -487,11 +488,11 @@ pub async fn send_status_presence_update(
                 info!("send_status_update web");
                 for member in members {
                     let _ = state
-                        .send_sse_to_user(
+                        .dispatch(AppEvent::user(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({"conversation_id": conversation_id,"is_typing": is_typing,"user_id": "nomi","text":""}),
-                        )
+                        ))
                         .await;
                 }
 
@@ -515,17 +516,17 @@ pub async fn send_status_presence_update(
                             channel: channel.channel_type.clone(),
                             status: "typing".to_string(),
                         };
-                        let _ = state.publish_presence(&presence).await;
+                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"is_typing": is_typing})).with_redis_presence(presence)).await;
                     }
                 }
             } else {
                 for member in members {
                     let _ = state
-                        .send_sse_to_user(
+                        .dispatch(AppEvent::user(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({"conversation_id": conversation_id,"is_typing": is_typing,"user_id": "nomi","text":""}),
-                        )
+                        ))
                         .await;
                 }
 
@@ -549,7 +550,7 @@ pub async fn send_status_presence_update(
                             channel: channel.channel.clone(),
                             status: "typing".to_string(),
                         };
-                        let _ = state.publish_presence(&presence).await;
+                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"is_typing": is_typing})).with_redis_presence(presence)).await;
                     }
                 }
             }
@@ -591,7 +592,7 @@ pub async fn send_message_to_subscriber(
         if let Ok(convo) = convo {
             for member in members {
                 let _ = state
-                    .send_sse_to_user(member.to_string().as_str(), "message", sse_data.clone())
+                    .dispatch(AppEvent::user(member.to_string().as_str(), "message", sse_data.clone()))
                     .await;
             }
 
@@ -649,7 +650,7 @@ pub async fn send_message_to_subscriber(
                             metadata: None,
                         };
                         info!("Sent outbound message: {}", outbound);
-                        let _ = state.publish_outbond(&outbound).await;
+                        let _ = state.dispatch(AppEvent::conversation(conversation_id, "message", json!({"text": bubble_text})).with_redis_outbound(outbound)).await;
 
                         if i < bubbles.len() - 1 {
                             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -705,7 +706,7 @@ pub async fn send_message_to_subscriber(
                             metadata: None,
                         };
                         info!("Sent outbound message: {}", outbound);
-                        let _ = state.publish_outbond(&outbound).await;
+                        let _ = state.dispatch(AppEvent::conversation(conversation_id, "message", json!({"text": bubble_text})).with_redis_outbound(outbound)).await;
 
                         if i < bubbles.len() - 1 {
                             tokio::time::sleep(std::time::Duration::from_millis(300)).await;

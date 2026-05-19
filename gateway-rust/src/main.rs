@@ -4,6 +4,7 @@ pub mod models;
 pub mod prompts;
 pub mod rag;
 pub mod routes;
+pub mod services;
 pub mod utils;
 
 use crate::common::app_state::AppState;
@@ -44,6 +45,20 @@ async fn main() -> anyhow::Result<()> {
         })?;
     info!("Database connection established.");
 
+    let mqtt_host = var("MQTT_HOST").expect("MQTT_HOST must be set");
+    let mqtt_user = var("MQTT_USER").expect("MQTT_USER must be set");
+    let mqtt_password = var("MQTT_PASSWORD").expect("MQTT_PASSWORD must be set");
+
+    // Bootstraps our independent background worker loop without touching existing engines
+    let mqtt_manager = services::mqtt_service::MqttManager::init(
+        "arta_gateway_prod", 
+        mqtt_host.as_str(),
+        8883,
+        Some(mqtt_user.as_str()),
+        Some(mqtt_password.as_str())
+    );
+    let mqtt = Arc::new(mqtt_manager);
+
     let redis = crate::common::redis::RedisClient::new(&redis_url)?;
 
     let storage_access_key = var("S3_ACCESS_KEY").expect("S3_ACCESS_KEY must be set");
@@ -69,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
         // presence,
         redis,
         storage,
+        mqtt,
         model_info: common::agent::agent_model::ModelInfo {
             agent_model: "gemini-2.0-flash".to_string(),
             rag_embedding: "gemini-embedding-2".to_string(),

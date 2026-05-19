@@ -178,8 +178,9 @@ function createChatStore() {
                 const response = await chatApi.getMessages(conversationId, cursor || undefined);
 
                 // response structure is { data: { messages: [], next_cursor: string } }
-                const newMessages = response.data?.messages || [];
-                const nextC = response.data?.next_cursor || null;
+                const data = response.data as any
+                const newMessages = data?.messages || [];
+                const nextC = data?.next_cursor || null;
 
                 if (loadMore) {
                     // Prepend older messages

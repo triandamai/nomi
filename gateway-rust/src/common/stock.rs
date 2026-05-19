@@ -1,4 +1,5 @@
 use crate::AppState;
+use crate::services::event_dispatcher::AppEvent;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -34,9 +35,9 @@ pub async fn start_stock_worker(state: AppState) {
         for ticker in &tickers {
             match fetch_and_analyze_stock(ticker).await {
                 Ok(signal_data) => {
-                    // Broadcast via SSE as requested
+                    // Broadcast via unified dispatcher
                     if let Err(e) = state
-                        .broadcast_sse("stock_signal", json!(signal_data))
+                        .dispatch(AppEvent::broadcast("stock_signal", json!(signal_data)))
                         .await
                     {
                         error!("Failed to broadcast stock signal for {}: {}", ticker, e);

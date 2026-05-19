@@ -29,6 +29,7 @@
 		"clsx": "^2.1.1",
 		"lucide-svelte": "^1.0.1",
 		"markdown-it": "^14.1.1",
+		"mqtt": "^5.15.1",
 		"qrcode-generator": "^2.0.4",
 		"shiki": "^4.0.2",
 		"svelte-french-toast": "2.0.0-alpha.0",

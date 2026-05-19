@@ -52,40 +52,33 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
 }
 
 export const chatApi = {
-    sendMessage: (message: string, conversationId?: string) => {
-        return apiFetch<{ reply: string }>('/chat', {
+    sendMessage: async (message: string, conversationId: string, media: any = {}) => {
+        if (typeof window === 'undefined') {
+            return {
+                meta: {
+                    code: 500,
+                    message: "cannot get session"
+                },
+                data: null
+            } as ApiResponse<any>
+        }
+        const [token] = getSession()
+        const response = await fetch(`${BASE_URL}/chat`, {
             method: 'POST',
-            body: JSON.stringify({message, conversation_id: conversationId})
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? {'Authorization': `Bearer ${token}`} : {}),
+            },
+            body: JSON.stringify({
+                message,
+                conversation_id: conversationId,
+                ...media
+            })
         });
+        return response;
     },
 
-    getMessages: (conversationId: string, cursor?: string, limit: number = 20) => {
-        const url = new URL(`${BASE_URL}/conversations/${conversationId}/messages`);
-        if (cursor) url.searchParams.append('cursor', cursor);
-        url.searchParams.append('limit', limit.toString());
-        return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
-    },
-
-    requestOtp: (externalId: string, channel: string) => {
-        return apiFetch<any>('/auth/request-otp', {
-            method: 'POST',
-            body: JSON.stringify({external_id: externalId, channel})
-        });
-    },
-
-    verifyOtp: (externalId: string, code: string) => {
-        return apiFetch<{ access_token: string, user_id: string }>('/auth/verify-otp', {
-            method: 'POST',
-            body: JSON.stringify({external_id: externalId, code})
-        })
-    },
-
-    streamChat: async (message: string, conversationId: string, media?: {
-        image_url?: string,
-        audio_url?: string,
-        video_url?: string,
-        doc_url?: string
-    }) => {
+    streamChat: async (message: string, conversationId: string, media: any = {}) => {
         if (typeof window === 'undefined') {
             return {
                 meta: {
@@ -140,133 +133,6 @@ export const chatApi = {
         return response.json();
     },
 
-    streamEvent() {
-        if (typeof window === 'undefined') {
-            return {
-                meta: {
-                    code: 500,
-                    message: "cannot get session"
-                },
-                data: null
-            } as ApiResponse<any>
-        }
-        const [token, user_id] = getSession()
-        const sse = new EventSource(`${BASE_URL}/realtime?user_id=${user_id}&device_id=${crypto.randomUUID()}`);
-
-        sse.onopen = () => {
-            console.log('SSE connection opened');
-            eventBus.emit('gateway-status', {online: true});
-        };
-
-        sse.onerror = (error) => {
-            console.error('SSE error:', error);
-            eventBus.emit('gateway-status', {online: false});
-        };
-
-        sse.addEventListener("message", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                eventBus.emit('sse-message', data);
-            } catch (e) {
-                console.error('Failed to parse SSE message', e);
-            }
-        })
-
-        sse.addEventListener("new_message", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                console.log("INCOMIN NEW ",data)
-                eventBus.emit('sse-message', data);
-            } catch (e) {
-                console.error('Failed to parse SSE message', e);
-            }
-        })
-
-        sse.addEventListener("metadata", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                eventBus.emit('sse-metadata', data);
-            } catch (e) {
-                console.error('Failed to parse SSE metadata', e);
-            }
-        })
-
-        sse.addEventListener("thought", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                eventBus.emit('sse-thought', data);
-            } catch (e) {
-                console.error('Failed to parse SSE thought', e);
-            }
-        })
-
-        sse.addEventListener("tool_start", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                eventBus.emit('sse-tool_start', data);
-            } catch (e) {
-                console.error('Failed to parse SSE tool_start', e);
-            }
-        })
-
-        sse.addEventListener("tool_end", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                eventBus.emit('sse-tool_end', data);
-            } catch (e) {
-                console.error('Failed to parse SSE tool_end', e);
-            }
-        })
-
-        sse.addEventListener("token_update", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                eventBus.emit('sse-token_update', data);
-            } catch (e) {
-                console.error('Failed to parse SSE token_update', e);
-            }
-        })
-
-        sse.addEventListener("presence", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                eventBus.emit('sse-presence', data);
-            } catch (e) {
-                console.error('Failed to parse SSE presence', e);
-            }
-        })
-
-        sse.addEventListener("pairing_success", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                eventBus.emit('sse-pairing-success', data);
-            } catch (e) {
-                console.error('Failed to parse SSE pairing-success', e);
-            }
-        })
-
-        sse.addEventListener("evolution", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                eventBus.emit('sse-evolution', data);
-            } catch (e) {
-                console.error('Failed to parse SSE evolution', e);
-            }
-        })
-
-        sse.addEventListener("stock_signal", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                eventBus.emit('stock-signal', data);
-            } catch (e) {
-                console.error('Failed to parse SSE stock_signal', e);
-            }
-        })
-
-
-        return () => sse.close();
-    },
-
     createConversation: (name: string, type: string = 'private') => {
         return apiFetch<Conversation>('/conversations', {
             method: 'POST',
@@ -293,6 +159,12 @@ export const chatApi = {
         return apiFetch<any[]>('/conversations', {
             method: "GET"
         });
+    },
+    getMessages: (conversationId: string, cursor?: string, limit: number = 20) => {
+        const url = new URL(`${BASE_URL}/conversations/${conversationId}/messages`);
+        if (cursor) url.searchParams.append('cursor', cursor);
+        url.searchParams.append('limit', limit.toString());
+        return apiFetch<any[]>(url.pathname.replace("/api", "") + url.search);
     },
     getGraph: (conversationId?: string) => {
         const url = conversationId ? `/graph?conversation_id=${conversationId}` : '/graph';

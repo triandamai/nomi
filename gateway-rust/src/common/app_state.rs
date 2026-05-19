@@ -19,6 +19,7 @@ pub struct AppState {
     pub redis: common::redis::RedisClient,
     pub storage: common::storage::StorageClient,
     pub model_info: crate::common::agent::agent_model::ModelInfo,
+    pub mqtt: Arc<crate::services::mqtt_service::MqttManager>,
 }
 
 impl AppState {
@@ -33,9 +34,14 @@ impl AppState {
             .sse
             .send(SseBuilder::new(
                 SseTarget::sent_to_user(user_id.to_string(), event_name.to_string()),
-                sse_data,
+                sse_data.clone(),
             ))
             .await;
+
+        // Shadow Publish to MQTT
+        let topic = format!("arta/users/{}/{}", user_id, event_name);
+        let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
+
         Ok(())
     }
     pub async fn send_to_user(
@@ -50,9 +56,14 @@ impl AppState {
             .sse
             .send(SseBuilder::new(
                 SseTarget::sent_to_user(user_id.to_string(), event_name.to_string()),
-                sse_data,
+                sse_data.clone(),
             ))
             .await;
+        
+        // Shadow Publish to MQTT
+        let topic = format!("arta/users/{}/{}", user_id, event_name);
+        let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
+
         let _ = self.publish_outbond(redis_data).await;
         Ok(())
     }
@@ -67,9 +78,13 @@ impl AppState {
             .sse
             .send(SseBuilder::new(
                 SseTarget::broadcast(event_name.to_string()),
-                sse_data,
+                sse_data.clone(),
             ))
             .await;
+
+        // Shadow Publish to MQTT
+        let topic = format!("arta/broadcast/{}", event_name);
+        let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
         Ok(())
     }
@@ -79,17 +94,23 @@ impl AppState {
         conversation_id: &Uuid,
         cumulative_tokens: &u64,
     ) -> anyhow::Result<()> {
+        let sse_data = json!({
+            "conversation_id": conversation_id,
+            "cumulative_tokens": cumulative_tokens
+        });
+
         // info!("sending with sse and publish to subs");
         let _ = self
             .sse
             .send(SseBuilder::new(
                 SseTarget::broadcast("token_update".to_string()),
-                json!({
-                    "conversation_id": conversation_id,
-                    "cumulative_tokens": cumulative_tokens
-                }),
+                sse_data.clone(),
             ))
             .await;
+
+        // Shadow Publish to MQTT
+        let topic = format!("arta/conversations/{}/token_update", conversation_id);
+        let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
         Ok(())
     }
@@ -105,9 +126,13 @@ impl AppState {
             .sse
             .send(SseBuilder::new(
                 SseTarget::broadcast(event_name.to_string()),
-                sse_data,
+                sse_data.clone(),
             ))
             .await;
+
+        // Shadow Publish to MQTT
+        let topic = format!("arta/broadcast/{}", event_name);
+        let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
 
         let _ = self.publish_outbond(redis_data).await;
         Ok(())
@@ -171,6 +196,10 @@ impl AppState {
             ))
             .await;
         Ok(())
+    }
+
+    pub async fn dispatch(&self, event: crate::services::event_dispatcher::AppEvent) -> anyhow::Result<()> {
+        crate::services::event_dispatcher::dispatch(self, event).await
     }
 
     pub async fn publish_outbond(&self, redis_data: &OutboundMessage) {

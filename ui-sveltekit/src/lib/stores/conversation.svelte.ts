@@ -1,5 +1,6 @@
 import {type ApiResponse, chatApi} from '$lib/api/client';
 import {eventBus} from '$lib/utils';
+import {mqttClient} from '$lib/api/mqtt';
 
 export type Conversation = {
     id: string;
@@ -90,6 +91,7 @@ function createConversationStore() {
                 ...c,
                 active: c.id === id
             }));
+            mqttClient.setConversation(id);
         },
         async addConversation(name: string, type: string = 'private') {
             try {
