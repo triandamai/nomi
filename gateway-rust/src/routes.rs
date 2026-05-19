@@ -4,10 +4,14 @@ use crate::common::identity::middleware::auth_middleware;
 use crate::feature::conversation::{
     auth::{handle_get_profile, handle_logout, handle_request_otp, handle_verify_otp},
     handle_chat_stream, handle_create_conversation, handle_create_pairing, handle_pairing_handshake,
-    handle_delete_conversation, handle_get_conversations, handle_get_file, handle_get_messages,
-    handle_get_model_info, handle_get_path_file, handle_get_soul_history, handle_get_user_channels,
+    handle_delete_conversation,
+    handle_get_conversations, handle_get_file, handle_get_messages, handle_get_model_info,
+    handle_get_path_file, handle_get_soul_history, handle_get_user_channels,
     handle_restore_conversation_soul, handle_update_conversation, handle_upload_file,
-};
+    handle_get_available_tools, handle_get_guardrail_patterns, handle_insert_guardrail_pattern,
+    handle_delete_guardrail_pattern,
+    };
+
 use crate::feature::graph::{handle_get_graph, handle_search_graph};
 use crate::feature::reminder::handle_get_reminders;
 use crate::feature::waitlist::handle_waitlist;
@@ -62,6 +66,9 @@ pub fn create_router(state: AppState) -> Router {
             "/redis/publish/outbound",
             post(crate::feature::admin::handle_outbound_redis),
         )
+        .route("/guardrails/patterns", get(handle_get_guardrail_patterns))
+        .route("/guardrails/patterns", post(handle_insert_guardrail_pattern))
+        .route("/guardrails/patterns/{id}", delete(handle_delete_guardrail_pattern))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             crate::feature::admin::admin_middleware,
@@ -82,6 +89,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/chat/stream", post(handle_chat_stream))
         .route("/conversations", get(handle_get_conversations))
         .route("/user/channels", get(handle_get_user_channels))
+        .route("/tools", get(handle_get_available_tools))
         .route("/reminders", get(handle_get_reminders))
         .route(
             "/money/history",

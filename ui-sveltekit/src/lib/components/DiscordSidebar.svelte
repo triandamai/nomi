@@ -15,7 +15,7 @@
         RefreshCw,
         MessageSquare,
         LineChart,
-        DollarSign, Terminal, Activity, HeartPulse
+        DollarSign, Terminal, Activity, HeartPulse, Sparkles, ShieldAlert
     } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import SoulTimeline from './SoulTimeline.svelte';
@@ -25,6 +25,8 @@
     import AdminConversationsPopUp from './AdminConversationsPopUp.svelte';
     import UserListPopUp from './UserListPopUp.svelte';
     import RedisTestPopUp from './RedisTestPopUp.svelte';
+    import AvailableToolsPopUp from './AvailableToolsPopUp.svelte';
+    import GuardrailPatternsPopUp from './GuardrailPatternsPopUp.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
 
     import {profileStore} from '$lib/stores/profile.svelte';
@@ -38,6 +40,22 @@
         profileStore.fetchProfile();
         sidebarStore.init();
     });
+
+    function handleShowTools() {
+        popupStore.open({
+            title: 'Available System Skills',
+            width: 'max-w-xl',
+            contentSnippet: showToolsContent
+        });
+    }
+
+    function handleShowGuardrails() {
+        popupStore.open({
+            title: 'Security Guardrail Patterns',
+            width: 'max-w-2xl',
+            contentSnippet: showGuardrailsContent
+        });
+    }
 
     function handleAddConversation() {
         sidebarStore.newConvName = '';
@@ -891,7 +909,21 @@
                         <HeartPulse size={14}/>
                         <span>Health & Vitality</span>
                     </button>
+                    <button
+                            onclick={handleShowTools}
+                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
+                    >
+                        <Sparkles size={14}/>
+                        <span>System Skills</span>
+                    </button>
                     {#if profileStore.currentUser?.role === 'admin'}
+                        <button
+                                onclick={handleShowGuardrails}
+                                class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
+                        >
+                            <ShieldAlert size={14}/>
+                            <span>Guardrail Patterns</span>
+                        </button>
                         <button
                                 onclick={() => { sidebarStore.showUserMenu = false; goto('/admin/storage'); }}
                                 class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
@@ -984,3 +1016,11 @@
         scrollbar-width: none;
     }
 </style>
+
+{#snippet showToolsContent()}
+    <AvailableToolsPopUp />
+{/snippet}
+
+{#snippet showGuardrailsContent()}
+    <GuardrailPatternsPopUp />
+{/snippet}

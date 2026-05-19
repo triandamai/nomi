@@ -30,6 +30,117 @@ pub async fn handle_get_model_info(
     ApiResponse::ok(state.model_info.clone(), "Model info retrieved")
 }
 
+#[derive(serde::Serialize)]
+pub struct ToolInfo {
+    pub name: String,
+    pub description: String,
+    pub intents: Vec<String>,
+}
+
+pub async fn handle_get_available_tools(
+    State(state): State<AppState>,
+    axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,
+) -> ApiResponse<Vec<ToolInfo>> {
+    let dispatcher = crate::common::tools::ToolDispatcher::new(
+        state.pool.clone(),
+        std::path::PathBuf::from("."),
+        None,
+        None,
+        state.gemini.clone(),
+        state.gemini_api_key.clone(),
+        state.storage.clone(),
+        state.clone(),
+    );
+
+    let mut tools = Vec::new();
+    for (name, plugin) in &dispatcher.plugins {
+        let schema = plugin.schema();
+        let description = schema["description"].as_str().unwrap_or("").to_string();
+        let intents = plugin
+            .matching_intents()
+            .iter()
+            .map(|i| i.to_string())
+            .collect();
+
+        tools.push(ToolInfo {
+            name: name.to_string(),
+            description,
+            intents,
+        });
+    }
+
+    // Sort by name for consistent UI
+    tools.sort_by(|a, b| a.name.cmp(&b.name));
+
+    ApiResponse::ok(tools, "Available tools retrieved")
+}
+
+#[derive(serde::Deserialize)]
+pub struct CreatePatternRequest {
+    pub content: String,
+}
+
+pub async fn handle_get_guardrail_patterns(
+    State(state): State<AppState>,
+    axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,
+) -> ApiResponse<Vec<crate::services::guardrail::PatternInfo>> {
+    let service = crate::services::guardrail::GuardrailService::new(
+        state.pool.clone(),
+        state.gemini_api_key.clone(),
+    );
+
+    match service.get_all_patterns().await {
+        Ok(patterns) => ApiResponse::ok(patterns, "Guardrail patterns retrieved"),
+        Err(e) => {
+            error!("Failed to fetch guardrail patterns: {}", e);
+            ApiResponse::failed("Failed to fetch guardrail patterns")
+        }
+    }
+}
+
+pub async fn handle_insert_guardrail_pattern(
+    State(state): State<AppState>,
+    axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,
+    Json(payload): Json<CreatePatternRequest>,
+) -> ApiResponse<()> {
+    let service = crate::services::guardrail::GuardrailService::new(
+        state.pool.clone(),
+        state.gemini_api_key.clone(),
+    );
+
+    match service.insert_pattern(&payload.content).await {
+        Ok(_) => ApiResponse::ok((), "Security pattern inserted successfully"),
+        Err(e) => {
+            let err_msg = e.to_string();
+            if err_msg.contains("exists") {
+                ApiResponse::failed(&err_msg)
+            } else {
+                error!("Failed to insert guardrail pattern: {}", e);
+                ApiResponse::failed("Failed to insert security pattern")
+            }
+        }
+    }
+}
+
+pub async fn handle_delete_guardrail_pattern(
+    State(state): State<AppState>,
+    axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,
+    Path(id): Path<Uuid>,
+) -> ApiResponse<()> {
+    let service = crate::services::guardrail::GuardrailService::new(
+        state.pool.clone(),
+        state.gemini_api_key.clone(),
+    );
+
+    match service.delete_pattern(id).await {
+        Ok(_) => ApiResponse::ok((), "Security pattern deleted successfully"),
+        Err(e) => {
+            error!("Failed to delete guardrail pattern: {}", e);
+            ApiResponse::failed("Failed to delete security pattern")
+        }
+    }
+}
+
 pub async fn handle_get_user_channels(
     State(state): State<AppState>,
     axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,

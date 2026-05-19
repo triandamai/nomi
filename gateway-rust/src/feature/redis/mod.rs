@@ -106,24 +106,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             return Ok(());
         }
     }
-    // ======== Interaction Gate (Pre-Filtering for Groups) ========//
-    if msg.is_group && !msg.is_mentioned {
-        let gate = crate::services::interaction_gate::InteractionGateService::new(
-            state.pool.clone(),
-            state.gemini_api_key.clone(),
-        );
 
-        match gate.should_respond_to_group_message(&text, false).await {
-            Ok(true) => info!("Interaction Gate: Passed, continuing to process group message."),
-            Ok(false) => {
-                info!("Interaction Gate: Dropping ambient message in group {}", msg.conversation_id);
-                return Ok(());
-            }
-            Err(e) => {
-                error!("Interaction Gate: Error during evaluation: {}. Continuing as fallback.", e);
-            }
-        }
-    }
     // ================================== BEGIN COMMAND ============================//
     // 3. Check for Pairing/Register/Login
     if text.to_uppercase().starts_with("/pair ") {
@@ -190,7 +173,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         info!(
             "Unfortunately user doesnt associate with any conversation, stop here will not sent to llm"
         );
-        let _ = state.publish_outbond(&OutboundMessage{
+        let _ = state.publish_outbond(&OutboundMessage {
             is_group: msg.is_group,
             sender_id: "nomi_auth".to_string(),
             conversation_id: msg.conversation_id.clone(),
@@ -201,9 +184,9 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
                 {} — If we've spoken before, use this to jump right back into our conversation.\n
                 {} — Get help?.\n
             It’s a pleasure to meet you, and I look forward to assisting you once you're signed in! ✨\n",
-                "**`/register`**",
-                "**`/login`**",
-                "**`/help`**",
+                          "**`/register`**",
+                          "**`/login`**",
+                          "**`/help`**",
             ),
             channel: msg.channel.clone(),
             video_url: None,
@@ -233,7 +216,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         msg.is_group.clone(),
         display_name.clone(),
     )
-    .await;
+        .await;
     if let Err(err) = &user_id {
         info!("User not exist:{}", err);
         return Ok(());
@@ -254,8 +237,8 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             WHERE id = $1",
         conversation_id
     )
-    .fetch_one(&state.pool)
-    .await;
+        .fetch_one(&state.pool)
+        .await;
     if let Err(err) = conv_info {
         info!("Conversation not exist:{}", err);
         let error_msg = "Workspace Conversation doesn exist".to_string();
@@ -293,7 +276,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         let _ = state_clone
             .send_presence_to_user(
                 user_id.to_string().as_str(),
-                json! ({
+                json!({
                     "conversation_id": conversation_id,
                     "is_typing": true,
                     "user_id": "nomi"

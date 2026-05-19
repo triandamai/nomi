@@ -28,9 +28,19 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting OpenClaw Gateway...");
 
+    let mqtt_client_id = var("MQTT_CLIENT_ID").expect("MQTT_CLIENT_ID must be set");
+    let mqtt_host = var("MQTT_HOST").expect("MQTT_HOST must be set");
+    let mqtt_user = var("MQTT_USER").expect("MQTT_USER must be set");
+    let mqtt_password = var("MQTT_PASSWORD").expect("MQTT_PASSWORD must be set");
+
     let database_url = var("DATABASE_URL").expect("DATABASE_URL must be set");
     let gemini_api_key = var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
     let redis_url = var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+
+    let storage_access_key = var("S3_ACCESS_KEY").expect("S3_ACCESS_KEY must be set");
+    let storage_secret_key = var("S3_SECRET_KEY").expect("S3_SECRET_KEY must be set");
+
+    let app_url = var("APP_URL").unwrap_or_else(|_| "http://localhost:5173".to_string());
 
     debug!("Connecting to database...");
     let pool = PgPoolOptions::new()
@@ -43,10 +53,6 @@ async fn main() -> anyhow::Result<()> {
         })?;
     info!("Database connection established.");
 
-    let mqtt_client_id = var("MQTT_CLIENT_ID").expect("MQTT_CLIENT_ID must be set");
-    let mqtt_host = var("MQTT_HOST").expect("MQTT_HOST must be set");
-    let mqtt_user = var("MQTT_USER").expect("MQTT_USER must be set");
-    let mqtt_password = var("MQTT_PASSWORD").expect("MQTT_PASSWORD must be set");
 
     // Bootstraps our independent background worker loop without touching existing engines
     let mqtt_manager = services::mqtt_service::MqttManager::init(
@@ -60,8 +66,7 @@ async fn main() -> anyhow::Result<()> {
 
     let redis = crate::common::redis::RedisClient::new(&redis_url)?;
 
-    let storage_access_key = var("S3_ACCESS_KEY").expect("S3_ACCESS_KEY must be set");
-    let storage_secret_key = var("S3_SECRET_KEY").expect("S3_SECRET_KEY must be set");
+
     let storage_url = var("S3_URL").expect("S3_URL must be set");
     let storage = crate::common::storage::StorageClient::new(
         storage_access_key,
@@ -115,6 +120,14 @@ async fn main() -> anyhow::Result<()> {
         if let Err(e) = services::intent_classifier::IntentClassifierService::sync_plugin_intents_to_knowledge(&boot_dispatcher).await {
             error!("Failed to sync plugin intents: {}", e);
         }
+
+        let guardrail_service = services::guardrail::GuardrailService::new(
+            sync_state.pool.clone(),
+            sync_state.gemini_api_key.clone(),
+        );
+        if let Err(e) = guardrail_service.sync_injection_patterns().await {
+            error!("Failed to sync guardrail patterns: {}", e);
+        }
     });
 
     // Start Reminder Worker
@@ -146,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Configure CORS
-    let app_url = var("APP_URL").unwrap_or_else(|_| "http://localhost:5173".to_string());
+
     
     let origins = [
         "http://localhost:5173".parse::<axum::http::HeaderValue>().unwrap(),

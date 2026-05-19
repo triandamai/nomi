@@ -11,6 +11,7 @@ The central orchestrator of the Nomi ecosystem.
 - **Core Orchestrator**: `V2AgentOrchestrator` implements a multi-turn autonomous loop.
 - **Intent Classification**: A dedicated `IntentClassifierService` provides high-accuracy, token-optimized classification using a two-step hybrid layout (Vector Coarse-Filtering + LLM Fine-Tuning).
 - **Interaction Gate**: A lightweight `InteractionGateService` acts as a pre-filtering node for ambient group chat messages. It uses a 3-tier evaluation pass (Mechanical, Semantic, and Threshold) to decide if Nomi should chime in without an explicit mention.
+- **Guardrail Service**: A security firewall (`GuardrailService`) that detects prompt injection and jailbreak attempts using multilingual pattern matching and semantic vector analysis.
 - **Real-time Communication**: Uses **MQTT** to stream thoughts, tool execution status, and final responses to clients.
 - **Database**: PostgreSQL with `pgvector` (halfvec 3072) for long-term memory and RAG.
 
@@ -54,26 +55,54 @@ graph TD
 6. **Metric Tracking**: Token usage (input, output, total) is captured from the Gemini response for analytics.
 
 ### 2. Interaction Gate Flow (Ambient Group Chat)
-Determines if Nomi should respond to messages in a group without an explicit `@mention`.
+Nomi uses a 3-tier isolated gate to decide if it should participate in ambient group conversations without an explicit `@mention`.
 
 ```mermaid
 graph TD
-    Start[Inbound Message] --> Tier1{Tier 1: Fast-Pass}
-    Tier1 -->|Reply or Keyword 'nomi'| Yes[Return true]
+    Start[Inbound Message] --> Tier1{Tier 1: Mechanical}
+    Tier1 -->|Reply or Keyword 'nomi'| Yes[Return true: Fast-Pass]
     Tier1 -->|No Match| Tier2[Tier 2: Vector Embedding]
     Tier2 --> Search[Search knowledge_base: type='interaction_triggers']
     Search --> Tier3{Tier 3: Confidence Guard}
-    Tier3 -->|Score >= 0.60| Yes
-    Tier3 -->|Score < 0.60| No[Return false]
+    Tier3 -->|Highest Score >= 0.60| Yes
+    Tier3 -->|Score < 0.60 or Empty| No[Return false: Silent Drop]
 ```
 
-**Step-by-Step:**
-1. **Tier 1 (Mechanical)**: Checks if the message is a direct reply to Nomi or contains the keyword "nomi". This costs zero tokens and bypasses all AI logic.
-2. **Tier 2 (Semantic)**: If Tier 1 fails, the message body is embedded into a vector.
-3. **Trigger Search**: A similarity search is performed against expert context rules stored in the `knowledge_base` (type: `interaction_triggers`).
-4. **Tier 3 (Threshold)**: A strict confidence guard (0.60) is applied. Only if the system is highly confident that Nomi *should* chime in does it return `true`, otherwise the message is dropped silently to preserve tokens.
+**Step-by-Step Evaluation Pass:**
+1. **Tier 1: Mechanical Fast-Pass (0 Token Cost)**:
+   - Converts the message to lowercase and checks for the keyword **"nomi"**.
+   - Checks if the message is a **direct reply** to Nomi's previous message.
+   - If either matches, it returns `true` immediately, bypassing all AI/Vector calls.
 
-### 3. Agentic Reasoning Loop (V2AgentOrchestrator)
+2. **Tier 2: Semantic Interaction Vector Query**:
+   - Generates a text embedding for the message body.
+   - Performs a vector similarity search in the `knowledge_base` table, filtered by `metadata->>'type' = 'interaction_triggers'`.
+   - These triggers are expert-seeded rules (e.g., *"When group discusses production errors"*).
+
+3. **Tier 3: The Confidence Threshold Gate**:
+   - Evaluates the similarity score of the single closest match.
+   - **Guard Gate**: If the result set is empty OR the score is **`< 0.60`**, it returns `false`. The message is dropped silently.
+   - **Passed**: If the score is **`>= 0.60`**, it returns `true`, allowing Nomi to chime into the conversation naturally.
+
+### 3. Prompt Injection Guardrail Flow
+A dedicated security firewall to protect Nomi from adversarial manipulation and jailbreaks.
+
+```mermaid
+graph TD
+    In[Inbound Message] --> P1{Tier 1: Pattern Matching}
+    P1 -->|English/Indonesian/Slang Hit| Block[Return true: Attack Detected]
+    P1 -->|No Hit| P2[Tier 2: Semantic Vector Lookup]
+    P2 --> P3{Tier 3: Security Threshold}
+    P3 -->|Highest Similarity >= 0.65| Block
+    P3 -->|Similarity < 0.65| Safe[Return false: Message Safe]
+```
+
+**Security Evaluation Layers:**
+- **Tier 1 (Mechanical)**: Scans for high-frequency injection keywords in English (*"ignore previous"*), formal Indonesian (*"abaikan perintah"*), and local slang (*"lupain aja"*).
+- **Tier 2 (Semantic)**: Uses cross-lingual embeddings to map the message context against a known library of prompt injection patterns (type: `prompt_injection_patterns`) in the database.
+- **Tier 3 (Tripwire)**: A strict security threshold (**0.65**) triggers an alert and blocks the message if semantic similarity to known attacks is detected.
+
+### 4. Agentic Reasoning Loop (V2AgentOrchestrator)
 The core "brain" loop that enables autonomous multi-turn reasoning.
 
 ```mermaid

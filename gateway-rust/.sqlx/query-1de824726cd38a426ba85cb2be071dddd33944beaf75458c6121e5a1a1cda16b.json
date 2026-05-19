@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM knowledge_base WHERE id = $1 AND metadata->>'type' = 'prompt_injection_patterns'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1de824726cd38a426ba85cb2be071dddd33944beaf75458c6121e5a1a1cda16b"
+}

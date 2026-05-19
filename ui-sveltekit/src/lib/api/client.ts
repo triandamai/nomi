@@ -326,6 +326,35 @@ export const chatApi = {
             body: JSON.stringify(payload)
         });
     },
+    requestOtp: (externalId: string, channel: string = 'email') => {
+        return apiFetch<any>('/auth/request-otp', {
+            method: 'POST',
+            body: JSON.stringify({external_id: externalId, channel})
+        });
+    },
+    verifyOtp: (externalId: string, code: string) => {
+        return apiFetch<any>('/auth/verify-otp', {
+            method: 'POST',
+            body: JSON.stringify({external_id: externalId, code})
+        });
+    },
+    getAvailableTools: () => {
+        return apiFetch<any[]>('/tools');
+    },
+    getGuardrailPatterns: () => {
+        return apiFetch<any[]>('/v1/admin/guardrails/patterns');
+    },
+    insertGuardrailPattern: (content: string) => {
+        return apiFetch<any>('/v1/admin/guardrails/patterns', {
+            method: 'POST',
+            body: JSON.stringify({content})
+        });
+    },
+    deleteGuardrailPattern: (id: string) => {
+        return apiFetch<any>(`/v1/admin/guardrails/patterns/${id}`, {
+            method: 'DELETE'
+        });
+    },
     logout: () => {
         return apiFetch<any>('/auth/logout', {
             method: 'POST'
