@@ -2,8 +2,8 @@ pub mod agent_model;
 pub mod classification;
 
 use crate::common::agent::agent_model::{ChatResponse, PromptActor};
+use crate::common::tools::ToolDispatcher;
 use crate::common::tools::tools_model::ToolResult;
-use crate::common::tools::{NomiTool, ToolDispatcher};
 use crate::feature::MessageSource;
 use crate::feature::conversation::model::ChatStreamChunk;
 use crate::feature::message_processor::v2_orchestrator::send_tool_update;
@@ -309,7 +309,7 @@ pub async fn execute_tools(
 
     for call in function_calls {
         let dispatcher = dispatcher.clone();
-        let user_message = user_message.to_string();
+        let _user_message = user_message.to_string();
         let call_name = call.name.clone();
         let args = call.args.clone();
 

@@ -25,7 +25,6 @@ use crate::common::tools::plugins::update_conversation_title::UpdateConversation
 use crate::common::tools::plugins::update_knowledge::UpdateKnowledgeBasePlugin;
 use crate::common::tools::plugins::user::UserPlugin;
 use crate::common::tools::plugins::web_search::WebSearchPlugin;
-use crate::common::tools::tools_model::ToolResult;
 use gemini_rust::{FunctionDeclaration, Tool};
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres};

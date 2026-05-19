@@ -78,7 +78,7 @@ impl NomiToolPlugin for FinancePlugin {
     }
 
     fn matching_intents(&self) -> &[&str] {
-        &["FINANCE", "DASHBOARD"]
+        &["FINANCE", "DASHBOARD","MONEY_TRACKING","EXPENSE"]
     }
 
     fn execute<'a>(

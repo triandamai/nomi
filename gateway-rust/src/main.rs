@@ -99,6 +99,25 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Boot-time Intent Synchronization
+    let sync_state = state.clone();
+    tokio::spawn(async move {
+        let boot_dispatcher = common::tools::ToolDispatcher::new(
+            sync_state.pool.clone(),
+            std::path::PathBuf::from("."),
+            None,
+            None,
+            sync_state.gemini.clone(),
+            sync_state.gemini_api_key.clone(),
+            sync_state.storage.clone(),
+            sync_state.clone(),
+        );
+
+        if let Err(e) = services::intent_classifier::IntentClassifierService::sync_plugin_intents_to_knowledge(&boot_dispatcher).await {
+            error!("Failed to sync plugin intents: {}", e);
+        }
+    });
+
     // Start Reminder Worker
     let schedule_task_state = state.clone();
     tokio::spawn(async move {

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    SELECT id FROM knowledge_base \n                    WHERE metadata->>'type' = 'intent_classification' \n                    AND metadata->>'intent' = $1\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5c0a787e06993cab41139a67520fc44c8ac1da9cdbc7d1258e0c0820dfae6b45"
+}

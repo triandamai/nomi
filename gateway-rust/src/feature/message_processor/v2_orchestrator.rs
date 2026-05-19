@@ -396,7 +396,6 @@ pub async fn send_tool_update(
     event: String,
     tool_name: String,
 ) {
-    info!("send_status_update start");
     let state = state.clone();
     let pool = state.pool.clone();
     let event = event.clone();
@@ -534,7 +533,6 @@ pub async fn send_status_presence_update(
     is_group: bool,
     is_typing: bool,
 ) {
-    info!("send_status_update start");
     let state = state.clone();
     let pool = state.pool.clone();
     let event = "presence".to_string();

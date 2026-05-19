@@ -1,6 +1,6 @@
 use crate::common::agent::agent_model::PromptActor;
 use crate::common::agent::classification::{
-    classification, classify_intent, fetch_media_from_storage,
+    classification, fetch_media_from_storage,
 };
 use crate::common::agent::execute_tools;
 use crate::common::identity::UserIdentity;
@@ -13,6 +13,7 @@ use crate::feature::{MessageSource, UnifiedMessage};
 use crate::models::Conversation;
 use crate::rag::trigger_memory_consolidation;
 use crate::services::event_dispatcher::AppEvent;
+use crate::services::intent_classifier::{ClassificationResult, IntentClassifierService};
 use crate::{AppState, rag};
 use anyhow::anyhow;
 use chrono::Utc;
@@ -66,7 +67,6 @@ impl V2AgentOrchestrator {
             user_id = ?user_id,
             "Processing v2 message loop with intent"
         );
-
 
         // Group is registered, only respond if mentioned
         if msg.is_group
@@ -241,55 +241,7 @@ impl V2AgentOrchestrator {
             ));
         }
 
-        let mut intents =
-            classify_intent(state.gemini.as_ref(), &augmented_text, &history_text).await;
 
-        // Fallback Logic: override GENERAL if imperative verbs or URLs are present
-        let msg_lower = augmented_text.to_lowercase();
-        if intents.contains(&"GENERAL".to_string()) && intents.len() == 1 {
-            if msg_lower.contains("http://")
-                || msg_lower.contains("https://")
-                || msg_lower.contains("check")
-                || msg_lower.contains("log")
-                || msg_lower.contains("find")
-                || msg_lower.contains("search")
-                || msg_lower.contains("save")
-                || msg_lower.contains("tell")
-                || msg_lower.contains("message")
-            {
-                intents = vec!["FULL_REGISTRY".to_string()];
-                info!("Scout overridden: Fallback to FULL_REGISTRY due to keywords");
-            }
-        }
-
-        // Force FINANCE if money/spending keywords are present
-        if msg_lower.contains("spend")
-            || msg_lower.contains("expense")
-            || msg_lower.contains("money")
-            || msg_lower.contains("receipt")
-            || msg_lower.contains("finance")
-            || msg_lower.contains("transaction")
-        {
-            if !intents.contains(&"FINANCE".to_string()) {
-                intents.push("FINANCE".to_string());
-                info!("Scout overridden: Added FINANCE intent due to keywords");
-            }
-        }
-
-        // Force VITALITY if health keywords are present
-        if msg_lower.contains("step")
-            || msg_lower.contains("sleep")
-            || msg_lower.contains("heart")
-            || msg_lower.contains("workout")
-            || msg_lower.contains("health")
-        {
-            if !intents.contains(&"VITALITY".to_string()) {
-                intents.push("VITALITY".to_string());
-                info!("Scout overridden: Added VITALITY due to health keywords");
-            }
-        }
-
-        info!("Scout Intents Detected: {:?}", intents);
 
         let dispatcher = ToolDispatcher::new(
             state.pool.clone(),
@@ -302,6 +254,24 @@ impl V2AgentOrchestrator {
             state.clone(),
         );
 
+        let classifier = IntentClassifierService::new();
+        let intent = classifier
+            .classify_user_intent(
+                &dispatcher.clone(),
+                msg.text_content.clone().as_str(),
+                history_text.as_str(),
+            )
+            .await
+            .map_or_else(
+                |_| ClassificationResult {
+                    intents: vec![],
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    total_tokens: 0,
+                },
+                |v| v,
+            );
+
         if let None = self.conversation {
             info!("conversation is null {:?}", self.conversation);
             return Ok(());
@@ -309,6 +279,9 @@ impl V2AgentOrchestrator {
 
         let conversation = self.conversation.clone().unwrap();
 
+        let mut intents = intent.intents.clone();
+
+        info!("Scout Intents Detected: {:?}", intents);
         let old_system_prompt_len = {
             let boot = conversation.bootstrap_content.clone().unwrap_or_default();
             let soul = conversation.soul_content.clone().unwrap_or_default();
@@ -639,8 +612,8 @@ impl V2AgentOrchestrator {
                             .map(|v| v.clone())
                             .collect(),
                         conversation_id,
-                        MessageSource::Web {
-                            name: "web".to_string(),
+                        MessageSource::Multiple {
+                            source: vec!["web".to_string(), "mobile".to_string()],
                         },
                         false,
                         "error".to_string(),
@@ -665,9 +638,9 @@ impl V2AgentOrchestrator {
                 &sanitized_content,
                 Some(function_result.thought.as_str()),
                 None,
-                function_result.prompt_tokens,
-                function_result.answer_tokens,
-                function_result.total_tokens,
+                function_result.prompt_tokens + intent.input_tokens.to_i32().unwrap_or(0),
+                function_result.answer_tokens + intent.output_tokens.to_i32().unwrap_or(0),
+                function_result.total_tokens + intent.total_tokens.to_i32().unwrap_or(0),
                 None,
                 None,
                 None,
@@ -716,8 +689,8 @@ impl V2AgentOrchestrator {
             tokio::spawn(async move {
                 if let Ok((_convo_id, _total_token)) =
                     trigger_memory_consolidation(pool, gemini, gemini_api_key, conversation_id)
-                        .await {
-                }
+                        .await
+                {}
             });
 
             let _ = send_status_presence_update(
