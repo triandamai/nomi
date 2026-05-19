@@ -5,7 +5,7 @@ use crate::feature::conversation::{
     auth::{handle_get_profile, handle_logout, handle_request_otp, handle_verify_otp},
     handle_chat_stream, handle_create_conversation, handle_create_pairing, handle_pairing_handshake,
     handle_delete_conversation, handle_get_conversations, handle_get_file, handle_get_messages,
-    handle_get_path_file, handle_get_soul_history, handle_get_user_channels,
+    handle_get_model_info, handle_get_path_file, handle_get_soul_history, handle_get_user_channels,
     handle_restore_conversation_soul, handle_update_conversation, handle_upload_file,
 };
 use crate::feature::graph::{handle_get_graph, handle_search_graph};
@@ -77,6 +77,7 @@ pub fn create_router(state: AppState) -> Router {
             post(crate::feature::health_tracking::handle_health_sync),
         )
         .route("/user/profile", get(handle_get_profile))
+        .route("/model/info", get(handle_get_model_info))
         .route("/auth/logout", post(handle_logout))
         .route("/chat/stream", post(handle_chat_stream))
         .route("/conversations", get(handle_get_conversations))

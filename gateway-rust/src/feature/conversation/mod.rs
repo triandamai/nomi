@@ -24,6 +24,13 @@ pub mod auth;
 pub mod command;
 pub mod model;
 
+pub async fn handle_get_model_info(
+    State(state): State<AppState>,
+    axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,
+) -> ApiResponse<crate::common::agent::agent_model::ModelInfo> {
+    ApiResponse::ok(state.model_info.clone(), "Model info retrieved")
+}
+
 pub async fn handle_get_user_channels(
     State(state): State<AppState>,
     axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,

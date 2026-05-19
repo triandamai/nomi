@@ -203,6 +203,11 @@ export const chatApi = {
             method: 'GET'
         });
     },
+    getModelInfo: () => {
+        return apiFetch<any>('/model/info', {
+            method: 'GET'
+        });
+    },
     exploreStorage: (prefix?: string) => {
         const url = new URL(`${BASE_URL}/v1/admin/storage/explore`);
         if (prefix) url.searchParams.append('prefix', prefix);

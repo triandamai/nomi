@@ -10,6 +10,13 @@ export type Profile = {
     role?: string;
 };
 
+export type ModelInfo = {
+    agent_model: string;
+    rag_embedding: string;
+    media_classification: string;
+    media_analyze: string;
+};
+
 export const AUTH_SESS_ID = "13ca7c4f"
 export const AUTH_USER_ID = "12ca6c4f"
 
@@ -32,19 +39,24 @@ export function removeSession(){
 
 function createProfileStore() {
     let currentUser = $state<Profile | null>(null);
+    let modelInfo = $state<ModelInfo | null>(null);
     let loading = $state(false);
 
     async function fetchProfile() {
         if (loading) return;
         loading = true;
         try {
-            const response = await chatApi.getProfile();
+            const [profileResponse, modelResponse] = await Promise.all([
+                chatApi.getProfile(),
+                chatApi.getModelInfo()
+            ]);
             currentUser = {
-                ...response.data,
+                ...profileResponse.data,
                 status: 'online'
             };
+            modelInfo = modelResponse.data;
         } catch (e) {
-            console.error('Failed to fetch profile', e);
+            console.error('Failed to fetch profile or model info', e);
             // If unauthorized, redirect to login
             if (typeof window !== 'undefined' && (e as any).message?.includes('Unauthorized')) {
                 goto('/login');
@@ -64,6 +76,7 @@ function createProfileStore() {
                 removeSession()
             }
             currentUser = null;
+            modelInfo = null;
             goto('/login');
         }
     }
@@ -71,6 +84,9 @@ function createProfileStore() {
     return {
         get currentUser() {
             return currentUser;
+        },
+        get modelInfo() {
+            return modelInfo;
         },
         get loading() {
             return loading;

@@ -196,7 +196,51 @@
         sidebarStore.showUserMenu = false;
         profileStore.logout();
     }
+
+    function handleShowModelInfo() {
+        sidebarStore.showUserMenu = false;
+        popupStore.open({
+            title: 'Model Information',
+            width: 'max-w-md',
+            contentSnippet: modelInfoContent,
+            footerSnippet: remindersFooter
+        });
+    }
 </script>
+
+{#snippet modelInfoContent()}
+    <div class="space-y-6 py-2">
+        <div class="grid gap-4">
+            <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] text-slate-500 uppercase font-black tracking-widest">Core Agent</span>
+                    <span class="text-xs text-blue-400 font-mono font-bold">{profileStore.modelInfo?.agent_model || 'Loading...'}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] text-slate-500 uppercase font-black tracking-widest">RAG Engine</span>
+                    <span class="text-xs text-purple-400 font-mono font-bold">{profileStore.modelInfo?.rag_embedding || 'Loading...'}</span>
+                </div>
+            </div>
+
+            <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] text-slate-500 uppercase font-black tracking-widest">Vision Classifier</span>
+                    <span class="text-xs text-emerald-400 font-mono font-bold">{profileStore.modelInfo?.media_classification || 'Loading...'}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] text-slate-500 uppercase font-black tracking-widest">Vision Analyzer</span>
+                    <span class="text-xs text-amber-400 font-mono font-bold">{profileStore.modelInfo?.media_analyze || 'Loading...'}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl">
+            <p class="text-[11px] text-slate-400 leading-relaxed text-center">
+                These models power Nomi's decision-making, memory retrieval, and visual processing capabilities.
+            </p>
+        </div>
+    </div>
+{/snippet}
 
 {#snippet createConvContent()}
     <div class="space-y-6">
@@ -814,6 +858,14 @@
                     <button class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors">
                         <Settings size={14}/>
                         <span>Preferences</span>
+                    </button>
+
+                    <button
+                            onclick={handleShowModelInfo}
+                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
+                    >
+                        <Settings2 size={14}/>
+                        <span>System Info</span>
                     </button>
 
                     <div class="h-px bg-slate-900 my-1"></div>
