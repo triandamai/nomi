@@ -162,7 +162,9 @@ pub async fn send_prompt(
             };
 
             let has_functions = match &tool {
-                Tool::Function { function_declarations, } => !function_declarations.is_empty(),
+                Tool::Function {
+                    function_declarations,
+                } => !function_declarations.is_empty(),
                 _ => true,
             };
 
@@ -324,8 +326,8 @@ pub async fn execute_tools(
                 &dispatcher.app_state,
                 vec![dispatcher.user_id.unwrap()],
                 dispatcher.conversation_id.unwrap(),
-                MessageSource::Web {
-                    name: "web".to_string(),
+                MessageSource::Multiple {
+                    source: vec!["web".to_string(),"mobile".to_string()],
                 },
                 false,
                 "tool_start".to_string(),
@@ -349,7 +351,7 @@ pub async fn execute_tools(
                         follow_up_prompt: "".to_string(),
                     },
                     Err(e) => ToolResult {
-                        error: format!("Plugin Execution Error: {}", e),
+                        error: format!("Plugin Execution Error reason : {}", e),
                         success: false,
                         content: "".to_string(),
                         follow_up_prompt: "".to_string(),
@@ -360,8 +362,8 @@ pub async fn execute_tools(
                     &dispatcher.app_state,
                     vec![dispatcher.user_id.unwrap()],
                     dispatcher.conversation_id.unwrap(),
-                    MessageSource::Web {
-                        name: "web".to_string(),
+                    MessageSource::Multiple {
+                        source: vec!["web".to_string(),"mobile".to_string()],
                     },
                     false,
                     "tool_end".to_string(),
@@ -372,48 +374,25 @@ pub async fn execute_tools(
                 return (call_name, result);
             }
 
-            // Legacy & Dynamic Dispatch
-            // Normalize tool names to match the ArtaTool enum variants
-            let normalized_name = match call_name.as_str() {
-                "update_conversation_soul" => "update_nomi_soul",
-                "execute_read_query" => "execute_sql_query",
-                "parse_to_json" => "parse_string_to_json",
-                _ => call_name.as_str(),
-            }
-            .to_string();
-
-            let tool_json = serde_json::json!({
-                "tool": normalized_name,
-                "args": {
-                    "params": args,
-                    "user_message": user_message
-                }
-            });
-
-            let result = match serde_json::from_value::<NomiTool>(tool_json) {
-                Ok(arta_tool) => dispatcher.dispatch(arta_tool).await,
-                Err(e) => ToolResult {
-                    error: format!("Failed to parse tool {}: {}", call_name, e),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: "".to_string(),
-                },
-            };
-
             // Send tool_end SSE event
             let _ = send_tool_update(
                 &dispatcher.app_state,
                 vec![dispatcher.user_id.unwrap()],
                 dispatcher.conversation_id.unwrap(),
-                MessageSource::Web {
-                    name: "web".to_string(),
+                MessageSource::Multiple {
+                    source: vec!["web".to_string(),"mobile".to_string()],
                 },
                 false,
                 "tool_end".to_string(),
                 StatusRegistry::random_action_phrase(call_name.clone().as_str()),
             )
             .await;
-            (call_name, result)
+            (call_name.clone(), ToolResult{
+                error: format!("Plugin : {} Failed because is not exist or you calling old deprecated tool", call_name),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+            })
         }));
     }
     let results = futures::future::join_all(futures).await;

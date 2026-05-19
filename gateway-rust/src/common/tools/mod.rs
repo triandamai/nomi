@@ -103,14 +103,14 @@ impl ToolDispatcher {
         }
     }
 
-    pub async fn dispatch(&self, _tool: NomiTool) -> ToolResult {
-        ToolResult {
-            error: "Legacy tool dispatcher, deprecated!!".to_string(),
-            success: false,
-            content: "".to_string(),
-            follow_up_prompt: "".to_string(),
-        }
-    }
+    // pub async fn dispatch(&self, _tool: NomiTool) -> ToolResult {
+    //     ToolResult {
+    //         error: "Legacy tool dispatcher, deprecated!!".to_string(),
+    //         success: false,
+    //         content: "".to_string(),
+    //         follow_up_prompt: "".to_string(),
+    //     }
+    // }
 
     pub fn generate_tool_for_prompt(&self, intents: &[String]) -> Tool {
         let mut tools = Vec::new();
