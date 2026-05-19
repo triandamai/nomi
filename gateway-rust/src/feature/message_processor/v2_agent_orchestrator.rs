@@ -67,43 +67,7 @@ impl V2AgentOrchestrator {
             "Processing v2 message loop with intent"
         );
 
-        // 1. Immediate Save (Only the actual user content)
-        let save_user_message = save_message(
-            &state.pool,
-            conversation_id,
-            "user",
-            &text_content,
-            None,
-            user_id,
-            0,
-            0,
-            0,
-            msg.image_url.clone(),
-            msg.video_url.clone(),
-            msg.audio_url.clone(),
-            msg.doc_url.clone(),
-            msg.sticker_url.clone(),
-        )
-        .await;
-        if let Err(e) = save_user_message {
-            info!("Saving message failed :{}", e);
-            return Ok(());
-        }
 
-        let mut saved_message = save_user_message?;
-
-        //notify message incoming
-        for member in self.conversation_member_ids.iter() {
-            info!("notify user message saved :{}", member);
-            saved_message.display_name = Some(msg.display_name.clone().unwrap());
-            let _ = state
-                .dispatch(AppEvent::user(
-                    member.to_string().as_str(),
-                    "message",
-                    saved_message.to_sse_json(0),
-                ))
-                .await;
-        }
         // Group is registered, only respond if mentioned
         if msg.is_group
             && !msg.is_mentioned

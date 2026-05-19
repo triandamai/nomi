@@ -1,21 +1,22 @@
-use serde_json::json;
 use crate::AppState;
 use crate::common::identity::UserIdentity;
 use crate::common::repository::message_repo::save_message;
-use crate::feature::{MessageSource, OutboundMessage, PresenceMessage, UnifiedMessage};
+use crate::feature::conversation::model::MessageItem;
 use crate::feature::message_processor::v2_agent_orchestrator::V2AgentOrchestrator;
+use crate::feature::{MessageSource, OutboundMessage, PresenceMessage, UnifiedMessage};
 use crate::models::Conversation;
+use crate::prompts::StatusRegistry;
 use crate::services::event_dispatcher::AppEvent;
+use anyhow::anyhow;
+use serde_json::json;
 use tracing::info;
 use uuid::Uuid;
-use crate::feature::conversation::model::MessageItem;
-use crate::prompts::{ StatusRegistry};
 
 pub async fn process_v2_message(
     state: AppState,
     convo: Conversation,
     msg: UnifiedMessage,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<MessageItem> {
     let conversation_id = msg.conversation_id;
     let text_content = msg.text_content.clone();
 
@@ -85,20 +86,24 @@ pub async fn process_v2_message(
             msg.sticker_url.clone(),
         )
         .await;
-
-        if let Ok(saved_message) = save_user_message {
-            // 2. Broadcast to members via unified dispatcher
-            for member in members {
-                info!("notify user:{:?} with new message",member);
-                let _ = state
-                    .dispatch(AppEvent::user(
-                        member.user_id.to_string().as_str(),
-                        "message",
-                        saved_message.to_sse_json(0),
-                    )).await;
-            }
+        if let Err(err) = save_user_message {
+            info!("Failed to save message {}", err);
+            return Err(anyhow!("Failed to save message {}", err));
         }
 
+        let saved_message = save_user_message?;
+
+        // 2. Broadcast to members via unified dispatcher
+        for member in members {
+            info!("notify user:{:?} with new message", member);
+            let _ = state
+                .dispatch(AppEvent::user(
+                    member.user_id.to_string().as_str(),
+                    "message",
+                    saved_message.to_sse_json(0),
+                ))
+                .await;
+        }
         // 3. Save to pending_media table for Media Checkpoint System
         let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
             &state.pool,
@@ -112,7 +117,47 @@ pub async fn process_v2_message(
         info!("[Orchestrator] 🖼️ Media saved and buffered silently. No LLM turn triggered.");
 
         // STRICT ACTION: Terminate the orchestrator execution loop immediately for this event.
-        return Ok(());
+        return Ok(saved_message);
+    }
+
+    // ==========START CALLING LLM ============== //
+
+    // 1. Immediate Save (Only the actual user content)
+    let save_user_message = save_message(
+        &state.pool,
+        conversation_id,
+        "user",
+        &text_content,
+        None,
+        msg.user_id,
+        0,
+        0,
+        0,
+        msg.image_url.clone(),
+        msg.video_url.clone(),
+        msg.audio_url.clone(),
+        msg.doc_url.clone(),
+        msg.sticker_url.clone(),
+    )
+    .await;
+    if let Err(e) = save_user_message {
+        info!("Saving message failed :{}", e);
+        return Err(anyhow!("Failed to save message {}", e));
+    }
+
+    let mut saved_message = save_user_message?;
+
+    //notify message incoming
+    for member in members.iter().map(|v| v.user_id) {
+        info!("notify user message saved :{:?}", member);
+        saved_message.display_name = Some(msg.display_name.clone().unwrap());
+        let _ = state
+            .dispatch(AppEvent::user(
+                member.to_string().as_str(),
+                "message",
+                saved_message.to_sse_json(0),
+            ))
+            .await;
     }
 
     let orchestrator = V2AgentOrchestrator::new(
@@ -165,36 +210,39 @@ pub async fn process_v2_message(
         let injected_system_prompt =
             crate::prompts::PromptRegistry::zero_intent_clarification().to_string();
 
-        orchestrator
+        let _ = orchestrator
             .process_v2_message_with_intent(
                 state.clone(),
                 msg,
                 format!("[User poked about this {}]", media_type),
                 Some(injected_system_prompt),
             )
-            .await
+            .await;
+        Ok(saved_message)
     } else if has_media && !is_skip {
         // Task 1: If message.text is NOT empty: Do not ask for clarification.
         // Combine the text and the image into a single multi-part prompt for Gemini.
         let injected_system_prompt =
             crate::prompts::PromptRegistry::media_with_text_instruction().to_string();
-        orchestrator
+        let _ = orchestrator
             .process_v2_message_with_intent(
                 state.clone(),
                 msg,
                 text_content,
                 Some(injected_system_prompt),
             )
-            .await
+            .await;
+        Ok(saved_message)
     } else {
-        orchestrator
+        let _ = orchestrator
             .process_v2_message_with_intent(state.clone(), msg, text_content, None)
-            .await
+            .await;
+        Ok(saved_message)
     }
 }
 
 pub async fn send_status_update(
-    state:&AppState,
+    state: &AppState,
     members: Vec<Uuid>,
     conversation_id: Uuid,
     source: MessageSource,
@@ -208,11 +256,11 @@ pub async fn send_status_update(
     let event = event.clone();
     tokio::spawn(async move {
         let convo = sqlx::query!(
-                "SELECT conversation_type,id FROM conversations WHERE id = $1",
-                conversation_id
-            )
-            .fetch_one(&pool)
-            .await;
+            "SELECT conversation_type,id FROM conversations WHERE id = $1",
+            conversation_id
+        )
+        .fetch_one(&pool)
+        .await;
 
         let ch_names = match source.clone() {
             MessageSource::Web { name } => vec![name.to_string()],
@@ -235,9 +283,9 @@ pub async fn send_status_update(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({
-                                    "conversation_id": conversation_id,
-                                    "text":text
-                                }),
+                                "conversation_id": conversation_id,
+                                "text":text
+                            }),
                         ))
                         .await;
                 }
@@ -269,7 +317,16 @@ pub async fn send_status_update(
                             sticker_url: None,
                             metadata: None,
                         };
-                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"text": text})).with_redis_outbound(outbound)).await;
+                        let _ = state
+                            .dispatch(
+                                AppEvent::conversation(
+                                    conversation_id,
+                                    &event,
+                                    json!({"text": text}),
+                                )
+                                .with_redis_outbound(outbound),
+                            )
+                            .await;
                     }
                 }
             } else {
@@ -279,9 +336,9 @@ pub async fn send_status_update(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({
-                                    "conversation_id": conversation_id,
-                                    "text":text
-                                }),
+                                "conversation_id": conversation_id,
+                                "text":text
+                            }),
                         ))
                         .await;
                 }
@@ -289,15 +346,15 @@ pub async fn send_status_update(
                 if !is_group {
                     info!("send_status_update channel:{:?}", ch_names);
                     let channel_info = sqlx::query!(
-                            "SELECT c.conversation_id, c.channel, c.external_group_id
+                        "SELECT c.conversation_id, c.channel, c.external_group_id
                             FROM channel_group c
                             WHERE c.conversation_id = $1 AND c.channel =  ANY($2::text[])",
-                            conversation_id,
-                            &ch_names[..]
-                        )
-                        .fetch_all(&pool)
-                        .await
-                        .unwrap_or(Vec::new());
+                        conversation_id,
+                        &ch_names[..]
+                    )
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or(Vec::new());
 
                     for channel in channel_info {
                         let outbound = OutboundMessage {
@@ -313,7 +370,16 @@ pub async fn send_status_update(
                             sticker_url: None,
                             metadata: None,
                         };
-                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"text": text})).with_redis_outbound(outbound)).await;
+                        let _ = state
+                            .dispatch(
+                                AppEvent::conversation(
+                                    conversation_id,
+                                    &event,
+                                    json!({"text": text}),
+                                )
+                                .with_redis_outbound(outbound),
+                            )
+                            .await;
                     }
                 }
             }
@@ -322,13 +388,13 @@ pub async fn send_status_update(
 }
 
 pub async fn send_tool_update(
-    state:&AppState,
+    state: &AppState,
     members: Vec<Uuid>,
     conversation_id: Uuid,
     source: MessageSource,
     is_group: bool,
     event: String,
-    tool_name:String,
+    tool_name: String,
 ) {
     info!("send_status_update start");
     let state = state.clone();
@@ -336,11 +402,11 @@ pub async fn send_tool_update(
     let event = event.clone();
     tokio::spawn(async move {
         let convo = sqlx::query!(
-                "SELECT conversation_type,id FROM conversations WHERE id = $1",
-                conversation_id
-            )
-            .fetch_one(&pool)
-            .await;
+            "SELECT conversation_type,id FROM conversations WHERE id = $1",
+            conversation_id
+        )
+        .fetch_one(&pool)
+        .await;
 
         let ch_names = match source.clone() {
             MessageSource::Web { name } => vec![name.to_string()],
@@ -363,10 +429,10 @@ pub async fn send_tool_update(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({
-                                    "conversation_id": conversation_id,
-                                    "name":tool_name,
-                                    "text":StatusRegistry::random_action_phrase(tool_name.as_str())
-                                }),
+                                "conversation_id": conversation_id,
+                                "name":tool_name,
+                                "text":StatusRegistry::random_action_phrase(tool_name.as_str())
+                            }),
                         ))
                         .await;
                 }
@@ -408,10 +474,10 @@ pub async fn send_tool_update(
                             member.to_string().as_str(),
                             event.to_string().as_str(),
                             json!({
-                                    "conversation_id": conversation_id,
-                                    "name":tool_name,
-                                    "text":StatusRegistry::random_action_phrase(tool_name.as_str())
-                                }),
+                                "conversation_id": conversation_id,
+                                "name":tool_name,
+                                "text":StatusRegistry::random_action_phrase(tool_name.as_str())
+                            }),
                         ))
                         .await;
                 }
@@ -419,15 +485,15 @@ pub async fn send_tool_update(
                 if !is_group {
                     info!("send_status_update channel:{:?}", ch_names);
                     let channel_info = sqlx::query!(
-                            "SELECT c.conversation_id, c.channel, c.external_group_id
+                        "SELECT c.conversation_id, c.channel, c.external_group_id
                             FROM channel_group c
                             WHERE c.conversation_id = $1 AND c.channel =  ANY($2::text[])",
-                            conversation_id,
-                            &ch_names[..]
-                        )
-                        .fetch_all(&pool)
-                        .await
-                        .unwrap_or(Vec::new());
+                        conversation_id,
+                        &ch_names[..]
+                    )
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or(Vec::new());
 
                     for channel in channel_info {
                         let outbound = OutboundMessage {
@@ -443,7 +509,16 @@ pub async fn send_tool_update(
                             sticker_url: None,
                             metadata: None,
                         };
-                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"name": tool_name})).with_redis_outbound(outbound)).await;
+                        let _ = state
+                            .dispatch(
+                                AppEvent::conversation(
+                                    conversation_id,
+                                    &event,
+                                    json!({"name": tool_name}),
+                                )
+                                .with_redis_outbound(outbound),
+                            )
+                            .await;
                     }
                 }
             }
@@ -452,7 +527,7 @@ pub async fn send_tool_update(
 }
 
 pub async fn send_status_presence_update(
-    state:&AppState,
+    state: &AppState,
     members: Vec<Uuid>,
     conversation_id: Uuid,
     source: MessageSource,
@@ -465,11 +540,11 @@ pub async fn send_status_presence_update(
     let event = "presence".to_string();
     tokio::spawn(async move {
         let convo = sqlx::query!(
-                "SELECT conversation_type,id FROM conversations WHERE id = $1",
-                conversation_id
-            )
-            .fetch_one(&pool)
-            .await;
+            "SELECT conversation_type,id FROM conversations WHERE id = $1",
+            conversation_id
+        )
+        .fetch_one(&pool)
+        .await;
 
         let ch_names = match source.clone() {
             MessageSource::Web { name } => vec![name.to_string()],
@@ -516,7 +591,16 @@ pub async fn send_status_presence_update(
                             channel: channel.channel_type.clone(),
                             status: "typing".to_string(),
                         };
-                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"is_typing": is_typing})).with_redis_presence(presence)).await;
+                        let _ = state
+                            .dispatch(
+                                AppEvent::conversation(
+                                    conversation_id,
+                                    &event,
+                                    json!({"is_typing": is_typing}),
+                                )
+                                .with_redis_presence(presence),
+                            )
+                            .await;
                     }
                 }
             } else {
@@ -533,15 +617,15 @@ pub async fn send_status_presence_update(
                 if !is_group {
                     info!("send_status_update channel:{:?}", ch_names);
                     let channel_info = sqlx::query!(
-                            "SELECT c.conversation_id, c.channel, c.external_group_id
+                        "SELECT c.conversation_id, c.channel, c.external_group_id
                             FROM channel_group c
                             WHERE c.conversation_id = $1 AND c.channel =  ANY($2::text[])",
-                            conversation_id,
-                            &ch_names[..]
-                        )
-                        .fetch_all(&pool)
-                        .await
-                        .unwrap_or(Vec::new());
+                        conversation_id,
+                        &ch_names[..]
+                    )
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or(Vec::new());
 
                     for channel in channel_info {
                         let presence = PresenceMessage {
@@ -550,7 +634,16 @@ pub async fn send_status_presence_update(
                             channel: channel.channel.clone(),
                             status: "typing".to_string(),
                         };
-                        let _ = state.dispatch(AppEvent::conversation(conversation_id, &event, json!({"is_typing": is_typing})).with_redis_presence(presence)).await;
+                        let _ = state
+                            .dispatch(
+                                AppEvent::conversation(
+                                    conversation_id,
+                                    &event,
+                                    json!({"is_typing": is_typing}),
+                                )
+                                .with_redis_presence(presence),
+                            )
+                            .await;
                     }
                 }
             }
@@ -559,7 +652,7 @@ pub async fn send_status_presence_update(
 }
 
 pub async fn send_message_to_subscriber(
-    state:&AppState,
+    state: &AppState,
     members: Vec<Uuid>,
     conversation_id: Uuid,
     source: MessageSource,
@@ -571,11 +664,11 @@ pub async fn send_message_to_subscriber(
     let outbound_message = data.clone();
     tokio::spawn(async move {
         let convo = sqlx::query!(
-                "SELECT conversation_type,id FROM conversations WHERE id = $1",
-                conversation_id
-            )
-            .fetch_one(&pool)
-            .await;
+            "SELECT conversation_type,id FROM conversations WHERE id = $1",
+            conversation_id
+        )
+        .fetch_one(&pool)
+        .await;
 
         let ch_names = match source.clone() {
             MessageSource::Web { name } => vec![name.to_string()],
@@ -592,13 +685,16 @@ pub async fn send_message_to_subscriber(
         if let Ok(convo) = convo {
             for member in members {
                 let _ = state
-                    .dispatch(AppEvent::user(member.to_string().as_str(), "message", sse_data.clone()))
+                    .dispatch(AppEvent::user(
+                        member.to_string().as_str(),
+                        "message",
+                        sse_data.clone(),
+                    ))
                     .await;
             }
 
             // --- Multi-bubble Sequential Burst Strategy ---
-            let bubbles =
-                crate::common::splitter::split_into_bubbles(&outbound_message.content);
+            let bubbles = crate::common::splitter::split_into_bubbles(&outbound_message.content);
 
             if convo.conversation_type.eq_ignore_ascii_case("private") {
                 let channel_info = sqlx::query!(
@@ -650,7 +746,16 @@ pub async fn send_message_to_subscriber(
                             metadata: None,
                         };
                         info!("Sent outbound message: {}", outbound);
-                        let _ = state.dispatch(AppEvent::conversation(conversation_id, "message", json!({"text": bubble_text})).with_redis_outbound(outbound)).await;
+                        let _ = state
+                            .dispatch(
+                                AppEvent::conversation(
+                                    conversation_id,
+                                    "message",
+                                    json!({"text": bubble_text}),
+                                )
+                                .with_redis_outbound(outbound),
+                            )
+                            .await;
 
                         if i < bubbles.len() - 1 {
                             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -659,15 +764,15 @@ pub async fn send_message_to_subscriber(
                 }
             } else {
                 let channel_info = sqlx::query!(
-                        "SELECT c.conversation_id, c.channel, c.external_group_id
+                    "SELECT c.conversation_id, c.channel, c.external_group_id
                             FROM channel_group c
                             WHERE c.conversation_id = $1 AND c.channel =  ANY($2::text[])",
-                        conversation_id,
-                        &ch_names[..]
-                    )
-                    .fetch_all(&pool)
-                    .await
-                    .unwrap_or(Vec::new());
+                    conversation_id,
+                    &ch_names[..]
+                )
+                .fetch_all(&pool)
+                .await
+                .unwrap_or(Vec::new());
 
                 for channel in channel_info {
                     for (i, bubble_text) in bubbles.iter().enumerate() {
@@ -706,7 +811,16 @@ pub async fn send_message_to_subscriber(
                             metadata: None,
                         };
                         info!("Sent outbound message: {}", outbound);
-                        let _ = state.dispatch(AppEvent::conversation(conversation_id, "message", json!({"text": bubble_text})).with_redis_outbound(outbound)).await;
+                        let _ = state
+                            .dispatch(
+                                AppEvent::conversation(
+                                    conversation_id,
+                                    "message",
+                                    json!({"text": bubble_text}),
+                                )
+                                .with_redis_outbound(outbound),
+                            )
+                            .await;
 
                         if i < bubbles.len() - 1 {
                             tokio::time::sleep(std::time::Duration::from_millis(300)).await;

@@ -1,13 +1,14 @@
 use crate::common::api_response::ApiResponse;
 use crate::common::identity::auth_model::{AuthResponse, UserProfile};
 use crate::feature::conversation::model::{
-    ChannelStatus, ChatRequest, ConversationResponse, CreateConversationRequest,
-    MessageItem, MessageListParams, MessageListResponse, PairingRequest, PairingResponse, RestoreSoulRequest,
+    ChannelStatus, ChatRequest, ConversationResponse, CreateConversationRequest, MessageItem,
+    MessageListParams, MessageListResponse, PairingRequest, PairingResponse, RestoreSoulRequest,
     RestoreSoulResponse, SoulHistoryResponse, UpdateConversationRequest,
 };
-use crate::services::event_dispatcher::AppEvent;
 use crate::feature::message_processor::v2_orchestrator::process_v2_message;
+use crate::feature::{MessageSource, UnifiedMessage};
 use crate::models::Conversation;
+use crate::services::event_dispatcher::AppEvent;
 use crate::{AppState, common};
 use axum::Json;
 use axum::extract::{Path, State};
@@ -18,7 +19,6 @@ use serde_json::{Value, json};
 use sqlx::Row;
 use tracing::{error, info};
 use uuid::Uuid;
-use crate::feature::{MessageSource, UnifiedMessage};
 
 pub mod auth;
 pub mod command;
@@ -42,7 +42,11 @@ pub async fn handle_get_user_channels(
 
     match result {
         Ok(rows) => {
-            let platforms = vec!["telegram".to_string(), "whatsapp".to_string(),"mobile".to_string()];
+            let platforms = vec![
+                "telegram".to_string(),
+                "whatsapp".to_string(),
+                "mobile".to_string(),
+            ];
             let mut channels = Vec::new();
 
             let linked_platforms: std::collections::HashSet<String> =
@@ -55,7 +59,7 @@ pub async fn handle_get_user_channels(
                 });
             }
 
-            ApiResponse::ok( channels , "User channels retrieved")
+            ApiResponse::ok(channels, "User channels retrieved")
         }
         Err(e) => {
             error!("Failed to fetch user channels: {}", e);
@@ -149,9 +153,12 @@ pub async fn handle_pairing_handshake(
     let _ = state.redis.del(&redis_key).await;
 
     // Issue JWT
-    let user_row = match sqlx::query!("SELECT id, role, display_name FROM users WHERE id = $1", user_id)
-        .fetch_one(&state.pool)
-        .await
+    let user_row = match sqlx::query!(
+        "SELECT id, role, display_name FROM users WHERE id = $1",
+        user_id
+    )
+    .fetch_one(&state.pool)
+    .await
     {
         Ok(row) => row,
         Err(e) => {
@@ -186,7 +193,9 @@ pub async fn handle_pairing_handshake(
             error!("JWT encoding error: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<AuthResponse>::failed("Token generation error")),
+                Json(ApiResponse::<AuthResponse>::failed(
+                    "Token generation error",
+                )),
             )
                 .into_response();
         }
@@ -242,7 +251,7 @@ pub async fn handle_pairing_handshake(
         .map(|row| ConversationResponse {
             id: row.id,
             cumulative_tokens: row.cumulative_tokens,
-            max_token_usage:row.max_token_usage,
+            max_token_usage: row.max_token_usage,
             name: row.title.unwrap_or_default(),
             created_at: row.created_at.unwrap_or_else(Utc::now),
             updated_at: row.updated_at.unwrap_or_else(Utc::now),
@@ -851,7 +860,7 @@ pub async fn handle_chat_stream(
     State(state): State<AppState>,
     axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
     Json(payload): Json<ChatRequest>,
-) -> ApiResponse<String> {
+) -> ApiResponse<MessageItem> {
     info!(conversation_id = %payload.conversation_id,user_id= %claims.sub, "Received chat stream request");
 
     // Resolve user_id from JWT claims
@@ -859,7 +868,6 @@ pub async fn handle_chat_stream(
         Ok(id) => Some(id),
         Err(_) => None,
     };
-
 
     let conv_info = sqlx::query!(
         "SELECT
@@ -901,7 +909,7 @@ pub async fn handle_chat_stream(
                         ))
                         .await;
                 }
-                return ApiResponse::create(1000, "Failed".to_string(), &error_msg);
+                return ApiResponse::custom(1000, &error_msg);
             }
         }
     }
@@ -911,38 +919,38 @@ pub async fn handle_chat_stream(
     let conversation_id = payload.conversation_id;
     let user_message = payload.message.clone();
 
-    tokio::spawn(async move {
-        let unified_msg = UnifiedMessage {
-            is_group: false,
-            is_mentioned: false,
-            display_name:Some(conv_info.title.clone().unwrap()),
-            conversation_id,
-            user_id,
-            text_content: user_message,
-            image_url: payload.image_url,
-            audio_url: payload.audio_url,
-            video_url: payload.video_url,
-            sticker_url: None,
-            doc_url: payload.doc_url,
-            source: MessageSource::Web {
-                name: "web".to_string(),
-            },
-            v2: true,
-        };
+    let unified_msg = UnifiedMessage {
+        is_group: false,
+        is_mentioned: false,
+        display_name: Some(conv_info.title.clone().unwrap()),
+        conversation_id,
+        user_id,
+        text_content: user_message,
+        image_url: payload.image_url,
+        audio_url: payload.audio_url,
+        video_url: payload.video_url,
+        sticker_url: None,
+        doc_url: payload.doc_url,
+        source: MessageSource::Web {
+            name: "web".to_string(),
+        },
+        v2: true,
+    };
 
-        let map_convo = Conversation {
-            id: conv_info.id,
-            session_id: conv_info.user_id,
-            title: conv_info.title,
-            soul_content: conv_info.soul_content,
-            bootstrap_content: conv_info.bootstrap_content,
-            created_at: conv_info.created_at,
-            updated_at: conv_info.updated_at,
-        };
-        if let Err(e) = process_v2_message(state_clone, map_convo, unified_msg).await {
-            error!("Failed to process web message: {}", e);
-        }
-    });
+    let map_convo = Conversation {
+        id: conv_info.id,
+        session_id: conv_info.user_id,
+        title: conv_info.title,
+        soul_content: conv_info.soul_content,
+        bootstrap_content: conv_info.bootstrap_content,
+        created_at: conv_info.created_at,
+        updated_at: conv_info.updated_at,
+    };
+    let message = process_v2_message(state_clone, map_convo, unified_msg).await;
+    if let Err(e) = message {
+        error!("Failed to process web message: {}", e);
+        return ApiResponse::failed(format!("Failed to process web message {}", e).as_str());
+    }
 
-    ApiResponse::ok("Streaming started".to_string(), "Success")
+    ApiResponse::ok(message.unwrap(), "Success")
 }

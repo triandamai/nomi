@@ -97,6 +97,16 @@ impl<T> ApiResponse<T> {
             errors: None,
         }
     }
+    pub fn custom(status_code: i32, message: &str) -> ApiResponse<T> {
+        ApiResponse {
+            data: None,
+            meta: Meta {
+                code: status_code,
+                message: message.to_string(),
+            },
+            errors: None,
+        }
+    }
     pub fn ok(data: T, message: &str) -> ApiResponse<T> {
         ApiResponse {
             data: Some(data),
