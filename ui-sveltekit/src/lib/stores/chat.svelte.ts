@@ -9,6 +9,10 @@ export type Message = {
     display_name:string|null,
     thought?: string;
     image_url?: string;
+    video_url?: string;
+    audio_url?: string;
+    document_url?: string;
+    sticker_url?: string;
     id: string;
     user_id?: string;
     total_tokens: number;

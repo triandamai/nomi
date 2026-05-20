@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE messages\n         SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{is_processed}', 'true')\n         WHERE id = (\n             SELECT id FROM messages\n             WHERE conversation_id = $1\n             AND (image_url IS NOT NULL OR video_url IS NOT NULL OR audio_url IS NOT NULL OR document_url IS NOT NULL OR sticker_url IS NOT NULL)\n             ORDER BY created_at DESC\n             LIMIT 1\n         )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ca6c944b1472fb2e54d5e680af2d7aa54b5abecc0f662bcab32d7542db55254d"
+}

@@ -33,7 +33,28 @@ A modern, reactive web interface.
 
 ## Core Workflows
 
-### 1. Intent Classification Flow
+### 1. Multimodal Context Hydration (Media Interpreter)
+Before user messages reach the classification logic, Nomi "sees" and "hears" media attachments to hydrate the conversation context.
+
+```mermaid
+graph TD
+    In[Inbound Media Message] --> S3[Download Bytes from S3]
+    S3 --> Gemini[Gemini Multimodal Inference]
+    Gemini --> Desc[Generate rich text description]
+    Desc --> Hydrate[Synthesize Hydrated Payload]
+    Hydrate --> Intent[Proceed to Intent Classification]
+    Gemini --> Metrics[Log Token Telemetry]
+```
+
+**Operational Mechanics:**
+- **Multimodal Interception**: The `MediaInterpreterService` intercepts S3 media URLs (Images and Audio) from incoming messages.
+- **Multimodal Inference**:
+    - **Images**: Extracts OCR text, financial amounts, code snippets, and environmental scenery.
+    - **Audio**: Transcribes vocal spoken wording cleanly into text.
+- **Context Hydration**: The result is synthesized into a bracketed header (e.g., `[Media Context Description: <Result>] <User Caption>`), allowing downstream text-only systems (Interaction Gate, Intent Classifier) to process the media context as if it were natural language.
+- **Token Logging**: Parallel, non-blocking telemetry logs the LLM cost of the interpreter turn to the `token_usage_history` ledger.
+
+### 2. Intent Classification Flow
 Nomi uses a two-step hybrid layout to minimize token usage while maintaining high accuracy.
 
 ```mermaid

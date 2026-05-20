@@ -1,7 +1,4 @@
 use crate::common::agent::agent_model::PromptActor;
-use crate::common::agent::classification::{
-    classification, fetch_media_from_storage,
-};
 use crate::common::agent::execute_tools;
 use crate::common::identity::UserIdentity;
 use crate::common::repository::message_repo::save_message;
@@ -56,7 +53,7 @@ impl V2AgentOrchestrator {
         state: AppState,
         msg: UnifiedMessage,
         text_content: String,
-        injected_system_prompt: Option<String>,
+        _injected_system_prompt: Option<String>,
     ) -> anyhow::Result<()> {
         let conversation_id = msg.conversation_id;
         let user_id = msg.user_id;
@@ -103,15 +100,14 @@ impl V2AgentOrchestrator {
                 .await;
         }
 
-        if text_content.trim().eq_ignore_ascii_case("skip") {
-            info!("Skip instruction received, marking last media as processed");
-            let _ = crate::common::repository::message_repo::mark_last_media_processed(
-                &state.pool,
-                conversation_id,
-            )
-            .await;
-        }
-
+        // if text_content.trim().eq_ignore_ascii_case("skip") {
+        //     info!("Skip instruction received, marking last media as processed");
+        //     let _ = crate::common::repository::message_repo::mark_last_media_processed(
+        //         &state.pool,
+        //         conversation_id,
+        //     )
+        //     .await;
+        // }
         let _ = send_status_presence_update(
             &state,
             self.conversation_member_ids
@@ -124,30 +120,11 @@ impl V2AgentOrchestrator {
             true,
         );
 
-        let (augmented_text, _media_context, should_ignore) = classification(
-            &state,
-            self.conversation_member_ids
-                .iter()
-                .map(|v| v.clone())
-                .collect(),
-            conversation_id,
-            &msg,
-            text_content.clone(),
-            injected_system_prompt,
-        )
-        .await;
-
-        if should_ignore {
-            info!("Media classification returned IGNORE, stopping orchestrator loop");
-            return Ok(());
-        }
-
-        // Fetch media data if present for Multi-Part prompt
-        let media_data = if let Some(ref url) = msg.image_url {
-            fetch_media_from_storage(&state, url).await.ok()
-        } else {
-            None
-        };
+        // [NEW] Fetch pending media context once per turn from message history
+        let pending_media = crate::common::repository::message_repo::get_latest_unprocessed_media(&state.pool, conversation_id)
+            .await
+            .ok()
+            .flatten();
 
         let history = sqlx::query!(
             "SELECT
@@ -185,36 +162,13 @@ impl V2AgentOrchestrator {
             };
 
             let image_url = match msg_h.image_url {
-                Some(path) if !is_processed => {
-                    format!(" - Image: {} \n", state.storage.get_full_url(&path))
+                Some(path) => {
+                    let status = if is_processed { "[ALREADY PROCESSED]" } else { "[PENDING ACTION]" };
+                    format!(" - Image URL: {} {} \n", state.storage.get_full_url(&path), status)
                 }
                 _ => "".to_string(),
             };
-            let video_url = match msg_h.video_url {
-                Some(path) if !is_processed => {
-                    format!("- Video: {} \n", state.storage.get_full_url(&path))
-                }
-                _ => "".to_string(),
-            };
-            let audio_url = match msg_h.audio_url {
-                Some(path) if !is_processed => {
-                    format!(" - Audio: {} \n", state.storage.get_full_url(&path))
-                }
-                _ => "".to_string(),
-            };
-            let document_url = match msg_h.document_url {
-                Some(path) if !is_processed => {
-                    format!("- Document: {} \n", state.storage.get_full_url(&path))
-                }
-                _ => "".to_string(),
-            };
-
-            let sticker_url = match msg_h.sticker_url {
-                Some(path) if !is_processed => {
-                    format!("- Sticker: {} \n", state.storage.get_full_url(&path))
-                }
-                _ => "".to_string(),
-            };
+            
             let role_label = match msg_h.role.as_str() {
                 "user" => match msg_h.display_name {
                     None => "User".to_string(),
@@ -223,8 +177,9 @@ impl V2AgentOrchestrator {
                 "assistant" => "Nomi".to_string(),
                 _ => "System".to_string(),
             };
+
             history_text.push_str(&format!(
-                "-[{}] {}: {}.\n {}{}{}{}{}",
+                "-[{}] {}: {}.{}\n",
                 msg_h
                     .created_at
                     .unwrap_or(Utc::now())
@@ -232,15 +187,9 @@ impl V2AgentOrchestrator {
                     .to_string(),
                 role_label,
                 msg_h.content,
-                image_url,
-                video_url,
-                audio_url,
-                document_url,
-                sticker_url
+                image_url
             ));
         }
-
-
 
         let dispatcher = ToolDispatcher::new(
             state.pool.clone(),
@@ -300,6 +249,24 @@ impl V2AgentOrchestrator {
 
             combined.push_str("\n### Identity Layer\n");
             combined.push_str(&boot);
+
+            // [FIX] Visual Context Injection
+            // Fetch the latest unprocessed media directly from history and inject it as context.
+            let pending_media = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    crate::common::repository::message_repo::get_latest_unprocessed_media(&state.pool, conversation_id).await.ok().flatten()
+                })
+            });
+
+            if let Some((url, _type)) = pending_media {
+                let full_url = state.storage.get_full_url(&url);
+                combined.push_str("\n");
+                combined.push_str(&format!(
+                    "### Pending Visual Context\n[SYSTEM: The user recently uploaded an image that is waiting for action: {}. If the current request implies using an image, use this URL.]\n",
+                    full_url
+                ));
+            }
+
             if !soul.is_empty() {
                 combined.push_str("\n### Current Personality/Soul\n");
                 combined.push_str(&soul);
@@ -327,9 +294,9 @@ impl V2AgentOrchestrator {
             combined.push_str("\n### Orchestrator Instructions \n");
             combined.push_str(crate::prompts::PromptRegistry::orchestrator_instructions());
 
-            if msg.is_mentioned && augmented_text.len() < 10 {
-                combined.push_str("\n[SYSTEM: The user has activated you with a short mention. Look back at the last 3-5 messages in the 'Recent History' to find the intent (URL, Image, Question) and act on it immediately.]\n");
-            }
+            // if msg.is_mentioned && augmented_text.len() < 10 {
+            //     combined.push_str("\n[SYSTEM: The user has activated you with a short mention. Look back at the last 3-5 messages in the 'Recent History' to find the intent (URL, Image, Question) and act on it immediately.]\n");
+            // }
 
             if !intents_val.contains(&"GENERAL".to_string()) || intents_val.len() > 1 {
                 let domain_rules = crate::prompts::PromptRegistry::domain_logic(intents_val);
@@ -356,11 +323,11 @@ impl V2AgentOrchestrator {
         };
         info!("Tokens saved by modular assembly: {:.2}%", saved_percent);
 
-        let embedding = rag::get_embedding(&state.gemini_api_key, &augmented_text).await;
+        let embedding = rag::get_embedding(&state.gemini_api_key, &text_content).await;
         let memories_text = if embedding.is_ok() {
             crate::utils::rag::hybrid_retrieve(
                 &state.pool,
-                &augmented_text,
+                &text_content,
                 embedding.unwrap().embedding.values,
                 Some(conversation_id),
                 None,
@@ -372,6 +339,17 @@ impl V2AgentOrchestrator {
         } else {
             String::new()
         };
+
+        // [NEW] Fetch raw media bytes for native multimodal support
+        let mut raw_media = None;
+        if let Some((url, _type)) = pending_media.as_ref() {
+            if let Ok(data) = state.storage.get_file("conversations".to_string(), url.clone()).await {
+                let mime_type = mime_guess::from_path(url).first_or_octet_stream().to_string();
+                use base64::Engine;
+                let base64_data = base64::engine::general_purpose::STANDARD.encode(data.to_vec());
+                raw_media = Some((mime_type, base64_data));
+            }
+        }
 
         // --- V2 Autonomous Loop ---
         let mut loop_count = 0;
@@ -391,13 +369,23 @@ impl V2AgentOrchestrator {
             loop_count += 1;
             info!("V2 Loop iterate(N): N({})", loop_count);
 
-            let current_actor = PromptActor::MultiTool {
-                history: history_text.clone(),
-                memories: memories_text.clone(),
-                message: augmented_text.clone(),
-                system_prompt: system_prompt.clone(),
-                tool_turns: tool_turns.clone(),
-                media: media_data.clone(),
+            let current_actor = if loop_count == 1 {
+                PromptActor::User {
+                    history: history_text.clone(),
+                    memories: memories_text.clone(),
+                    message: text_content.clone(),
+                    system_prompt: system_prompt.clone(),
+                    media: raw_media.clone(),
+                }
+            } else {
+                PromptActor::MultiTool {
+                    history: history_text.clone(),
+                    memories: memories_text.clone(),
+                    message: text_content.clone(),
+                    system_prompt: system_prompt.clone(),
+                    tool_turns: tool_turns.clone(),
+                    media: raw_media.clone(),
+                }
             };
 
             // Status: Model is thinking

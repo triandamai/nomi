@@ -47,88 +47,54 @@ pub async fn process_v2_message(
     .await
     .unwrap_or(Vec::new());
 
-    if has_media && text_trimmed.is_empty() {
-        let media_url = msg
-            .image_url
-            .as_ref()
-            .or(msg.video_url.as_ref())
-            .or(msg.audio_url.as_ref())
-            .or(msg.doc_url.as_ref())
-            .or(msg.sticker_url.as_ref())
-            .unwrap();
+    // ======== Media Context Hydration (Multimodal Interpreter) ========//
+    let mut hydrated_text = text_content.clone();
+    let mut media_to_hydrate = Vec::new();
+    if let Some(url) = &msg.image_url { media_to_hydrate.push((url, "image/jpeg")); }
+    if let Some(url) = &msg.audio_url { media_to_hydrate.push((url, "audio/mpeg")); }
+    if let Some(url) = &msg.video_url { media_to_hydrate.push((url, "video/mp4")); }
+    if let Some(url) = &msg.doc_url { media_to_hydrate.push((url, "application/pdf")); }
+    if let Some(url) = &msg.sticker_url { media_to_hydrate.push((url, "image/webp")); }
 
-        let media_type = if msg.image_url.is_some() {
-            "image"
-        } else if msg.video_url.is_some() {
-            "video"
-        } else if msg.audio_url.is_some() {
-            "audio"
-        } else if msg.doc_url.is_some() {
-            "document"
-        } else {
-            "sticker"
-        };
-
-        // 1. Save to messages table for history
-        let save_user_message = save_message(
-            &state.pool,
-            conversation_id,
-            "user",
-            "",
-            None,
+    if !media_to_hydrate.is_empty() {
+        let interpreter = crate::services::media_interpreter::MediaInterpreterService;
+        let boot_dispatcher = crate::common::tools::ToolDispatcher::new(
+            state.pool.clone(),
+            std::path::PathBuf::from("."),
+            Some(conversation_id),
             msg.user_id,
-            0,
-            0,
-            0,
-            msg.image_url.clone(),
-            msg.video_url.clone(),
-            msg.audio_url.clone(),
-            msg.doc_url.clone(),
-            msg.sticker_url.clone(),
-        )
-        .await;
-        if let Err(err) = save_user_message {
-            info!("Failed to save message {}", err);
-            return Err(anyhow!("Failed to save message {}", err));
+            state.gemini.clone(),
+            state.gemini_api_key.clone(),
+            state.storage.clone(),
+            state.clone(),
+        );
+
+        let mut descriptions = Vec::new();
+        for (url, mime) in media_to_hydrate {
+            match interpreter.hydrate_media_context_string(&boot_dispatcher, url, mime).await {
+                Ok((hydrated, _)) => {
+                    // Extract the description from "[Media Context Description: <desc>] <original>"
+                    if let Some(start) = hydrated.find("Description: ") {
+                        if let Some(end) = hydrated.rfind("] ") {
+                            descriptions.push(hydrated[start + 13..end].to_string());
+                        }
+                    }
+                },
+                Err(e) => error!("Media Interpreter: Failed to hydrate {}: {}", mime, e),
+            }
         }
 
-        let saved_message = save_user_message?;
-
-        // 2. Broadcast to members via unified dispatcher
-        for member in members {
-            info!("notify user:{:?} with new message", member);
-            let _ = state
-                .dispatch(AppEvent::user(
-                    member.user_id.to_string().as_str(),
-                    "message",
-                    saved_message.to_sse_json(0),
-                ))
-                .await;
+        if !descriptions.is_empty() {
+            hydrated_text = format!("[Media Context: {}] {}", descriptions.join(" | "), text_content);
         }
-        // 3. Save to pending_media table for Media Checkpoint System
-        let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
-            &state.pool,
-            conversation_id,
-            media_url,
-            media_type,
-            None,
-        )
-        .await;
-
-        info!("[Orchestrator] 🖼️ Media saved and buffered silently. No LLM turn triggered.");
-
-        // STRICT ACTION: Terminate the orchestrator execution loop immediately for this event.
-        return Ok(saved_message);
     }
 
-    // ==========START CALLING LLM ============== //
-
-    // 1. Immediate Save (Only the actual user content)
+    // 1. Immediate Save (Hydrated content for better history context)
     let save_user_message = save_message(
         &state.pool,
         conversation_id,
         "user",
-        &text_content,
+        &hydrated_text, // Use the description from MediaInterpreter if available
         None,
         msg.user_id,
         0,
@@ -156,7 +122,7 @@ pub async fn process_v2_message(
         );
 
         let should_respond = match gate
-            .should_respond_to_group_message(&msg.text_content, false)
+            .should_respond_to_group_message(&hydrated_text, false)
             .await
         {
             Ok(true) => {
@@ -223,7 +189,7 @@ pub async fn process_v2_message(
             .process_v2_message_with_intent(
                 state.clone(),
                 msg,
-                text_content,
+                hydrated_text, // Pass the hydrated description instead of raw text
                 Some(crate::prompts::PromptRegistry::guardrail_rejection().to_string()),
             )
             .await;
@@ -257,16 +223,6 @@ pub async fn process_v2_message(
             media_type, media_url
         );
 
-        // Save to pending_media
-        let _ = crate::common::repository::pending_media_repo::upsert_pending_media(
-            &state.pool,
-            conversation_id,
-            media_url,
-            media_type,
-            None,
-        )
-        .await;
-
         let injected_system_prompt =
             crate::prompts::PromptRegistry::zero_intent_clarification().to_string();
 
@@ -288,15 +244,16 @@ pub async fn process_v2_message(
             .process_v2_message_with_intent(
                 state.clone(),
                 msg,
-                text_content,
+                hydrated_text, // Use the hydrated description here
                 Some(injected_system_prompt),
             )
             .await;
         Ok(saved_message)
     } else {
         let _ = orchestrator
-            .process_v2_message_with_intent(state.clone(), msg, text_content, None)
+            .process_v2_message_with_intent(state.clone(), msg, hydrated_text, None)
             .await;
+
         Ok(saved_message)
     }
 }

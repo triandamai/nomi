@@ -4,27 +4,19 @@ use sqlx::PgPool;
 use tracing::info;
 use uuid::Uuid;
 
-pub async fn mark_last_media_processed(pool: &PgPool, conversation_id: Uuid) -> anyhow::Result<()> {
+pub async fn mark_last_media_processed(pool: &sqlx::PgPool, conversation_id: Uuid) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
 
     sqlx::query!(
-        "UPDATE messages 
-         SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{is_processed}', 'true') 
+        "UPDATE messages
+         SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{is_processed}', 'true')
          WHERE id = (
-             SELECT id FROM messages 
-             WHERE conversation_id = $1 
+             SELECT id FROM messages
+             WHERE conversation_id = $1
              AND (image_url IS NOT NULL OR video_url IS NOT NULL OR audio_url IS NOT NULL OR document_url IS NOT NULL OR sticker_url IS NOT NULL)
-             ORDER BY created_at DESC 
+             ORDER BY created_at DESC
              LIMIT 1
          )",
-        conversation_id
-    )
-    .execute(&mut *tx)
-    .await?;
-
-    // Also clear from pending_media table
-    sqlx::query!(
-        "DELETE FROM pending_media WHERE conversation_id = $1",
         conversation_id
     )
     .execute(&mut *tx)
@@ -34,6 +26,35 @@ pub async fn mark_last_media_processed(pool: &PgPool, conversation_id: Uuid) -> 
     Ok(())
 }
 
+pub async fn get_latest_unprocessed_media(
+    pool: &sqlx::PgPool,
+    conversation_id: Uuid,
+) -> anyhow::Result<Option<(String, String)>> {
+    let row = sqlx::query!(
+        r#"
+        SELECT image_url, video_url, audio_url, document_url, sticker_url
+        FROM messages
+        WHERE conversation_id = $1
+        AND (metadata->>'is_processed' IS NULL OR metadata->>'is_processed' != 'true')
+        AND (image_url IS NOT NULL OR video_url IS NOT NULL OR audio_url IS NOT NULL OR document_url IS NOT NULL OR sticker_url IS NOT NULL)
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+        conversation_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(r) = row {
+        if let Some(url) = r.image_url { return Ok(Some((url, "image".to_string()))); }
+        if let Some(url) = r.video_url { return Ok(Some((url, "video".to_string()))); }
+        if let Some(url) = r.audio_url { return Ok(Some((url, "audio".to_string()))); }
+        if let Some(url) = r.document_url { return Ok(Some((url, "document".to_string()))); }
+        if let Some(url) = r.sticker_url { return Ok(Some((url, "sticker".to_string()))); }
+    }
+
+    Ok(None)
+}
 pub async fn save_message(
     pool: &PgPool,
     conversation_id: Uuid,

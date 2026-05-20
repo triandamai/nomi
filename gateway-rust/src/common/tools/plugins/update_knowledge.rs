@@ -37,12 +37,12 @@ impl NomiToolPlugin for UpdateKnowledgeBasePlugin {
             let image_url = if let Some(url) = params.image_url {
                 Some(dispatcher.storage.get_full_url(&url))
             } else if let Some(conv_id) = dispatcher.conversation_id {
-                match crate::common::repository::pending_media_repo::get_pending_media(
+                match crate::common::repository::message_repo::get_latest_unprocessed_media(
                     &dispatcher.pool, conv_id,
                 )
                 .await
                 {
-                    Ok(Some(media)) => Some(media.media_url),
+                    Ok(Some((url, _type))) => Some(url),
                     _ => None,
                 }
             } else {
@@ -152,13 +152,6 @@ impl NomiToolPlugin for UpdateKnowledgeBasePlugin {
                                 if let Ok(row) = updated_convo {
                                     cumulative_tokens = row.cumulative_tokens;
                                 }
-
-                                // Cleanup: Clear pending media from table
-                                let _ =
-                                    crate::common::repository::pending_media_repo::delete_pending_media(
-                                        &dispatcher.pool, conv_id,
-                                    )
-                                        .await;
                             }
 
                             if let Err(e) = tx.commit().await {

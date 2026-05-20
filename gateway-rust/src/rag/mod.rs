@@ -1,12 +1,9 @@
 pub mod rag_model;
 
-use crate::AppState;
-use crate::common::agent::agent_model::MediaClassification;
-use crate::common::agent::classification::fetch_media_from_storage;
 use crate::prompts::PromptRegistry;
 use crate::rag::rag_model::EmbeddingResponse;
 use anyhow::anyhow;
-use gemini_rust::{Blob, Content, Message, Part, Role, UsageMetadata};
+use gemini_rust::UsageMetadata;
 use reqwest::Client as ReqwestClient;
 use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
@@ -320,72 +317,4 @@ pub(crate) async fn trigger_memory_consolidation(
             .to_i64()
             .unwrap_or(0),
     ))
-}
-
-pub(crate) async fn classify_media_context(
-    state: &AppState,
-    media_url: &str,
-    text_content: Option<String>,
-) -> anyhow::Result<MediaClassification> {
-    let mut prompt = PromptRegistry::media_classification().to_string();
-
-    if let Some(text) = text_content {
-        prompt.push_str(&format!("\n\nUser text provided: \"{}\"", text));
-    }
-
-    let (mime_type, base64_data) = fetch_media_from_storage(state, media_url).await?;
-
-    info!(image_url = %media_url);
-    info!("MIME type is {}", mime_type);
-    // info!("Base64 data is {}", base64_data);
-    let res = state
-        .gemini
-        .generate_content()
-        .with_message(Message {
-            role: Role::User,
-            content: Content {
-                parts: Some(vec![
-                    Part::Text {
-                        text: prompt, // The Instruction + User Context
-                        thought: None,
-                        thought_signature: None,
-                    },
-                    Part::InlineData {
-                        inline_data: Blob {
-                            mime_type,
-                            data: base64_data, // The Image
-                        },
-
-                        media_resolution: None,
-                    },
-                ]),
-                role: Some(Role::User),
-            },
-        })
-        .execute()
-        .await?;
-
-    if let Some(usage) = &res.usage_metadata {
-        info!(
-            "Media classification tokens: prompt={}, candidates={}, total={}",
-            usage.prompt_token_count.unwrap_or(0),
-            usage.candidates_token_count.unwrap_or(0),
-            usage.total_token_count.unwrap_or(0)
-        );
-    }
-
-    let text = res.text().trim().to_uppercase();
-    if text.contains("EXPENSE_RECEIPT") {
-        Ok(MediaClassification::ExpenseReceipt)
-    } else if text.contains("MOTORCYCLE_MAINTENANCE") {
-        Ok(MediaClassification::MotorcycleMaintenance)
-    } else if text.contains("TECHNICAL_DOC") {
-        Ok(MediaClassification::TechnicalDoc)
-    } else if text.contains("NATURE") {
-        Ok(MediaClassification::Nature)
-    } else if text.contains("IGNORE") {
-        Ok(MediaClassification::Ignore)
-    } else {
-        Ok(MediaClassification::Other)
-    }
 }

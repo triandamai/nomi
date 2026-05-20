@@ -1,6 +1,6 @@
 <script lang="ts">
     import {onMount} from 'svelte';
-    import {ChevronDown, ChevronRight, Cpu, ExternalLink} from 'lucide-svelte';
+    import {ChevronDown, ChevronRight, Cpu, ExternalLink, FileText, Play, Music} from 'lucide-svelte';
     import {mdIt, formatDate} from "$lib/utils";
     import {env} from '$env/dynamic/public';
 
@@ -8,6 +8,10 @@
         content = '',
         thought = '',
         image_url = '',
+        video_url = '',
+        audio_url = '',
+        document_url = '',
+        sticker_url = '',
         onToggleThought = () => {}
     } = $props();
 
@@ -124,6 +128,62 @@
                 </a>
             </div>
         {/if}
+
+        {#if sticker_url}
+            <div class="mb-4 rounded-xl overflow-hidden group/sticker relative w-fit">
+                <img
+                        src={sticker_url.startsWith("http") ? sticker_url : FILE_URL + sticker_url}
+                        alt="Sticker"
+                        class="max-w-[150px] h-auto object-contain"
+                />
+            </div>
+        {/if}
+
+        {#if video_url}
+            <div class="mb-4 rounded-xl overflow-hidden border border-slate-800 bg-slate-900/50 group/video relative max-w-lg">
+                <video
+                        src={video_url.startsWith("http") ? video_url : FILE_URL + video_url}
+                        controls
+                        class="w-full h-auto max-h-[400px]"
+                >
+                    <track kind="captions" />
+                </video>
+            </div>
+        {/if}
+
+        {#if audio_url}
+            <div class="mb-4 p-3 rounded-xl border border-slate-800 bg-slate-900/50 flex items-center gap-4 max-w-sm">
+                <div class="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0 text-blue-400">
+                    <Music class="w-5 h-5"/>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Voice Note / Audio</div>
+                    <audio
+                            src={audio_url.startsWith("http") ? audio_url : FILE_URL + audio_url}
+                            controls
+                            class="w-full h-8"
+                    ></audio>
+                </div>
+            </div>
+        {/if}
+
+        {#if document_url}
+            <a
+                    href={document_url.startsWith("http") ? document_url : FILE_URL + document_url}
+                    target="_blank"
+                    class="mb-4 p-4 rounded-xl border border-slate-800 bg-slate-900/50 flex items-center gap-4 max-w-md hover:bg-slate-800/80 transition-all group/doc"
+            >
+                <div class="w-12 h-12 rounded-lg bg-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-400 group-hover/doc:scale-110 transition-transform">
+                    <FileText class="w-6 h-6"/>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Attached Document</div>
+                    <div class="text-sm font-medium text-slate-200 truncate">{document_url.split('/').pop()}</div>
+                </div>
+                <ExternalLink class="w-4 h-4 text-slate-500 group-hover/doc:text-emerald-400"/>
+            </a>
+        {/if}
+
         {@html renderedContent}
     </div>
 </div>

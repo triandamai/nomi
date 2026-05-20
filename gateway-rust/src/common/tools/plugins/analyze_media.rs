@@ -43,14 +43,14 @@ impl NomiToolPlugin for AnalyzeMediaPlugin {
             let media_url = if let Some(url) = params.media_url {
                 url
             } else {
-                // Retrieve from pending_media table
-                match crate::common::repository::pending_media_repo::get_pending_media(
+                // Retrieve from messages table
+                match crate::common::repository::message_repo::get_latest_unprocessed_media(
                     &dispatcher.pool,
                     conversation_id,
                 )
                 .await
                 {
-                    Ok(Some(media)) => media.media_url,
+                    Ok(Some((url, _type))) => url,
                     Ok(None) => {
                         return Ok("No recent image found to analyze. Please upload an image first!".to_string());
                     }

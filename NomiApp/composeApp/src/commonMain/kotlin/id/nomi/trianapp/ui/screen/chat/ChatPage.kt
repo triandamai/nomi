@@ -81,6 +81,7 @@ fun PageChat(
 
     // Initial composition / Navigation load
     LaunchedEffect(viewModel) {
+        viewModel.loadActiveConversation()
         sheetState.show()
     }
 

@@ -312,6 +312,10 @@
                                 content={msg.content}
                                 thought={msg.thought}
                                 image_url={msg.image_url}
+                                video_url={msg.video_url}
+                                audio_url={msg.audio_url}
+                                document_url={msg.document_url}
+                                sticker_url={msg.sticker_url}
                                 onToggleThought={(expanded: boolean) => handleToggleThought(expanded, index === chatStore.messages.length - 1)}
                         />
                     </div>

@@ -165,6 +165,13 @@ impl GuardrailService {
     /// 2. Tier 2: Multilingual Semantic Vector Lookup
     /// 3. Tier 3: Security Threshold Tripwire
     pub async fn is_injection_detected(&self, message_body: &str) -> anyhow::Result<bool> {
+        // Guard: Empty message body (Common when uploading media without text)
+        // Gemini embedding API returns 400 Bad Request for empty strings.
+        if message_body.trim().is_empty() {
+            info!("Guardrail: Empty message body, skipping injection detection.");
+            return Ok(false);
+        }
+
         // Tier 1: Cross-Lingual Adversarial Pattern Matching (0 Token Cost)
         let body_lower = message_body.to_lowercase();
         

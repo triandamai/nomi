@@ -51,7 +51,7 @@ class ChatViewModel(
 
     private var conversationId: String? = null
 
-    private fun loadActiveConversation() {
+     fun loadActiveConversation() {
         val id = getActiveConversationUseCase()
         if (id != null) {
             conversationId = id
@@ -77,7 +77,7 @@ class ChatViewModel(
     }
 
     init {
-        loadActiveConversation()
+      //  loadActiveConversation()
         
         viewModelScope.launch {
             getProfileUseCase.fetchProfile()

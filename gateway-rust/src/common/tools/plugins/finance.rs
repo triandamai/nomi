@@ -67,6 +67,10 @@ impl NomiToolPlugin for FinancePlugin {
                         },
                         "description": "List of items in the expense (optional, used with log_expense)."
                     },
+                    "image_url": {
+                        "type": "string",
+                        "description": "The URL of the receipt image (optional). If provided, this image will be linked to the expense and marked as processed."
+                    },
                     "user_message": {
                         "type": "string",
                         "description": "The original user message to provide context"
@@ -163,7 +167,27 @@ impl FinancePlugin {
         {
             Ok(_) => {
                 if let Some(cid) = dispatcher.conversation_id {
-                    let _ = crate::common::repository::message_repo::mark_last_media_processed(&dispatcher.pool, cid).await;
+                    // Mark the specific image_url as processed if provided, 
+                    // otherwise fallback to marking the latest unprocessed media.
+                    if let Some(image_url) = args["image_url"].as_str() {
+                        let base_url = dotenvy::var("PUBLIC_GATEWAY_URL").unwrap_or("http://localhost:8000/api".to_string());
+                        let file_path = if image_url.starts_with("http") && image_url.contains(base_url.as_str()) {
+                            image_url.replace(format!("{}/files/", base_url).as_str(), "")
+                        } else {
+                            image_url.to_string()
+                        };
+
+                        let _ = sqlx::query!(
+                            "UPDATE messages
+                             SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{is_processed}', 'true')
+                             WHERE conversation_id = $1 AND image_url = $2",
+                            cid, file_path
+                        )
+                        .execute(&dispatcher.pool)
+                        .await;
+                    } else {
+                        let _ = crate::common::repository::message_repo::mark_last_media_processed(&dispatcher.pool, cid).await;
+                    }
                 }
                 let content = format!(
                     "Expense of {} at {} logged successfully under {}. Attached image linked and cleared from pending queue.",

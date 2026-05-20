@@ -1,7 +1,6 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
 use crate::common::tools::tools_model::GetLatestMediaContextParameters;
 use crate::common::tools::ToolDispatcher;
-use chrono_tz::Tz;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
 use serde_json::Value;
@@ -37,31 +36,24 @@ impl NomiToolPlugin for GetLatestMediaContextPlugin {
                 }
             };
 
-            match crate::common::repository::pending_media_repo::get_pending_media(
+            match crate::common::repository::message_repo::get_latest_unprocessed_media(
                 &dispatcher.pool,
                 conversation_id,
             )
             .await
             {
-                Ok(Some(media)) => {
-                    let tz_wib: Tz = "Asia/Jakarta".parse().unwrap();
-                    let created_at_wib = media.created_at.with_timezone(&tz_wib);
-                    let time_str = created_at_wib.format("%Y-%m-%d %H:%M WIB").to_string();
-
+                Ok(Some((_media_url, media_type))) => {
                     let content = format!(
                         "I've retrieved the latest media from our 'Visual Buffer':
 
 
                         - **Type:** {}
 
-                        - **Buffered At:** **{}**
-
                         - **Status:** Pending Analysis 🔍
 
 
                         What would you like me to do with this? I can log it as an expense, turn it into a sticker, or analyze its content for you! ✨",
-                        media.media_type.to_uppercase(),
-                        time_str
+                        media_type.to_uppercase(),
                     );
 
                     Ok(content)

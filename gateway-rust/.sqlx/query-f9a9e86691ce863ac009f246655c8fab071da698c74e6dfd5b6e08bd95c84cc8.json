@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE messages\n                             SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{is_processed}', 'true')\n                             WHERE conversation_id = $1 AND image_url = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f9a9e86691ce863ac009f246655c8fab071da698c74e6dfd5b6e08bd95c84cc8"
+}

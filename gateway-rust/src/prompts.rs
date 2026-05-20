@@ -160,16 +160,19 @@ impl PromptRegistry {
         - If a user asks to turn an image into a sticker (e.g., 'Make this a sticker', 'Sticker-in', 'Jadikan sticker'), use the `make_sticker` tool.\n
         - If no URL is provided, the tool will automatically use the most recent image from the conversation.\n
 
-        **Media Analysis:**
-        - If a user asks 'What is in this image/file?', 'Analyze this', or 'Summarize the audio/video', use the `analyze_media` tool.\n
-        - You MUST use the `analyze_media` tool to 'see' or 'hear' the content. Even if the file URL is in the history, your internal capabilities are only triggered via this tool.\n
+        **Media Analysis & Vision:**
+        - You have native multimodal capabilities. Before you receive a message, our system 'hydrates' any media attachments (Images, Stickers, Videos, Audio, Documents) into a rich description.
+        - You will see this as a bracketed header: `[Media Context Description: ...]`. 
+        - TREAT THIS DESCRIPTION AS IF YOU SAW OR HEARD THE FILE YOURSELF. Do not claim you cannot 'see', 'hear', or 'process' media files.
+        - **Mismatched Content Rule (STRICT)**: If the user asks for a specific task (log expense, set reminder, make sticker, analyze document, etc.) but the provided media (Image, Sticker, Video, Audio, or PDF) is clearly UNRELATED (e.g., a music audio file sent for an expense, or a text document sent for a sticker), inform the user about the mismatch politely and STOP. DO NOT ask for missing details, parameters, or data (like amounts, dates, or items) if the source context is invalid.
+        - If the description is clear (e.g., contains a total amount and merchant), proceed directly to the tool (like `log_expense`).
+        - If the description is missing or you need more specific details not captured in the hydration, use the `analyze_media` tool.
 
         **Expense Logging:**\n
-        - If the user instructs you to log an expense or make a sticker, look at the most recent image in the conversation history and use your extraction tools on it immediately.\n
-        - DO NOT ask the user for details if they are clearly visible in the image. You must first use your internal Vision capabilities to extract the merchant name, total amount, and items. Only ask for clarification if the image is unreadable or blurry.\n
-        - USE REAL DATA from the receipt, NOT placeholder text (like Lorem Ipsum).\n
-        - If a user provides an expense (e.g., 'Log this as expense', 'I spent $50 at Starbucks'), use the `log_expense` tool.\n
-        - If you have an image URL (from current message or pending context), include it in the tool parameters.\n
+        - When a user says 'log this', 'save as expense', or provides spending info, check for a `[Media Context Description]` or an `Image URL` in the context.
+        - USE THE DATA from the description (Merchant, Total, Items) to fill the `manage_finance` parameters.
+        - If you have an image URL (either from the current message or the pending visual context), pass it into the `image_url` parameter of `log_expense`. This clears it from the buffer.
+        - DO NOT ask the user for details if they are present in the multimodal description.
 
         **Expense Summary:**\n
         - When a user asks \"How much did I spend today?\" or \"Show my monthly summary,\" use the `get_expense_summary` tool.\n
@@ -209,14 +212,6 @@ impl PromptRegistry {
 
     pub fn media_with_text_instruction() -> &'static str {
         "[SYSTEM: Follow the user's text instruction using the provided image as context. Do not ask for clarification if the intent is clear from the text. Prioritize the text command.]\n"
-    }
-
-    pub fn pending_media_context(url: &str) -> String {
-        format!(
-            "### Pending Media Context\n
-             [SYSTEM: There is a pending image from the previous turn: {}. If the user's current request implies an action on an image (like 'save as expense', 'make a sticker', or 'save to memory'), use this URL.]\n",
-            url
-        )
     }
 
     pub fn media_context_expense(merchant: &str, total: &str, category: &str, items: &str) -> String {

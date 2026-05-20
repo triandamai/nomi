@@ -138,6 +138,10 @@ fun MainApp() {
                     viewModel = viewModel,
                     onConversationSelected = { id ->
                         viewModel.selectConversation(id)
+                        val find = backStack.withIndex().find { it.value is Route.Chat }
+                        if (find != null){
+                            backStack.removeAt(find.index)
+                        }
                         backStack.add(Route.Chat)
                     }
                 )

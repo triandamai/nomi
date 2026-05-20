@@ -75,7 +75,11 @@ impl IntentClassifierService {
         chat_history_summary: &str
     ) -> anyhow::Result<ClassificationResult> {
         // 1. Context Vector Creation
-        let context_payload = format!("History: {}\nMessage: {}", chat_history_summary, user_message);
+        let context_payload = format!(
+            "History: {}\nMessage: {}",
+            chat_history_summary,
+            user_message
+        );
         let embedding_res = match get_embedding(&dispatcher.gemini_api_key, &context_payload).await {
             Ok(res) => res,
             Err(e) => return Err(anyhow::anyhow!("Embedding error: {}", e)),
@@ -124,7 +128,8 @@ impl IntentClassifierService {
 
         let user_prompt = format!(
             "History: {}\nUser Message: {}",
-            chat_history_summary, user_message
+            chat_history_summary,
+            user_message
         );
 
         let res = dispatcher.gemini.generate_content()
