@@ -67,5 +67,7 @@ pub struct PresenceMessage {
 #[derive(Debug, Clone)]
 pub enum WhatsAppCommand {
     Logout,
-    GenerateNewQr
+    GenerateNewQr,
+    Restart,
+    SendTyping(String, bool)
 }

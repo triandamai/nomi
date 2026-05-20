@@ -6,6 +6,7 @@ use axum::{
 };
 use dotenvy::{dotenv, var};
 use std::sync::Arc;
+use std::time::Duration;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
@@ -74,32 +75,39 @@ async fn main() -> anyhow::Result<()> {
     let wa_qr = qr_code.clone();
     let storage = storage_s3.clone();
     let state_clone = state.clone();
-    tokio::spawn(async move {
-        let s3 = storage.clone();
-        let db_path =
-            std::env::var("WHATSAPP_DB_PATH").unwrap_or_else(|_| "whatsapp.db".to_string());
-        match feature::whatsapp::WhatsAppWorker::new(&db_path, wa_redis, storage, wa_qr).await {
-            Ok((worker, mut bot)) => {
-                info!("Starting WhatsApp bot...");
-                let client = bot.client();
-                // Run the bot event loop and task processor
-                match bot.run().await {
-                    Ok(_handle) => {
-                        // Connect the client to WhatsApp
-                        tokio::spawn(async move {
-                            if let Err(e) = client.connect().await {
-                                error!("WhatsApp client connection failed: {}", e);
-                            }
-                        });
-                    }
-                    Err(e) => error!("Failed to run WhatsApp bot: {}", e),
-                }
 
-                // Listen for outbound messages and commands for WhatsApp
-                loop {
-                    tokio::select! {
+    tokio::spawn(async move {
+        loop {
+            let s3 = storage.clone();
+            let db_path =
+                std::env::var("WHATSAPP_DB_PATH").unwrap_or_else(|_| "whatsapp.db".to_string());
+            
+            info!("Initializing WhatsApp worker...");
+            match feature::whatsapp::WhatsAppWorker::new(&db_path, wa_redis.clone(), storage.clone(), wa_qr.clone()).await {
+                Ok((worker, mut bot)) => {
+                    info!("Starting WhatsApp bot...");
+                    let client = bot.client();
+                    
+                    match bot.run().await {
+                        Ok(_handle) => {
+                            tokio::spawn(async move {
+                                if let Err(e) = client.connect().await {
+                                    error!("WhatsApp client connection failed: {}", e);
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            error!("Failed to run WhatsApp bot: {}", e);
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            continue;
+                        }
+                    }
+
+                    let mut restart = false;
+                    while !restart {
+                        tokio::select! {
                             Some(msg) = wa_rx.recv() => {
-                                if let Err(e) = worker.send_message(msg,&s3).await {
+                                if let Err(e) = worker.send_message(msg, &s3).await {
                                     error!("Failed to send WhatsApp message: {}", e);
                                 }
                             }
@@ -109,19 +117,40 @@ async fn main() -> anyhow::Result<()> {
                                         if let Err(e) = worker.logout(&state_clone).await {
                                             error!("Failed to logout from WhatsApp: {}", e);
                                         }
+                                        restart = true;
                                     }
                                     feature::WhatsAppCommand::GenerateNewQr => {
                                         if let Err(e) = worker.regenerate(&state_clone).await {
                                             error!("Failed to regenerate qr from Whatsapp: {}", e);
                                         }
+                                        restart = true;
+                                    }
+                                    feature::WhatsAppCommand::Restart => {
+                                        info!("Restarting WhatsApp worker...");
+                                        let _ = worker.client.disconnect().await;
+                                        restart = true;
+                                    }
+                                    feature::WhatsAppCommand::SendTyping(chat_id, is_typing) => {
+                                        if let Err(e) = worker.send_presence(&chat_id, is_typing).await {
+                                            error!("Failed to send WhatsApp typing: {}", e);
+                                        }
                                     }
                                 }
                             }
-                            else => break,
+                            else => {
+                                break;
+                            }
                         }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to initialize WhatsApp worker: {}", e);
+                    tokio::time::sleep(Duration::from_secs(10)).await;
                 }
             }
-            Err(e) => error!("Failed to initialize WhatsApp worker: {}", e),
+            
+            info!("WhatsApp worker loop ended, re-initializing in 5 seconds...");
+            tokio::time::sleep(Duration::from_secs(5)).await;
         }
     });
 

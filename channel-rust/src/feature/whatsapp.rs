@@ -25,9 +25,9 @@ use wa_rs_tokio_transport::TokioWebSocketTransportFactory;
 use wa_rs_ureq_http::UreqHttpClient;
 
 pub struct WhatsAppWorker {
-    client: Arc<Client>,
-    qr_code: Arc<Mutex<Option<String>>>,
-    redis: RedisClient,
+    pub client: Arc<Client>,
+    pub qr_code: Arc<Mutex<Option<String>>>,
+    pub redis: RedisClient,
 }
 
 impl WhatsAppWorker {
@@ -390,15 +390,48 @@ impl WhatsAppWorker {
             }
         }
 
-        let mut payload = Message::default();
-        payload.conversation = Some(formatted_text);
-        self.client.send_message(chat.clone(), payload).await?;
+        if !formatted_text.is_empty() {
+            info!("Sending text message to WhatsApp: {}", chat);
+            let mut payload = Message::default();
+            payload.conversation = Some(formatted_text);
+            if let Err(e) = self.client.send_message(chat.clone(), payload).await {
+                error!("Failed to send text message to WhatsApp: {}", e);
+                return Err(anyhow::anyhow!("WhatsApp send error: {}", e));
+            }
+        }
+        
+        Ok(())
+    }
+
+    pub async fn send_presence(
+        &self,
+        chat_id: &str,
+        is_typing: bool,
+    ) -> anyhow::Result<()> {
+        let chat = Jid::from_str(chat_id)
+            .map_err(|e| anyhow::anyhow!("Invalid chat id: {}", e))?;
+        
+        if is_typing {
+            let _ = self.client.chatstate().send_composing(&chat).await;
+        } else {
+            let _ = self.client.chatstate().send_paused(&chat).await;
+        }
+        
         Ok(())
     }
 
     pub async fn regenerate(&self, _state: &AppState) -> anyhow::Result<()> {
-        info!("Regenarate qr wa...");
-
+        info!("Regenerating WhatsApp QR...");
+        let _ = self.client.disconnect().await;
+        
+        // Remove DB files to force a new session
+        let _ = tokio::fs::remove_file("/app/data/whatsapp.db").await;
+        let _ = tokio::fs::remove_file("/app/data/whatsapp.db-shm").await;
+        let _ = tokio::fs::remove_file("/app/data/whatsapp.db-wal").await;
+        
+        let mut qr_lock = self.qr_code.lock().await;
+        *qr_lock = None;
+        
         Ok(())
     }
     pub async fn logout(&self, _state: &AppState) -> anyhow::Result<()> {

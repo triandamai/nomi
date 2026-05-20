@@ -77,7 +77,14 @@ async fn handle_presence_message(state: AppState, msg: PresenceMessage) -> anyho
             "telegram" => {
                 crate::feature::telegram::send_telegram_typing(state.bot, msg.chat_id).await?;
             }
+            "whatsapp" => {
+                let _ = state.wa_cmd_tx.send(crate::feature::WhatsAppCommand::SendTyping(msg.chat_id, true));
+            }
             _ => {}
+        }
+    } else if msg.status == "paused" {
+        if msg.channel == "whatsapp" {
+            let _ = state.wa_cmd_tx.send(crate::feature::WhatsAppCommand::SendTyping(msg.chat_id, false));
         }
     }
     Ok(())
