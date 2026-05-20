@@ -56,7 +56,7 @@ impl NomiToolPlugin for UserPlugin {
     }
 
     fn matching_intents(&self) -> &[&str] {
-        &["COMMUNICATION", "DASHBOARD", "GENERAL"]
+        &["COMMUNICATION", "DASHBOARD", "GENERAL","SEARCH_USER","FIND_USER","CHECK_USER"]
     }
 
     fn execute<'a>(

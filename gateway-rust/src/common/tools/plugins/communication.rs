@@ -38,7 +38,7 @@ impl NomiToolPlugin for CommunicationPlugin {
     }
 
     fn matching_intents(&self) -> &[&str] {
-        &["COMMUNICATION"]
+        &["COMMUNICATION","SEND_MESSAGE","DM"]
     }
 
     fn execute<'a>(

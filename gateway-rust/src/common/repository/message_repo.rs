@@ -4,7 +4,10 @@ use sqlx::PgPool;
 use tracing::info;
 use uuid::Uuid;
 
-pub async fn mark_last_media_processed(pool: &sqlx::PgPool, conversation_id: Uuid) -> anyhow::Result<()> {
+pub async fn mark_last_media_processed(
+    pool: &sqlx::PgPool,
+    conversation_id: Uuid,
+) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
 
     sqlx::query!(
@@ -19,8 +22,8 @@ pub async fn mark_last_media_processed(pool: &sqlx::PgPool, conversation_id: Uui
          )",
         conversation_id
     )
-    .execute(&mut *tx)
-    .await?;
+        .execute(&mut *tx)
+        .await?;
 
     tx.commit().await?;
     Ok(())
@@ -42,17 +45,27 @@ pub async fn get_latest_unprocessed_media(
         "#,
         conversation_id
     )
-    .fetch_optional(pool)
-    .await?;
+        .fetch_optional(pool)
+        .await?;
 
     info!("get_latest_unprocessed_media returned {:?}", row);
 
     if let Some(r) = row {
-        if let Some(url) = r.image_url { return Ok(Some((url, "image".to_string()))); }
-        if let Some(url) = r.video_url { return Ok(Some((url, "video".to_string()))); }
-        if let Some(url) = r.audio_url { return Ok(Some((url, "audio".to_string()))); }
-        if let Some(url) = r.document_url { return Ok(Some((url, "document".to_string()))); }
-        if let Some(url) = r.sticker_url { return Ok(Some((url, "sticker".to_string()))); }
+        if let Some(url) = r.image_url {
+            return Ok(Some((url, "image".to_string())));
+        }
+        if let Some(url) = r.video_url {
+            return Ok(Some((url, "video".to_string())));
+        }
+        if let Some(url) = r.audio_url {
+            return Ok(Some((url, "audio".to_string())));
+        }
+        if let Some(url) = r.document_url {
+            return Ok(Some((url, "document".to_string())));
+        }
+        if let Some(url) = r.sticker_url {
+            return Ok(Some((url, "sticker".to_string())));
+        }
     }
 
     Ok(None)
@@ -71,11 +84,13 @@ pub async fn save_message(
     video_url: Option<String>,
     audio_url: Option<String>,
     document_url: Option<String>,
-    sticker_url: Option<String>
+    sticker_url: Option<String>,
 ) -> anyhow::Result<MessageItem> {
-    info!("Saving message to conversation:{:?} from user:{:?}",conversation_id,user_id);
+    info!(
+        "Saving message to conversation:{:?} from user:{:?}",
+        conversation_id, user_id
+    );
     let mut tx = pool.begin().await?;
-
 
     let save_message = sqlx::query!(
         "INSERT INTO messages (conversation_id, role, content, thought, user_id, prompt_tokens, answer_tokens, total_tokens, image_url, video_url, audio_url, document_url, sticker_url)
@@ -118,8 +133,8 @@ pub async fn save_message(
         meta,
         conversation_id
     )
-    .execute(&mut *tx)
-    .await;
+        .execute(&mut *tx)
+        .await;
 
     if let Err(err) = save_convo {
         info!("Saving message failed: {}", err);
@@ -130,7 +145,7 @@ pub async fn save_message(
     match tx.commit().await {
         Ok(_) => {
             info!("Successfully saved message");
-            
+
             // Parallel background telemetry logging (Moved AFTER commit to prevent FK violations and orphaned logs)
             let pool_clone = pool.clone();
             let conv_id = conversation_id.clone();
@@ -140,7 +155,7 @@ pub async fn save_message(
             let i_tokens = prompt_tokens as i64;
             let o_tokens = answer_tokens as i64;
             let t_tokens = total_tokens as i64;
-            
+
             tokio::spawn(async move {
                 let _ = crate::services::ambient_soul::AmbientSoulService::log_token_transaction(
                     &pool_clone,
@@ -152,13 +167,14 @@ pub async fn save_message(
                     i_tokens,
                     o_tokens,
                     t_tokens,
-                ).await;
+                )
+                .await;
             });
 
             Ok(MessageItem {
                 id: row.id,
                 conversation_id,
-                display_name:None,
+                display_name: None,
                 role: role.to_string(),
                 content: content.to_string(),
                 thought: thought.map(|s| s.to_string()),

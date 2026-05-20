@@ -50,11 +50,21 @@ pub async fn process_v2_message(
     // ======== Media Context Hydration (Multimodal Interpreter) ========//
     let mut hydrated_text = text_content.clone();
     let mut media_to_hydrate = Vec::new();
-    if let Some(url) = &msg.image_url { media_to_hydrate.push((url, "image/jpeg")); }
-    if let Some(url) = &msg.audio_url { media_to_hydrate.push((url, "audio/mpeg")); }
-    if let Some(url) = &msg.video_url { media_to_hydrate.push((url, "video/mp4")); }
-    if let Some(url) = &msg.doc_url { media_to_hydrate.push((url, "application/pdf")); }
-    if let Some(url) = &msg.sticker_url { media_to_hydrate.push((url, "image/webp")); }
+    if let Some(url) = &msg.image_url {
+        media_to_hydrate.push((url, "image/jpeg"));
+    }
+    if let Some(url) = &msg.audio_url {
+        media_to_hydrate.push((url, "audio/mpeg"));
+    }
+    if let Some(url) = &msg.video_url {
+        media_to_hydrate.push((url, "video/mp4"));
+    }
+    if let Some(url) = &msg.doc_url {
+        media_to_hydrate.push((url, "application/pdf"));
+    }
+    if let Some(url) = &msg.sticker_url {
+        media_to_hydrate.push((url, "image/webp"));
+    }
 
     if !media_to_hydrate.is_empty() {
         let interpreter = crate::services::media_interpreter::MediaInterpreterService;
@@ -71,7 +81,10 @@ pub async fn process_v2_message(
 
         let mut descriptions = Vec::new();
         for (url, mime) in media_to_hydrate {
-            match interpreter.hydrate_media_context_string(&boot_dispatcher, url, mime).await {
+            match interpreter
+                .hydrate_media_context_string(&boot_dispatcher, url, mime)
+                .await
+            {
                 Ok((hydrated, _)) => {
                     // Extract the description from "[Media Context Description: <desc>] <original>"
                     if let Some(start) = hydrated.find("Description: ") {
@@ -79,13 +92,17 @@ pub async fn process_v2_message(
                             descriptions.push(hydrated[start + 13..end].to_string());
                         }
                     }
-                },
+                }
                 Err(e) => error!("Media Interpreter: Failed to hydrate {}: {}", mime, e),
             }
         }
 
         if !descriptions.is_empty() {
-            hydrated_text = format!("[Media Context: {}] {}", descriptions.join(" | "), text_content);
+            hydrated_text = format!(
+                "[Media Context: {}] {}",
+                descriptions.join(" | "),
+                text_content
+            );
         }
     }
 
@@ -163,8 +180,10 @@ pub async fn process_v2_message(
         }
     }
 
-
-    let guard_rail = crate::services::guardrail::GuardrailService::new(state.pool.clone(), state.gemini_api_key.clone());
+    let guard_rail = crate::services::guardrail::GuardrailService::new(
+        state.pool.clone(),
+        state.gemini_api_key.clone(),
+    );
 
     let is_injection = guard_rail
         .is_injection_detected(msg.text_content.as_str())
@@ -183,7 +202,7 @@ pub async fn process_v2_message(
 
     if is_injection {
         info!("Guardrail: Injection detected. Injecting rejection prompt.");
-        
+
         let _ = orchestrator
             .process_v2_message_with_intent(
                 state.clone(),
@@ -677,7 +696,6 @@ pub async fn send_message_to_subscriber(
     let pool = state.pool.clone();
     let outbound_message = data.clone();
     tokio::spawn(async move {
-        info!("SEND SUBS MESSAGE {:?}",data);
         let convo = sqlx::query!(
             "SELECT conversation_type,id FROM conversations WHERE id = $1",
             conversation_id
@@ -698,7 +716,6 @@ pub async fn send_message_to_subscriber(
         }
 
         if let Ok(convo) = convo {
-            
             for member in members {
                 let _ = state
                     .dispatch(AppEvent::user(
@@ -708,8 +725,6 @@ pub async fn send_message_to_subscriber(
                     ))
                     .await;
             }
-
-            info!("SEND MESSAGE CONVO IS {:?}",convo);
 
             // --- Multi-bubble Sequential Burst Strategy ---
             let bubbles = crate::common::splitter::split_into_bubbles(&outbound_message.content);
@@ -726,7 +741,7 @@ pub async fn send_message_to_subscriber(
                     .fetch_all(&pool)
                     .await
                     .unwrap_or(Vec::new());
-                info!("SEND MESSAGE PRIVATE channels:{:?}",channel_info);
+
                 for channel in channel_info {
                     for (i, bubble_text) in bubbles.iter().enumerate() {
                         let outbound = OutboundMessage {
@@ -781,7 +796,6 @@ pub async fn send_message_to_subscriber(
                     }
                 }
             } else {
-              
                 let channel_info = sqlx::query!(
                     "SELECT c.conversation_id, c.channel, c.external_group_id
                             FROM channel_group c
@@ -792,7 +806,7 @@ pub async fn send_message_to_subscriber(
                 .fetch_all(&pool)
                 .await
                 .unwrap_or(Vec::new());
-                info!("SEND MESSAGE GROUP channels:{:?}",channel_info);
+
                 for channel in channel_info {
                     for (i, bubble_text) in bubbles.iter().enumerate() {
                         let outbound = OutboundMessage {
