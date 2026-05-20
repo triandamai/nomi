@@ -23,6 +23,10 @@ impl NomiToolPlugin for ReadWorkspaceFilePlugin {
         .unwrap()
     }
 
+    fn rules(&self) -> &str {
+        ""
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["READ_FILE", "WORKSPACE_INQUIRY", "STORAGE", "FULL_REGISTRY"]
     }

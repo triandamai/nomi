@@ -262,7 +262,7 @@ impl V2AgentOrchestrator {
                 let full_url = state.storage.get_full_url(&url);
                 combined.push_str("\n");
                 combined.push_str(&format!(
-                    "### Pending Visual Context\n[SYSTEM: The user recently uploaded an image that is waiting for action: {}. If the current request implies using an image, use this URL.]\n",
+                    "### ACTIVE VISUAL BUFFER\n- Current File: {}\n- Instruction: This file is currently 'Active' and ready for tools like `create_sticker` or `log_expense`. Use the URL provided here for the tool call if the user's intent matches.\n",
                     full_url
                 ));
             }
@@ -299,7 +299,19 @@ impl V2AgentOrchestrator {
             // }
 
             if !intents_val.contains(&"GENERAL".to_string()) || intents_val.len() > 1 {
-                let domain_rules = crate::prompts::PromptRegistry::domain_logic(intents_val);
+                // Modular Domain Logic from Plugins
+                let mut domain_rules = String::new();
+                for plugin in dispatcher.plugins.values() {
+                    let plugin_intents = plugin.matching_intents();
+                    if intents_val.iter().any(|i| plugin_intents.contains(&i.as_str())) 
+                        || intents_val.contains(&"FULL_REGISTRY".to_string()) 
+                    {
+                        let rules = plugin.rules();
+                        if !rules.is_empty() && !domain_rules.contains(rules) {
+                            domain_rules.push_str(rules);
+                        }
+                    }
+                }
                 combined.push_str(&domain_rules);
             }
 
@@ -733,7 +745,7 @@ impl V2AgentOrchestrator {
             self.state.clone(),
         );
 
-        let build_system_prompt = || -> String {
+        let build_system_prompt = |intents_val: &[String]| -> String {
             let mut combined = String::new();
 
             let timezone_str = "Asia/Jakarta";
@@ -787,13 +799,31 @@ impl V2AgentOrchestrator {
 
             combined.push_str("\n### Orchestrator Instructions\n");
             combined.push_str(crate::prompts::PromptRegistry::orchestrator_instructions());
-            combined.push_str(crate::prompts::PromptRegistry::tool_usage_guidelines());
+
+            // Modular Domain Logic from Plugins
+            let mut domain_rules = String::new();
+            for plugin in dispatcher.plugins.values() {
+                let plugin_intents = plugin.matching_intents();
+                if intents_val.iter().any(|i| plugin_intents.contains(&i.as_str())) 
+                    || intents_val.contains(&"FULL_REGISTRY".to_string()) 
+                {
+                    let rules = plugin.rules();
+                    if !rules.is_empty() && !domain_rules.contains(rules) {
+                        domain_rules.push_str(rules);
+                    }
+                }
+            }
+            combined.push_str(&domain_rules);
+
+            if intents_val.contains(&"FULL_REGISTRY".to_string()) {
+                combined.push_str(crate::prompts::PromptRegistry::tool_usage_guidelines());
+            }
 
             combined
         };
 
-        let system_prompt = build_system_prompt();
-        let intents = vec!["FULL_REGISTRY".to_string()];
+        let intents_list = vec!["FULL_REGISTRY".to_string()];
+        let system_prompt = build_system_prompt(&intents_list);
 
         let mut loop_count = 0;
         let max_loops = 10;
@@ -819,7 +849,7 @@ impl V2AgentOrchestrator {
             };
 
             let result =
-                crate::common::agent::send_prompt(&dispatcher, current_actor, &intents).await;
+                crate::common::agent::send_prompt(&dispatcher, current_actor, &intents_list).await;
 
             match result {
                 Ok((response, chunk)) => {

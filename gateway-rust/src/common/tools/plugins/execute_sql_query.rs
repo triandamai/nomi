@@ -18,6 +18,10 @@ impl NomiToolPlugin for ExecuteSqlQueryPlugin {
         .unwrap()
     }
 
+    fn rules(&self) -> &str {
+        ""
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["EXECUTE_SQL", "DATABASE_QUERY", "READ_ONLY_SQL", "STORAGE", "FULL_REGISTRY"]
     }

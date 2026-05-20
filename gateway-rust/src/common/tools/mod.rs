@@ -20,6 +20,7 @@ use crate::common::tools::plugins::read_web_page::ReadWebPagePlugin;
 use crate::common::tools::plugins::read_workspace_file::ReadWorkspaceFilePlugin;
 use crate::common::tools::plugins::retrieve_knowledge::RetrieveKnowledgePlugin;
 use crate::common::tools::plugins::schedule_task::ScheduleTaskPlugin;
+use crate::common::tools::plugins::sticker_generator::StickerGeneratorPlugin;
 use crate::common::tools::plugins::update_conversation_soul::UpdateConversationSoulPlugin;
 use crate::common::tools::plugins::update_conversation_title::UpdateConversationTitlePlugin;
 use crate::common::tools::plugins::update_knowledge::UpdateKnowledgeBasePlugin;
@@ -31,6 +32,7 @@ use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use uuid::Uuid;
+use crate::common::tools::plugins::forecast::WeatherFallbackPlugin;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "tool", content = "args")]
@@ -88,6 +90,8 @@ impl ToolDispatcher {
         plugins.insert("execute_read_query", Arc::new(ExecuteSqlQueryPlugin));
         plugins.insert("read_workspace_file", Arc::new(ReadWorkspaceFilePlugin));
         plugins.insert("parse_to_json", Arc::new(ParseStringToJsonPlugin));
+        plugins.insert("create_sticker", Arc::new(StickerGeneratorPlugin));
+        plugins.insert("get_current_weather", Arc::new(WeatherFallbackPlugin));
 
         Self {
             pool,
@@ -101,15 +105,7 @@ impl ToolDispatcher {
             plugins,
         }
     }
-
-    // pub async fn dispatch(&self, _tool: NomiTool) -> ToolResult {
-    //     ToolResult {
-    //         error: "Legacy tool dispatcher, deprecated!!".to_string(),
-    //         success: false,
-    //         content: "".to_string(),
-    //         follow_up_prompt: "".to_string(),
-    //     }
-    // }
+    
 
     pub fn generate_tool_for_prompt(&self, intents: &[String]) -> Tool {
         let mut tools = Vec::new();

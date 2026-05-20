@@ -34,6 +34,10 @@ impl NomiToolPlugin for HealthPlugin {
         })
     }
 
+    fn rules(&self) -> &str {
+        "### VITALITY LOGIC\n- Use `manage_health_data` to query or summarize biometrics (steps, sleep, heart rate).\n- Be a proactive personal companion. Notice physical strains (low sleep, high heart rates from trekking/motorcycling) and provide tailored insights. 🥗✨\n"
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["VITALITY", "DASHBOARD"]
     }

@@ -31,6 +31,10 @@ impl NomiToolPlugin for DicePlugin {
         })
     }
 
+    fn rules(&self) -> &str {
+        ""
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["GENERAL", "GAMES"]
     }

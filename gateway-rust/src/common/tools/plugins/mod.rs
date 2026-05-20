@@ -19,3 +19,5 @@ pub mod get_inbox_summary;
 pub mod execute_sql_query;
 pub mod read_workspace_file;
 pub mod parse_to_json;
+pub mod sticker_generator;
+pub mod forecast;

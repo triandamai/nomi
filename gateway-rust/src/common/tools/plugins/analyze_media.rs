@@ -22,6 +22,10 @@ impl NomiToolPlugin for AnalyzeMediaPlugin {
         ).unwrap()
     }
 
+    fn rules(&self) -> &str {
+        ""
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["ANALYZE_MEDIA", "VISUAL_ANALYSIS", "DOCUMENT_READING", "FULL_REGISTRY"]
     }

@@ -4,6 +4,7 @@ use futures::future::BoxFuture;
 
 pub trait NomiToolPlugin: Send + Sync {
     fn schema(&self) -> Value;
+    fn rules(&self) -> &str;
     fn matching_intents(&self) -> &[&str];
     fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value) -> BoxFuture<'a, anyhow::Result<String>>;
 }

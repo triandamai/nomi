@@ -22,6 +22,10 @@ impl NomiToolPlugin for GetReminderStatsPlugin {
         ).unwrap()
     }
 
+    fn rules(&self) -> &str {
+        "### REMINDER LOGIC\n- Use `schedule_task`, `modify_reminder`, `get_reminder_stats` to manage schedule. Use relative analysis to translate vague human terms into precise Datetimes.\n"
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["GET_REMINDER_STATS", "VIEW_REMINDER_ANALYTICS", "CHECK_REMINDER_HISTORY", "REMINDER", "DASHBOARD"]
     }

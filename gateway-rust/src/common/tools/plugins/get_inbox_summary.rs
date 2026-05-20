@@ -21,6 +21,10 @@ impl NomiToolPlugin for GetInboxSummaryPlugin {
         ).unwrap()
     }
 
+    fn rules(&self) -> &str {
+        "### COMMUNICATION LOGIC\n- Use `get_inbox_summary` to check DMs. If the inbox is empty or there is an error, clearly report that fact directly (e.g., 'Your inbox is empty! 🏍️💨').\n- Use `search_users` and `send_direct_message` to communicate.\n\n### DASHBOARD LOGIC\n- Use this when Trian asks for stats, summaries, or reports.\n- Call all required tools (e.g., `get_reminder_stats`, `get_inbox_summary`, `get_expense_summary`) in PARALLEL.\n- Once the tool data is returned, synthesize it into a clean, bulleted report. Use emojis to categorize the sections (e.g., 📩 for Inbox, ⏰ for Reminders, 💸 for Expenses).\n"
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["GET_INBOX_SUMMARY", "CHECK_DMS", "INBOX_ANALYTICS", "COMMUNICATION", "DASHBOARD", "FULL_REGISTRY"]
     }

@@ -19,6 +19,10 @@ impl NomiToolPlugin for EvolveBootstrapPlugin {
         ).unwrap()
     }
 
+    fn rules(&self) -> &str {
+        ""
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["EVOLVE_BOOTSTRAP", "UPDATE_SYSTEM_PROMPT", "CHANGE_CORE_INSTRUCTIONS", "DASHBOARD", "GENERAL"]
     }

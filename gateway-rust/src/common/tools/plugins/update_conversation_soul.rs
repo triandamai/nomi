@@ -20,6 +20,10 @@ impl NomiToolPlugin for UpdateConversationSoulPlugin {
         ).unwrap()
     }
 
+    fn rules(&self) -> &str {
+        ""
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["UPDATE_CONVERSATION_SOUL", "CHANGE_NOMI_PERSONALITY", "ALTER_AI_BEHAVIOR", "MUTATE_SOUL_METRICS", "DASHBOARD", "GENERAL"]
     }

@@ -28,8 +28,12 @@ impl NomiToolPlugin for WebSearchPlugin {
         })
     }
 
+    fn rules(&self) -> &str {
+        "### WEB LOGIC\n- Use `web_search` and `read_web_page` to scour the web.\n"
+    }
+
     fn matching_intents(&self) -> &[&str] {
-        &["GENERAL", "RESEARCH", "NEWS"]
+        &["GENERAL", "RESEARCH", "NEWS", "WEB"]
     }
 
     fn execute<'a>(

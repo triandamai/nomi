@@ -33,6 +33,10 @@ impl NomiToolPlugin for CommunicationPlugin {
         })
     }
 
+    fn rules(&self) -> &str {
+        "### COMMUNICATION LOGIC\n- Use `get_inbox_summary` to check DMs. If the inbox is empty or there is an error, clearly report that fact directly (e.g., 'Your inbox is empty! 🏍️💨').\n- Use `search_users` and `send_direct_message` to communicate.\n"
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["COMMUNICATION"]
     }

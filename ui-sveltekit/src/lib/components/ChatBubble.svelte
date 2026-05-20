@@ -1,6 +1,6 @@
 <script lang="ts">
     import {onMount} from 'svelte';
-    import {ChevronDown, ChevronRight, Cpu, ExternalLink, FileText, Play, Music} from 'lucide-svelte';
+    import {ChevronDown, ChevronRight, Cpu, ExternalLink, FileText, Play, Music, Eye} from 'lucide-svelte';
     import {mdIt, formatDate} from "$lib/utils";
     import {env} from '$env/dynamic/public';
 
@@ -20,8 +20,10 @@
 
     let renderedContent = $state('');
     let renderedThought = $state('');
+    let mediaContext = $state('');
 
     let thoughtExpanded = $state(false);
+    let contextExpanded = $state(false);
 
     function toggleThought() {
         thoughtExpanded = !thoughtExpanded;
@@ -29,13 +31,34 @@
     }
 
     async function init() {
-
         render();
     }
 
     function render() {
         if (mdIt) {
-            renderedContent = mdIt.render(content);
+            let displayContent = content;
+            
+            // Extract [Media Context: ...]
+            const mediaContextRegex = /\[Media Context: (.*?)\] /s;
+            const match = displayContent.match(mediaContextRegex);
+            
+            if (match) {
+                mediaContext = match[1];
+                displayContent = displayContent.replace(mediaContextRegex, '');
+            } else {
+                // Fallback for cases without trailing space
+                const mediaContextRegexNoSpace = /\[Media Context: (.*?)\]/s;
+                const matchNoSpace = displayContent.match(mediaContextRegexNoSpace);
+                if (matchNoSpace) {
+                    mediaContext = matchNoSpace[1];
+                    displayContent = displayContent.replace(mediaContextRegexNoSpace, '');
+                } else {
+                    mediaContext = '';
+                }
+            }
+
+            renderedContent = mdIt.render(displayContent);
+            
             if (thought) {
                 const cleanThought = thought.replace(/<\/?thinking>/g, '');
                 renderedThought = mdIt.render(cleanThought);
@@ -182,6 +205,29 @@
                 </div>
                 <ExternalLink class="w-4 h-4 text-slate-500 group-hover/doc:text-emerald-400"/>
             </a>
+        {/if}
+
+        {#if mediaContext}
+            <div class="relative group/context mb-4">
+                <button
+                        onclick={() => contextExpanded = !contextExpanded}
+                        class="flex items-center gap-2 mb-2 text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-emerald-400 transition-colors"
+                >
+                    <Eye class="w-3 h-3"/>
+                    Visual Context
+                    {#if contextExpanded}
+                        <ChevronDown class="w-3 h-3"/>
+                    {:else}
+                        <ChevronRight class="w-3 h-3"/>
+                    {/if}
+                </button>
+
+                {#if contextExpanded}
+                    <div class="p-4 bg-slate-900/20 border-l-2 border-emerald-500/30 rounded-r-lg text-xs text-slate-400 font-mono italic leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200">
+                        {mediaContext}
+                    </div>
+                {/if}
+            </div>
         {/if}
 
         {@html renderedContent}

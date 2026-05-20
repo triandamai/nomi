@@ -13,6 +13,7 @@ The central orchestrator of the Nomi ecosystem.
 - **Interaction Gate**: A lightweight `InteractionGateService` acts as a pre-filtering node for ambient group chat messages. It uses a 3-tier evaluation pass (Mechanical, Semantic, and Threshold) to decide if Nomi should chime in without an explicit mention.
 - **Guardrail Service**: A security firewall (`GuardrailService`) that detects prompt injection and jailbreak attempts using multilingual pattern matching and semantic vector analysis.
 - **Ambient Soul Service**: A background intelligence worker (`AmbientSoulService`) that passively extracts long-term memories from group chats and controls proactive, autonomous agent initiatives using a Redis TTL cooldown state lock.
+- **Sticker Generation**: A dedicated tool (`StickerGeneratorPlugin`) that converts images into optimized, WhatsApp-compatible WebP stickers (exactly 512x512 pixels with transparency) and saves them to the S3 bucket.
 - **Real-time Communication**: Uses **MQTT** to stream thoughts, tool execution status, and final responses to clients.
 - **Database**: PostgreSQL with `pgvector` (halfvec 3072) for long-term memory and RAG, plus a dedicated `token_usage_history` ledger for tracking LLM token metrics system-wide.
 

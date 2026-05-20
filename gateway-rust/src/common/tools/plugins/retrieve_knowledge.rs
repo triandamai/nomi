@@ -20,6 +20,10 @@ impl NomiToolPlugin for RetrieveKnowledgePlugin {
         ).unwrap()
     }
 
+    fn rules(&self) -> &str {
+        "### KNOWLEDGE RULES \n- Use `update_knowledge_base` to commit to memory. Use `retrieve_knowledge` to recall facts.\n"
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["RETRIEVE_KNOWLEDGE", "SEARCH_MEMORIES", "ASK_KNOWLEDGE_BASE", "FIND_FACTS", "STORAGE", "DASHBOARD"]
     }

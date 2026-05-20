@@ -22,6 +22,10 @@ impl NomiToolPlugin for ScheduleTaskPlugin {
         ).unwrap()
     }
 
+    fn rules(&self) -> &str {
+        "### REMINDER LOGIC\n- Use `schedule_task`, `modify_reminder`, `get_reminder_stats` to manage schedule. Use relative analysis to translate vague human terms into precise Datetimes.\n"
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["SCHEDULE_TASK", "CREATE_REMINDER", "SET_ALARM", "REMINDER"]
     }

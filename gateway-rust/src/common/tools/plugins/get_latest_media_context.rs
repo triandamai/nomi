@@ -19,6 +19,10 @@ impl NomiToolPlugin for GetLatestMediaContextPlugin {
         ).unwrap()
     }
 
+    fn rules(&self) -> &str {
+        ""
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["GET_LATEST_MEDIA", "VISUAL_CONTEXT", "MEDIA_INQUIRY", "FULL_REGISTRY"]
     }

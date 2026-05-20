@@ -81,6 +81,10 @@ impl NomiToolPlugin for FinancePlugin {
         })
     }
 
+    fn rules(&self) -> &str {
+        "### FINANCE LOGIC\n- Use `log_expense` tool if the user provides an expense. USE REAL DATA from the receipt, NOT placeholder text.\n- Use `get_expense_summary` tool to show monthly summary.\n- Use `get_transaction_details` tool to list specific purchases.\n"
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["FINANCE", "DASHBOARD","MONEY_TRACKING","EXPENSE"]
     }

@@ -20,6 +20,10 @@ impl NomiToolPlugin for ParseStringToJsonPlugin {
         .unwrap()
     }
 
+    fn rules(&self) -> &str {
+        ""
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["PARSE_JSON", "STRUCTURED_DATA", "FULL_REGISTRY"]
     }

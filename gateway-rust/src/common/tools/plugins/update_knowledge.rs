@@ -21,6 +21,10 @@ impl NomiToolPlugin for UpdateKnowledgeBasePlugin {
         ).unwrap()
     }
 
+    fn rules(&self) -> &str {
+        "### STORAGE LOGIC\n- Use `update_knowledge_base` to commit to memory. Use `retrieve_knowledge` to recall facts.\n"
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["UPDATE_KNOWLEDGE_BASE", "SAVE_MEMORIES", "LEARN_NEW_FACTS", "STORE_DOCUMENT", "STORAGE"]
     }

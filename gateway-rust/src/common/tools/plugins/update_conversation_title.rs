@@ -19,6 +19,10 @@ impl NomiToolPlugin for UpdateConversationTitlePlugin {
         ).unwrap()
     }
 
+    fn rules(&self) -> &str {
+        ""
+    }
+
     fn matching_intents(&self) -> &[&str] {
         &["UPDATE_CONVERSATION_TITLE", "RENAME_CHAT", "CHANGE_ROOM_NAME", "DASHBOARD", "COMMUNICATION", "GENERAL"]
     }
