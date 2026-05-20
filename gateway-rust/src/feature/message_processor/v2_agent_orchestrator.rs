@@ -119,13 +119,7 @@ impl V2AgentOrchestrator {
             msg.is_group,
             true,
         );
-
-        // [NEW] Fetch pending media context once per turn from message history
-        let pending_media = crate::common::repository::message_repo::get_latest_unprocessed_media(&state.pool, conversation_id)
-            .await
-            .ok()
-            .flatten();
-
+        
         let history = sqlx::query!(
             "SELECT
                 users.display_name as display_name,
