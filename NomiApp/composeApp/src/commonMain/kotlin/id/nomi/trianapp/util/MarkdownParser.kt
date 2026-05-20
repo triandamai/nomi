@@ -13,9 +13,12 @@ sealed class MarkdownBlock {
 }
 
 object MarkdownParser {
+    private val codeBlockRegex = Regex("""```(\w*)?([\s\S]*?)```""")
+    private val boldRegex = Regex("""\*\*(.*?)\*\*""")
+    private val inlineCodeRegex = Regex("""`(.*?)`""")
+
     fun parse(content: String): List<MarkdownBlock> {
         val blocks = mutableListOf<MarkdownBlock>()
-        val codeBlockRegex = Regex("""```(\w*)?([\s\S]*?)```""")
         
         var lastIndex = 0
         codeBlockRegex.findAll(content).forEach { matchResult ->
@@ -44,12 +47,6 @@ object MarkdownParser {
     private fun parseInlineFormatting(text: String): AnnotatedString {
         return buildAnnotatedString {
             var currentText = text
-            
-            // This is a simple parser. For production, consider a more robust state-machine based approach.
-            // Support for **bold**
-            val boldRegex = Regex("""\*\*(.*?)\*\*""")
-            // Support for `inline code`
-            val inlineCodeRegex = Regex("""`(.*?)`""")
             
             val spans = mutableListOf<Triple<IntRange, SpanStyle, String>>()
             

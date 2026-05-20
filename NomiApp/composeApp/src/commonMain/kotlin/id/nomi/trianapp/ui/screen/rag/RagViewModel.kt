@@ -11,6 +11,7 @@ import id.nomi.trianapp.data.preferences.PreferencesStorage
 import id.nomi.trianapp.domain.usecase.FetchRagGraphUseCase
 import id.nomi.trianapp.domain.usecase.GetConversationUseCase
 import id.nomi.trianapp.domain.usecase.GetRagKnowledgeGraphUseCase
+import id.nomi.trianapp.domain.usecase.GetActiveConversationUseCase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,10 +61,10 @@ data class ThreeDGraphLink(
 )
 
 class RagViewModel(
-    savedStateHandle: SavedStateHandle,
     private val getRagKnowledgeGraphUseCase: GetRagKnowledgeGraphUseCase,
     private val fetchRagGraphUseCase: FetchRagGraphUseCase,
-    private val getConversationUseCase: GetConversationUseCase
+    private val getConversationUseCase: GetConversationUseCase,
+    private val getActiveConversationUseCase: GetActiveConversationUseCase
 ) : ViewModel() {
     private val _graphData = MutableStateFlow("")
     val graphData: StateFlow<String> = _graphData.asStateFlow()
@@ -80,8 +81,12 @@ class RagViewModel(
     // Keep cache of last fetched data to find nodes
     private var lastGraphData: RagGraphData? = null
 
+    init {
+        loadActiveData()
+    }
 
-    fun setConversationId(conversationId: String?) {
+    private fun loadActiveData() {
+        val conversationId = getActiveConversationUseCase()
         if (conversationId != null) {
             loadGraphData(conversationId)
             loadConversation(conversationId)

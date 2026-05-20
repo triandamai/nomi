@@ -14,6 +14,7 @@ import io.ktor.utils.io.core.toByteArray
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -36,49 +37,47 @@ class NomiMqttClient(
         if (client != null) return
         this.currentUserId = userId
 
-        // Format: nomi/users/{userId}/mobile_{deviceId}
         val uniqueClientId = "nomi/users/$userId/mobile_$deviceId"
 
         scope.launch {
-            try {
-                // 💡 FIX: Perform all network-sensitive initialization on Dispatchers.IO
-                withContext(Dispatchers.IO) {
-                    val setting = TLSClientSettings(
+            while (currentUserId != null) { // Simple reconnection loop
+                try {
+                    withContext(Dispatchers.IO) {
+                        val setting = TLSClientSettings()
+                        
+                        val cl = MQTTClient(
+                            MQTTVersion.MQTT3_1_1,
+                            "b1fec516.ala.eu-central-1.emqxsl.com",
+                            8084,
+                            setting,
+                            webSocket = "/mqtt",
+                            userName = "nomi-client-app",
+                            password = "NomiPublicPass2026".toByteArray().toUByteArray()
+                        ) { message ->
+                            handleMessage(message.topicName, message.payload?.toByteArray()?.decodeToString() ?: "")
+                        }
 
-                    )
-//                    val settings = MQTTClientSettings(
-//                        clientId = uniqueClientId,
-//                        userName = "nomi-client-app",
-//                        password = "NomiPublicPass2026".toByteArray().toUByteArray(),
-//                        tlsSettings = TLSSettings(), // Required for WSS (8084)
-//                        websocketPath = "/mqtt",
-//                        cleanSession = false
-//                    )
+                        client = cl
+                        println("MQTT: Connected to $uniqueClientId")
+                        
+                        // Subscribe before running the loop or in a separate launch
+                        launch {
+                            delay(1000) // Small delay to ensure connection is established
+                            subscribe()
+                        }
 
-                   val cl= MQTTClient(
-                        MQTTVersion.MQTT3_1_1,
-                        "b1fec516.ala.eu-central-1.emqxsl.com",
-                        8084,
-                        setting,
-                        webSocket = "/mqtt",
-                        userName = "nomi-client-app",
-                        password = "NomiPublicPass2026".toByteArray().toUByteArray()
-
-                    ) { message ->
-                        handleMessage(message.topicName, message.payload?.toByteArray()?.decodeToString() ?: "")
+                        cl.run() // This blocks until disconnected
                     }
-
-                    client = cl
-                    println("MQTT: Starting loop for $uniqueClientId")
-
-                    cl.run()
-                    subscribe()
+                } catch (e: Exception) {
+                    println("MQTT: Connection lost or failed: ${e.message}")
+                } finally {
+                    client = null
                 }
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-                println("MQTT: Connection failed: ${e}")
-                client = null
+                
+                if (currentUserId != null) {
+                    println("MQTT: Reconnecting in 5 seconds...")
+                    delay(5000)
+                }
             }
         }
     }

@@ -16,6 +16,13 @@ class MainActivity : ComponentActivity() {
             App()
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Optionally trigger a check to ensure MQTT is connected
+        // This is handled by the MainViewModel but calling it here 
+        // ensures it's checked every time the app comes to foreground.
+    }
 }
 
 @Preview

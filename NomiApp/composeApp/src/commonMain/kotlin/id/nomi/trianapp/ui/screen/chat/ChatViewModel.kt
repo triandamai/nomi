@@ -20,6 +20,7 @@ import kotlinx.datetime.Clock
 class ChatViewModel(
     private val fetchMessagesUseCase: FetchMessagesUseCase,
     private val getConversationUseCase: GetConversationUseCase,
+    private val getActiveConversationUseCase: GetActiveConversationUseCase,
     private val getProfileUseCase: GetProfileUseCase,
     private val sendMessageUseCase: SendMessageUseCase,
     private val mqttClient: NomiMqttClient,
@@ -50,17 +51,19 @@ class ChatViewModel(
 
     private var conversationId: String? = null
 
-    fun setConversationId(id: String) {
-        conversationId = id
-
-        viewModelScope.launch {
-            mqttClient.setConversation(id)
-            _isLoading.value = true
-            fetchConversation(id)
-            observeLocalConversation(id)
-            fetchMessages(id)
-            observeLocalMessages(id)
-            _isLoading.value = false
+    private fun loadActiveConversation() {
+        val id = getActiveConversationUseCase()
+        if (id != null) {
+            conversationId = id
+            viewModelScope.launch {
+                mqttClient.setConversation(id)
+                _isLoading.value = true
+                fetchConversation(id)
+                observeLocalConversation(id)
+                fetchMessages(id)
+                observeLocalMessages(id)
+                _isLoading.value = false
+            }
         }
     }
 
@@ -74,6 +77,8 @@ class ChatViewModel(
     }
 
     init {
+        loadActiveConversation()
+        
         viewModelScope.launch {
             getProfileUseCase.fetchProfile()
         }

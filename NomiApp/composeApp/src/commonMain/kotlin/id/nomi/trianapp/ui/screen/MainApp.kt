@@ -15,6 +15,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -31,6 +34,7 @@ import id.nomi.trianapp.ui.screen.chat.ChatViewModel
 import id.nomi.trianapp.ui.screen.profile.ProfilePage
 import id.nomi.trianapp.ui.screen.rag.RagPage
 import id.nomi.trianapp.ui.screen.workspace.WorkspacePage
+import id.nomi.trianapp.ui.screen.workspace.WorkspaceViewModel
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
@@ -46,7 +50,7 @@ sealed interface Route : NavKey {
     data object Login : Route
 
     @Serializable
-    data class Chat(val conversationId: String? = null) : Route
+    data object Chat : Route
 
     @Serializable
     data object Profile : Route
@@ -55,7 +59,7 @@ sealed interface Route : NavKey {
     data object Workspace : Route
 
     @Serializable
-    data class Rag(val conversationId: String? = null) : Route
+    data object Rag : Route
 }
 
 private val config = SavedStateConfiguration {
@@ -77,6 +81,21 @@ fun MainApp() {
     val mainVm = koinViewModel<MainViewModel>()
     val appState by mainVm.appState.collectAsState()
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                println("LIFECYCLE: App Resumed, checking authentication/MQTT")
+                mainVm.checkAuthentication()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     val backStack = rememberNavBackStack(config, Route.Splash)
 
     NavDisplay(
@@ -90,34 +109,23 @@ fun MainApp() {
                         backStack.add(Route.Login)
                     },
                     onNavigateToChat = {
-                        backStack.add(Route.Chat())
+                        backStack.add(Route.Chat)
                     }
                 )
             }
             entry<Route.Login> {
                 LoginPage(onPairingSuccess = {
                     mainVm.checkAuthentication()
-                    backStack.add(Route.Chat())
+                    backStack.add(Route.Chat)
                 })
             }
-            entry<Route.Chat> { route ->
-                val viewModel = koinViewModel<ChatViewModel>()
-                LaunchedEffect(route) {
-                    val conversationId = route.conversationId
-                    if (conversationId != null) {
-                        viewModel.setConversationId(conversationId)
-                    }else{
-                        viewModel.resetConversation()
-                    }
-                }
-
+            entry<Route.Chat> {
                 PageChat(
-                    viewModel = viewModel,
                     onNavigationClick = {
                         backStack.add(Route.Workspace)
                     },
                     onShowRAG = {
-                        backStack.add(Route.Rag(route.conversationId))
+                        backStack.add(Route.Rag)
                     }
                 )
             }
@@ -125,13 +133,17 @@ fun MainApp() {
                 ProfilePage()
             }
             entry<Route.Workspace> {
-                WorkspacePage(onConversationSelected = { id ->
-                    backStack.add(Route.Chat(id))
-                })
+                val viewModel = koinViewModel<WorkspaceViewModel>()
+                WorkspacePage(
+                    viewModel = viewModel,
+                    onConversationSelected = { id ->
+                        viewModel.selectConversation(id)
+                        backStack.add(Route.Chat)
+                    }
+                )
             }
-            entry<Route.Rag> { route ->
+            entry<Route.Rag> {
                 RagPage(
-                    conversationId = route.conversationId,
                     onNavigationClick = {
                         backStack.removeLast()
                     }

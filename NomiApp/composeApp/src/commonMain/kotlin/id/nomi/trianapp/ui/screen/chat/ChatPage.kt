@@ -54,8 +54,9 @@ fun PageChat(
             if (visibleItemsInfo.isEmpty()) {
                 true
             } else {
-                val lastVisibleItem = visibleItemsInfo.last()
-                lastVisibleItem.index >= layoutInfo.totalItemsCount - 3
+                // Since we are reversing layout, index 0 is now the bottom of the screen.
+                val firstVisibleItem = visibleItemsInfo.first()
+                firstVisibleItem.index <= 1 
             }
         }
     }
@@ -72,25 +73,16 @@ fun PageChat(
         bottomSheetState = sheetState
     )
 
-    suspend fun shouldScrollToBottom() {
-        if (isAtBottom && (viewModel.messages.isNotEmpty() || thought != null || activeTool != null || isTyping)) {
-            val totalItems = listState.layoutInfo.totalItemsCount
-            if (totalItems > 0) {
-                listState.animateScrollToItem(totalItems - 1)
-            }
-        }
-    }
-    LaunchedEffect(viewModel.messages.size, thought, activeTool, isTyping) {
-        shouldScrollToBottom()
-    }
-    LaunchedEffect(viewModel) {
-        sheetState.show()
-        val totalItems = listState.layoutInfo.totalItemsCount
-        if (totalItems > 0) {
-            listState.animateScrollToItem(totalItems - 1)
+    val handleShowThought: () -> Unit = remember {
+        {
+            // Do nothing, thought expansion handles its own internal layout
         }
     }
 
+    // Initial composition / Navigation load
+    LaunchedEffect(viewModel) {
+        sheetState.show()
+    }
 
     BottomSheetScaffold(
         scaffoldState = scaffoldState,
@@ -239,15 +231,56 @@ fun PageChat(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Top,
-                reverseLayout = false,
+                verticalArrangement = Arrangement.Bottom,
+                reverseLayout = true,
                 contentPadding = PaddingValues(top = 16.dp, bottom = 0.dp)
             ) {
-                if (isLoading && viewModel.messages.isEmpty()) {
+                // Because reverseLayout is true, the BOTTOM of the screen is rendered first.
+                // Therefore, we must render spacer/typing/tools FIRST, then the reversed message list.
+                
+                item {
+                    Spacer(
+                        modifier = Modifier.height(126.dp)
+                    )
+                }
+
+                if (isTyping) {
                     item {
-                        ShimmerChatLoading()
+                        TypingIndicatorRow()
                     }
                 }
+
+                if (activeTool != null) {
+                    item {
+                        ToolBadgeComponent(activeTool!!)
+                    }
+                }
+
+                if (thought != null) {
+                    item {
+                        ThinkingBubbleComponent(thought!!)
+                    }
+                }
+
+                // Reverse the messages so newest are at index 0
+                val reversedMessages = viewModel.messages.reversed()
+                itemsIndexed(
+                    reversedMessages,
+                    key = { idx, item -> item.id }
+                ) { idx, message ->
+                    // Since it's reversed, the "previous" message temporally is actually at idx + 1
+                    val prevMessage = if (idx >= reversedMessages.size - 1) null else reversedMessages[idx + 1]
+                    ChatBubble(
+                        displayName = message.displayName,
+                        content = message.content,
+                        role = message.role,
+                        showAvatar = prevMessage?.userId != message.userId,
+                        totalTokens = message.totalTokens,
+                        thought = message.thought,
+                        onShowThought = handleShowThought
+                    )
+                }
+
                 if (!isLoading && viewModel.messages.isEmpty()) {
                     item {
                         Column(
@@ -272,47 +305,11 @@ fun PageChat(
                         }
                     }
                 }
-                itemsIndexed(
-                    viewModel.messages,
-                    key = { idx, item -> item.id }
-                ) { idx, message ->
-                    val prevMessage = if (idx <= 0) null else viewModel.messages[idx - 1]
-                    ChatBubble(
-                        displayName = message.displayName,
-                        content = message.content,
-                        role = message.role,
-                        showAvatar = prevMessage?.userId != message.userId,
-                        totalTokens = message.totalTokens,
-                        thought = message.thought,
-                        onShowThought = {
-                            scope.launch {
-                                shouldScrollToBottom()
-                            }
-                        }
-                    )
-                }
 
-                if (thought != null) {
+                if (isLoading && viewModel.messages.isEmpty()) {
                     item {
-                        ThinkingBubbleComponent(thought!!)
+                        ShimmerChatLoading()
                     }
-                }
-
-                if (activeTool != null) {
-                    item {
-                        ToolBadgeComponent(activeTool!!)
-                    }
-                }
-
-                if (isTyping) {
-                    item {
-                        TypingIndicatorRow()
-                    }
-                }
-                item {
-                    Spacer(
-                        modifier = Modifier.height(126.dp)
-                    )
                 }
             }
 
@@ -327,9 +324,8 @@ fun PageChat(
                 FloatingActionButton(
                     onClick = {
                         scope.launch {
-                            val totalItems = listState.layoutInfo.totalItemsCount
-                            if (totalItems > 0) {
-                                listState.animateScrollToItem(totalItems - 1)
+                            if (listState.layoutInfo.totalItemsCount > 0) {
+                                listState.animateScrollToItem(0)
                             }
                         }
                     },

@@ -38,7 +38,6 @@ import kotlinx.serialization.json.jsonPrimitive
 @Composable
 fun RagPage(
     viewModel: RagViewModel = koinViewModel(),
-    conversationId: String?=null,
     onNavigationClick: () -> Unit
 ) {
     val graphData by viewModel.graphData.collectAsState()
@@ -97,10 +96,6 @@ fun RagPage(
         if (graphData.isNotEmpty() && state?.loadingState is com.multiplatform.webview.web.LoadingState.Finished) {
             navigator.evaluateJavaScript("window.update3DGraph(`${graphData}`)")
         }
-    }
-
-    LaunchedEffect(viewModel){
-        viewModel.setConversationId(conversationId)
     }
 
     Scaffold(

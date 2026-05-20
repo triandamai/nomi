@@ -23,6 +23,7 @@ val dataModule = module {
     single { SendPairingRequestUseCase(get(), get(), get()) }
     single { GetConversationsUseCase(get(), get()) }
     single { SetActiveConversationUseCase(get()) }
+    single { GetActiveConversationUseCase(get()) }
     single { FetchMessagesUseCase(get(), get()) }
     single { GetRagKnowledgeGraphUseCase() }
     single { FetchRagGraphUseCase(get()) }
@@ -49,9 +50,12 @@ val viewModelModule = module {
     viewModel { LoginViewModel(get()) }
     viewModel { WorkspaceViewModel(get(), get(), get(), get()) }
     viewModel {
-        ChatViewModel(get(), get(), get(), get(), get(), get(), get())
+        ChatViewModel(get(), get(), get(), get(), get(), get(), get(), get())
     }
-    viewModel { RagViewModel(get(), get(), get(), get()) }
+    viewModel {
+        RagViewModel(get(), get(), get(), get())
+    }
+
     viewModel { RemindersViewModel(get()) }
     viewModel { MoneyTrackingViewModel(get()) }
     viewModel { UserManagementViewModel(get(), get()) }
