@@ -2,16 +2,15 @@ use crate::AppState;
 use crate::common::redis::RedisClient;
 use crate::common::storage::StorageClient;
 use crate::feature::{InboundMessage, OutboundMessage};
+use chrono::Utc;
 use image::GenericImageView;
 use regex::Regex;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use chrono::Utc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 use uuid::Uuid;
-use wa_rs::Client;
 use wa_rs::Jid;
 use wa_rs::bot::Bot;
 use wa_rs::types::events::Event;
@@ -19,6 +18,7 @@ use wa_rs::wa_rs_proto::whatsapp::Message;
 use wa_rs::wa_rs_proto::whatsapp::message::{
     AudioMessage, DocumentMessage, ImageMessage, StickerMessage, VideoMessage,
 };
+use wa_rs::{ChatStateType, Client};
 use wa_rs_core::download::MediaType;
 use wa_rs_sqlite_storage::SqliteStore;
 use wa_rs_tokio_transport::TokioWebSocketTransportFactory;
@@ -71,18 +71,12 @@ impl WhatsAppWorker {
                                 return;
                             }
 
-                            let sender_jid = info.source.sender.to_string();
-                            let chat_jid = info.source.chat.to_string();
-                            info!("WhatsApp Inbound: sender={}, chat={}, is_group={}", sender_jid, chat_jid, info.source.is_group);
-
-                            let sender_id = sender_jid.clone();
-                            // FIX: If it's a private chat and the chat ID is an LID, prefer the sender's standard JID
-                            let conversation_id = if !info.source.is_group && chat_jid.contains("@lid") && sender_jid.contains("@s.whatsapp.net") {
-                                info!("WhatsApp: Correcting LID chat ID to sender standard JID: {}", sender_jid);
-                                sender_jid
-                            } else {
-                                chat_jid
-                            };
+                            let sender_id = info.source.sender.to_string();
+                            let conversation_id = info.source.chat.to_string();
+                            info!(
+                                "WhatsApp Inbound: sender={}, chat={}, is_group={}",
+                                sender_id, conversation_id, info.source.is_group
+                            );
                             let message_id = info.id.to_string();
                             let is_group = info.source.is_group;
                             let is_private = !is_group;
@@ -93,13 +87,13 @@ impl WhatsAppWorker {
                             let mut sticker_url: Option<String> = None;
                             let bucket = "conversations";
 
-
                             let mut is_mentioned;
                             if let Some(img) = &msg.image_message {
                                 info!("image detected");
                                 let uuid = Uuid::new_v4().to_string();
-                                let folder_name = conversation_id.split("@").next().unwrap_or(uuid.as_str());
-                                let file_name = format!("WA-{}",Utc::now().timestamp_millis());
+                                let folder_name =
+                                    conversation_id.split("@").next().unwrap_or(uuid.as_str());
+                                let file_name = format!("WA-{}", Utc::now().timestamp_millis());
                                 if let Ok(data) = client.download(img.as_ref()).await {
                                     let ext = mime_guess::get_mime_extensions_str(img.mimetype())
                                         .and_then(|exts| exts.first())
@@ -121,8 +115,9 @@ impl WhatsAppWorker {
                             if let Some(video) = &msg.video_message {
                                 info!("video detected");
                                 let uuid = Uuid::new_v4().to_string();
-                                let folder_name = conversation_id.split("@").next().unwrap_or(uuid.as_str());
-                                let file_name = format!("WA-{}",Utc::now().timestamp_millis());
+                                let folder_name =
+                                    conversation_id.split("@").next().unwrap_or(uuid.as_str());
+                                let file_name = format!("WA-{}", Utc::now().timestamp_millis());
                                 if let Ok(data) = client.download(video.as_ref()).await {
                                     let ext = mime_guess::get_mime_extensions_str(video.mimetype())
                                         .and_then(|exts| exts.first())
@@ -145,8 +140,9 @@ impl WhatsAppWorker {
                             if let Some(audio) = &msg.audio_message {
                                 info!("audio detected");
                                 let uuid = Uuid::new_v4().to_string();
-                                let folder_name = conversation_id.split("@").next().unwrap_or(uuid.as_str());
-                                let file_name = format!("WA-{}",Utc::now().timestamp_millis());
+                                let folder_name =
+                                    conversation_id.split("@").next().unwrap_or(uuid.as_str());
+                                let file_name = format!("WA-{}", Utc::now().timestamp_millis());
                                 if let Ok(data) = client.download(audio.as_ref()).await {
                                     let ext = if audio.ptt() { "ogg" } else { "mp3" };
                                     if let Ok(upload_audio) = &storage
@@ -167,10 +163,10 @@ impl WhatsAppWorker {
                             if let Some(doc) = &msg.document_message {
                                 info!("document detected");
                                 let uuid = Uuid::new_v4().to_string();
-                                let folder_name = conversation_id.split("@").next().unwrap_or(uuid.as_str());
-                                let file_name = format!("WA-{}",Utc::now().timestamp_millis());
+                                let folder_name =
+                                    conversation_id.split("@").next().unwrap_or(uuid.as_str());
+                                let file_name = format!("WA-{}", Utc::now().timestamp_millis());
                                 if let Ok(data) = client.download(doc.as_ref()).await {
-
                                     let ext = mime_guess::get_mime_extensions_str(doc.mimetype())
                                         .and_then(|exts| exts.first())
                                         .unwrap_or(&".txt");
@@ -192,8 +188,9 @@ impl WhatsAppWorker {
                             if let Some(sticker) = &msg.sticker_message {
                                 info!("sticker detected");
                                 let uuid = Uuid::new_v4().to_string();
-                                let folder_name = conversation_id.split("@").next().unwrap_or(uuid.as_str());
-                                let file_name = format!("WA-{}",Utc::now().timestamp_millis());
+                                let folder_name =
+                                    conversation_id.split("@").next().unwrap_or(uuid.as_str());
+                                let file_name = format!("WA-{}", Utc::now().timestamp_millis());
                                 if let Ok(data) = client.download(sticker.as_ref()).await {
                                     let ext =
                                         mime_guess::get_mime_extensions_str(sticker.mimetype())
@@ -292,7 +289,7 @@ impl WhatsAppWorker {
                                 sticker_url,
                                 channel: "whatsapp".to_string(),
                                 metadata: Some(metadata),
-                                original_meta: Some(original_meta)
+                                original_meta: Some(original_meta),
                             };
 
                             info!("nomi:inbound => {:?}", &inbound);
@@ -326,6 +323,7 @@ impl WhatsAppWorker {
     ) -> anyhow::Result<()> {
         let chat = Jid::from_str(&msg.conversation_id)
             .map_err(|e| anyhow::anyhow!("Invalid chat id: {}", e))?;
+
         let formatted_text = crate::common::format::markdown_to_whatsapp(&msg.text);
 
         if let Some(path) = msg.image_url.clone() {
@@ -401,47 +399,63 @@ impl WhatsAppWorker {
         }
 
         if !formatted_text.is_empty() {
-            info!("Sending text message to WhatsApp: {}", chat);
-            let mut payload = Message::default();
-            payload.conversation = Some(formatted_text);
-            if let Err(e) = self.client.send_message(chat.clone(), payload).await {
+            info!(
+                "Sending text message to WhatsApp: {} content:\n{}",
+                chat, formatted_text
+            );
+
+            // Task: Small delay to ensure media is processed before text is sent
+            if msg.image_url.is_some()
+                || msg.audio_url.is_some()
+                || msg.video_url.is_some()
+                || msg.doc_url.is_some()
+                || msg.sticker_url.is_some()
+            {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+
+            let _ = self
+                .client
+                .chatstate()
+                .send(&chat.clone(), ChatStateType::Paused)
+                .await;
+            let payload = Message {
+                conversation: Some(formatted_text),
+                ..Default::default()
+            };
+            if let Err(e) = self.client.send_message(chat, payload).await {
                 error!("Failed to send text message to WhatsApp: {}", e);
                 return Err(anyhow::anyhow!("WhatsApp send error: {}", e));
             }
         }
-        
+
         Ok(())
     }
 
-    pub async fn send_presence(
-        &self,
-        chat_id: &str,
-        is_typing: bool,
-    ) -> anyhow::Result<()> {
-        let chat = Jid::from_str(chat_id)
-            .map_err(|e| anyhow::anyhow!("Invalid chat id: {}", e))?;
-        
+    pub async fn send_presence(&self, chat_id: &str, is_typing: bool) -> anyhow::Result<()> {
+        let chat = Jid::from_str(chat_id).map_err(|e| anyhow::anyhow!("Invalid chat id: {}", e))?;
+
         if is_typing {
             let _ = self.client.chatstate().send_composing(&chat).await;
         } else {
             let _ = self.client.chatstate().send_paused(&chat).await;
         }
-        
+
         Ok(())
     }
 
     pub async fn regenerate(&self, _state: &AppState) -> anyhow::Result<()> {
         info!("Regenerating WhatsApp QR...");
         let _ = self.client.disconnect().await;
-        
+
         // Remove DB files to force a new session
         let _ = tokio::fs::remove_file("/app/data/whatsapp.db").await;
         let _ = tokio::fs::remove_file("/app/data/whatsapp.db-shm").await;
         let _ = tokio::fs::remove_file("/app/data/whatsapp.db-wal").await;
-        
+
         let mut qr_lock = self.qr_code.lock().await;
         *qr_lock = None;
-        
+
         Ok(())
     }
     pub async fn logout(&self, _state: &AppState) -> anyhow::Result<()> {

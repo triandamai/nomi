@@ -156,31 +156,32 @@ pub async fn process_pairing(
             }
         };
 
-        let (target_user_id, conv_id) = match serde_json::from_str::<serde_json::Value>(&target_user_id_str) {
-            Ok(v) => {
-                let uid = v["user_id"].as_str().and_then(|s| Uuid::parse_str(s).ok());
-                let cid = v["conversation_id"]
-                    .as_str()
-                    .and_then(|s| Uuid::parse_str(s).ok());
-                match (uid, cid) {
-                    (Some(u), Some(c)) => (u, c),
-                    _ => {
-                        if let Ok(u) = Uuid::parse_str(&target_user_id_str) {
-                            (u, Uuid::nil())
-                        } else {
-                            return Ok(());
+        let (target_user_id, conv_id) =
+            match serde_json::from_str::<serde_json::Value>(&target_user_id_str) {
+                Ok(v) => {
+                    let uid = v["user_id"].as_str().and_then(|s| Uuid::parse_str(s).ok());
+                    let cid = v["conversation_id"]
+                        .as_str()
+                        .and_then(|s| Uuid::parse_str(s).ok());
+                    match (uid, cid) {
+                        (Some(u), Some(c)) => (u, c),
+                        _ => {
+                            if let Ok(u) = Uuid::parse_str(&target_user_id_str) {
+                                (u, Uuid::nil())
+                            } else {
+                                return Ok(());
+                            }
                         }
                     }
                 }
-            }
-            Err(_) => {
-                if let Ok(u) = Uuid::parse_str(&target_user_id_str) {
-                    (u, Uuid::nil())
-                } else {
-                    return Ok(());
+                Err(_) => {
+                    if let Ok(u) = Uuid::parse_str(&target_user_id_str) {
+                        (u, Uuid::nil())
+                    } else {
+                        return Ok(());
+                    }
                 }
-            }
-        };
+            };
 
         // Single-use token: delete immediately
         let _ = state.redis.del(&redis_key).await;

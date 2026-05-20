@@ -113,7 +113,19 @@ pub async fn process_v2_message(
     }
 
     let mut saved_message = save_user_message?;
-
+    // start event
+    //notify message incoming
+    for member in members.iter().map(|v| v.user_id) {
+        info!("notify user message saved :{:?}", member);
+        saved_message.display_name = Some(msg.display_name.clone().unwrap());
+        let _ = state
+            .dispatch(AppEvent::user(
+                member.to_string().as_str(),
+                "message",
+                saved_message.to_sse_json(0),
+            ))
+            .await;
+    }
     // ======== Interaction Gate (Pre-Filtering for Groups) ========//
     if msg.is_group && !msg.is_mentioned {
         let gate = crate::services::interaction_gate::InteractionGateService::new(
@@ -151,19 +163,6 @@ pub async fn process_v2_message(
         }
     }
 
-    // start event
-    //notify message incoming
-    for member in members.iter().map(|v| v.user_id) {
-        info!("notify user message saved :{:?}", member);
-        saved_message.display_name = Some(msg.display_name.clone().unwrap());
-        let _ = state
-            .dispatch(AppEvent::user(
-                member.to_string().as_str(),
-                "message",
-                saved_message.to_sse_json(0),
-            ))
-            .await;
-    }
 
     let guard_rail = crate::services::guardrail::GuardrailService::new(state.pool.clone(), state.gemini_api_key.clone());
 
@@ -678,6 +677,7 @@ pub async fn send_message_to_subscriber(
     let pool = state.pool.clone();
     let outbound_message = data.clone();
     tokio::spawn(async move {
+        info!("SEND SUBS MESSAGE {:?}",data);
         let convo = sqlx::query!(
             "SELECT conversation_type,id FROM conversations WHERE id = $1",
             conversation_id
@@ -698,6 +698,7 @@ pub async fn send_message_to_subscriber(
         }
 
         if let Ok(convo) = convo {
+            
             for member in members {
                 let _ = state
                     .dispatch(AppEvent::user(
@@ -707,6 +708,8 @@ pub async fn send_message_to_subscriber(
                     ))
                     .await;
             }
+
+            info!("SEND MESSAGE CONVO IS {:?}",convo);
 
             // --- Multi-bubble Sequential Burst Strategy ---
             let bubbles = crate::common::splitter::split_into_bubbles(&outbound_message.content);
@@ -723,7 +726,7 @@ pub async fn send_message_to_subscriber(
                     .fetch_all(&pool)
                     .await
                     .unwrap_or(Vec::new());
-
+                info!("SEND MESSAGE PRIVATE channels:{:?}",channel_info);
                 for channel in channel_info {
                     for (i, bubble_text) in bubbles.iter().enumerate() {
                         let outbound = OutboundMessage {
@@ -778,6 +781,7 @@ pub async fn send_message_to_subscriber(
                     }
                 }
             } else {
+              
                 let channel_info = sqlx::query!(
                     "SELECT c.conversation_id, c.channel, c.external_group_id
                             FROM channel_group c
@@ -788,7 +792,7 @@ pub async fn send_message_to_subscriber(
                 .fetch_all(&pool)
                 .await
                 .unwrap_or(Vec::new());
-
+                info!("SEND MESSAGE GROUP channels:{:?}",channel_info);
                 for channel in channel_info {
                     for (i, bubble_text) in bubbles.iter().enumerate() {
                         let outbound = OutboundMessage {

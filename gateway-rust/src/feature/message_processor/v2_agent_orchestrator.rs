@@ -100,14 +100,6 @@ impl V2AgentOrchestrator {
                 .await;
         }
 
-        // if text_content.trim().eq_ignore_ascii_case("skip") {
-        //     info!("Skip instruction received, marking last media as processed");
-        //     let _ = crate::common::repository::message_repo::mark_last_media_processed(
-        //         &state.pool,
-        //         conversation_id,
-        //     )
-        //     .await;
-        // }
         let _ = send_status_presence_update(
             &state,
             self.conversation_member_ids
@@ -119,7 +111,7 @@ impl V2AgentOrchestrator {
             msg.is_group,
             true,
         );
-        
+
         let history = sqlx::query!(
             "SELECT
                 users.display_name as display_name,
@@ -157,12 +149,20 @@ impl V2AgentOrchestrator {
 
             let image_url = match msg_h.image_url {
                 Some(path) => {
-                    let status = if is_processed { "[ALREADY PROCESSED]" } else { "[PENDING ACTION]" };
-                    format!(" - Image URL: {} {} \n", state.storage.get_full_url(&path), status)
+                    let status = if is_processed {
+                        "[ALREADY PROCESSED]"
+                    } else {
+                        "[PENDING ACTION]"
+                    };
+                    format!(
+                        " - Image URL: {} {} \n",
+                        state.storage.get_full_url(&path),
+                        status
+                    )
                 }
                 _ => "".to_string(),
             };
-            
+
             let role_label = match msg_h.role.as_str() {
                 "user" => match msg_h.display_name {
                     None => "User".to_string(),
@@ -248,7 +248,13 @@ impl V2AgentOrchestrator {
             // Fetch the latest unprocessed media directly from history and inject it as context.
             let pending_media = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
-                    crate::common::repository::message_repo::get_latest_unprocessed_media(&state.pool, conversation_id).await.ok().flatten()
+                    crate::common::repository::message_repo::get_latest_unprocessed_media(
+                        &state.pool,
+                        conversation_id,
+                    )
+                    .await
+                    .ok()
+                    .flatten()
                 })
             });
 
@@ -293,8 +299,10 @@ impl V2AgentOrchestrator {
                 let mut domain_rules = String::new();
                 for plugin in dispatcher.plugins.values() {
                     let plugin_intents = plugin.matching_intents();
-                    if intents_val.iter().any(|i| plugin_intents.contains(&i.as_str())) 
-                        || intents_val.contains(&"FULL_REGISTRY".to_string()) 
+                    if intents_val
+                        .iter()
+                        .any(|i| plugin_intents.contains(&i.as_str()))
+                        || intents_val.contains(&"FULL_REGISTRY".to_string())
                     {
                         let rules = plugin.rules();
                         if !rules.is_empty() && !domain_rules.contains(rules) {
@@ -343,29 +351,43 @@ impl V2AgentOrchestrator {
         };
 
         // [FIX] Proper Async Fetch for Pending Media
-        let pending_media = crate::common::repository::message_repo::get_latest_unprocessed_media(&state.pool, conversation_id)
-            .await
-            .ok()
-            .flatten();
+        let pending_media = crate::common::repository::message_repo::get_latest_unprocessed_media(
+            &state.pool,
+            conversation_id,
+        )
+        .await
+        .ok()
+        .flatten();
 
         // [NEW] Fetch raw media bytes with robust path/mime handling
         let mut raw_media = None;
         if let Some((url, _type)) = pending_media.as_ref() {
-            let base_url = dotenvy::var("PUBLIC_GATEWAY_URL").unwrap_or("http://localhost:8000/api".to_string());
+            let base_url = dotenvy::var("PUBLIC_GATEWAY_URL")
+                .unwrap_or("http://localhost:8000/api".to_string());
             let file_path = if url.starts_with("http") && url.contains(&base_url) {
                 url.replace(&format!("{}/files/", base_url), "")
             } else {
                 url.clone()
             };
 
-            if let Ok(data) = state.storage.get_file("conversations".to_string(), file_path.clone()).await {
-                let mime_type = mime_guess::from_path(&file_path).first_or_octet_stream().to_string();
-                
+            if let Ok(data) = state
+                .storage
+                .get_file("conversations".to_string(), file_path.clone())
+                .await
+            {
+                let mime_type = mime_guess::from_path(&file_path)
+                    .first_or_octet_stream()
+                    .to_string();
+
                 // Gemini rejects generic octet-stream. Force image fallbacks for multimodal safety.
                 let safe_mime = if mime_type == "application/octet-stream" {
-                    if file_path.to_lowercase().ends_with(".png") { "image/png".to_string() }
-                    else if file_path.to_lowercase().ends_with(".webp") { "image/webp".to_string() }
-                    else { "image/jpeg".to_string() }
+                    if file_path.to_lowercase().ends_with(".png") {
+                        "image/png".to_string()
+                    } else if file_path.to_lowercase().ends_with(".webp") {
+                        "image/webp".to_string()
+                    } else {
+                        "image/jpeg".to_string()
+                    }
                 } else {
                     mime_type
                 };
@@ -373,7 +395,10 @@ impl V2AgentOrchestrator {
                 use base64::Engine;
                 let base64_data = base64::engine::general_purpose::STANDARD.encode(data.to_vec());
                 raw_media = Some((safe_mime, base64_data));
-                info!("Multimodal: Prepared media context (mime: {})", raw_media.as_ref().unwrap().0);
+                info!(
+                    "Multimodal: Prepared media context (mime: {})",
+                    raw_media.as_ref().unwrap().0
+                );
             }
         }
 
@@ -397,7 +422,11 @@ impl V2AgentOrchestrator {
 
             // Multimodal Rule: Only send the heavy media bytes on the FIRST turn.
             // Downstream turns will rely on the conversation history and the agent's memory of the image.
-            let media_to_send = if loop_count == 1 { raw_media.clone() } else { None };
+            let media_to_send = if loop_count == 1 {
+                raw_media.clone()
+            } else {
+                None
+            };
 
             let current_actor = if loop_count == 1 {
                 PromptActor::User {
@@ -649,7 +678,7 @@ impl V2AgentOrchestrator {
                 .trim()
                 .to_string();
 
-            if let Ok(record) = save_message(
+            let save_message = save_message(
                 &state.pool,
                 conversation_id,
                 "assistant",
@@ -665,14 +694,19 @@ impl V2AgentOrchestrator {
                 None,
                 None,
             )
-            .await
-            {
+            .await;
+            if let Err(err) = save_message{
+                info!("Failed save message result {}",err);
+                return Ok(());
+            }
+            if let Ok(record) = save_message {
+                let member_ids = self.conversation_member_ids
+                    .iter()
+                    .map(|v| v.clone())
+                    .collect();
                 let _ = send_message_to_subscriber(
                     &state,
-                    self.conversation_member_ids
-                        .iter()
-                        .map(|v| v.clone())
-                        .collect(),
+                    member_ids,
                     conversation_id,
                     msg.source.clone(),
                     record.to_sse_json(function_result.total_tokens),
@@ -823,8 +857,10 @@ impl V2AgentOrchestrator {
             let mut domain_rules = String::new();
             for plugin in dispatcher.plugins.values() {
                 let plugin_intents = plugin.matching_intents();
-                if intents_val.iter().any(|i| plugin_intents.contains(&i.as_str())) 
-                    || intents_val.contains(&"FULL_REGISTRY".to_string()) 
+                if intents_val
+                    .iter()
+                    .any(|i| plugin_intents.contains(&i.as_str()))
+                    || intents_val.contains(&"FULL_REGISTRY".to_string())
                 {
                     let rules = plugin.rules();
                     if !rules.is_empty() && !domain_rules.contains(rules) {
