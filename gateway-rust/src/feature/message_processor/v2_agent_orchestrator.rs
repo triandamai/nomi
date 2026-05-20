@@ -294,10 +294,6 @@ impl V2AgentOrchestrator {
             combined.push_str("\n### Orchestrator Instructions \n");
             combined.push_str(crate::prompts::PromptRegistry::orchestrator_instructions());
 
-            // if msg.is_mentioned && augmented_text.len() < 10 {
-            //     combined.push_str("\n[SYSTEM: The user has activated you with a short mention. Look back at the last 3-5 messages in the 'Recent History' to find the intent (URL, Image, Question) and act on it immediately.]\n");
-            // }
-
             if !intents_val.contains(&"GENERAL".to_string()) || intents_val.len() > 1 {
                 // Modular Domain Logic from Plugins
                 let mut domain_rules = String::new();
@@ -352,14 +348,38 @@ impl V2AgentOrchestrator {
             String::new()
         };
 
-        // [NEW] Fetch raw media bytes for native multimodal support
+        // [FIX] Proper Async Fetch for Pending Media
+        let pending_media = crate::common::repository::message_repo::get_latest_unprocessed_media(&state.pool, conversation_id)
+            .await
+            .ok()
+            .flatten();
+
+        // [NEW] Fetch raw media bytes with robust path/mime handling
         let mut raw_media = None;
         if let Some((url, _type)) = pending_media.as_ref() {
-            if let Ok(data) = state.storage.get_file("conversations".to_string(), url.clone()).await {
-                let mime_type = mime_guess::from_path(url).first_or_octet_stream().to_string();
+            let base_url = dotenvy::var("PUBLIC_GATEWAY_URL").unwrap_or("http://localhost:8000/api".to_string());
+            let file_path = if url.starts_with("http") && url.contains(&base_url) {
+                url.replace(&format!("{}/files/", base_url), "")
+            } else {
+                url.clone()
+            };
+
+            if let Ok(data) = state.storage.get_file("conversations".to_string(), file_path.clone()).await {
+                let mime_type = mime_guess::from_path(&file_path).first_or_octet_stream().to_string();
+                
+                // Gemini rejects generic octet-stream. Force image fallbacks for multimodal safety.
+                let safe_mime = if mime_type == "application/octet-stream" {
+                    if file_path.to_lowercase().ends_with(".png") { "image/png".to_string() }
+                    else if file_path.to_lowercase().ends_with(".webp") { "image/webp".to_string() }
+                    else { "image/jpeg".to_string() }
+                } else {
+                    mime_type
+                };
+
                 use base64::Engine;
                 let base64_data = base64::engine::general_purpose::STANDARD.encode(data.to_vec());
-                raw_media = Some((mime_type, base64_data));
+                raw_media = Some((safe_mime, base64_data));
+                info!("Multimodal: Prepared media context (mime: {})", raw_media.as_ref().unwrap().0);
             }
         }
 
@@ -381,13 +401,17 @@ impl V2AgentOrchestrator {
             loop_count += 1;
             info!("V2 Loop iterate(N): N({})", loop_count);
 
+            // Multimodal Rule: Only send the heavy media bytes on the FIRST turn.
+            // Downstream turns will rely on the conversation history and the agent's memory of the image.
+            let media_to_send = if loop_count == 1 { raw_media.clone() } else { None };
+
             let current_actor = if loop_count == 1 {
                 PromptActor::User {
                     history: history_text.clone(),
                     memories: memories_text.clone(),
                     message: text_content.clone(),
                     system_prompt: system_prompt.clone(),
-                    media: raw_media.clone(),
+                    media: media_to_send,
                 }
             } else {
                 PromptActor::MultiTool {
@@ -396,7 +420,7 @@ impl V2AgentOrchestrator {
                     message: text_content.clone(),
                     system_prompt: system_prompt.clone(),
                     tool_turns: tool_turns.clone(),
-                    media: raw_media.clone(),
+                    media: media_to_send,
                 }
             };
 
@@ -604,6 +628,7 @@ impl V2AgentOrchestrator {
                 }
                 Err(e) => {
                     error!("V2 Agentic loop error: {}", e);
+
                     let _ = send_status_update(
                         &state,
                         self.conversation_member_ids

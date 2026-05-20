@@ -32,7 +32,7 @@ pub async fn get_latest_unprocessed_media(
 ) -> anyhow::Result<Option<(String, String)>> {
     let row = sqlx::query!(
         r#"
-        SELECT image_url, video_url, audio_url, document_url, sticker_url
+        SELECT  id,image_url, video_url, audio_url, document_url, sticker_url,conversation_id,user_id
         FROM messages
         WHERE conversation_id = $1
         AND (metadata->>'is_processed' IS NULL OR metadata->>'is_processed' != 'true')
@@ -44,6 +44,8 @@ pub async fn get_latest_unprocessed_media(
     )
     .fetch_optional(pool)
     .await?;
+
+    info!("get_latest_unprocessed_media returned {:?}", row);
 
     if let Some(r) = row {
         if let Some(url) = r.image_url { return Ok(Some((url, "image".to_string()))); }
