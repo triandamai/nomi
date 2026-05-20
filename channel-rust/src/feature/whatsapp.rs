@@ -71,8 +71,18 @@ impl WhatsAppWorker {
                                 return;
                             }
 
-                            let sender_id = info.source.sender.to_string();
-                            let conversation_id = info.source.chat.to_string();
+                            let sender_jid = info.source.sender.to_string();
+                            let chat_jid = info.source.chat.to_string();
+                            info!("WhatsApp Inbound: sender={}, chat={}, is_group={}", sender_jid, chat_jid, info.source.is_group);
+
+                            let sender_id = sender_jid.clone();
+                            // FIX: If it's a private chat and the chat ID is an LID, prefer the sender's standard JID
+                            let conversation_id = if !info.source.is_group && chat_jid.contains("@lid") && sender_jid.contains("@s.whatsapp.net") {
+                                info!("WhatsApp: Correcting LID chat ID to sender standard JID: {}", sender_jid);
+                                sender_jid
+                            } else {
+                                chat_jid
+                            };
                             let message_id = info.id.to_string();
                             let is_group = info.source.is_group;
                             let is_private = !is_group;
@@ -84,7 +94,7 @@ impl WhatsAppWorker {
                             let bucket = "conversations";
 
 
-                            let mut is_mentioned = false;
+                            let mut is_mentioned;
                             if let Some(img) = &msg.image_message {
                                 info!("image detected");
                                 let uuid = Uuid::new_v4().to_string();
