@@ -29,7 +29,13 @@ impl IntentClassifierService {
 
         for (name, plugin) in &dispatcher.plugins {
             let intents = plugin.matching_intents();
+            let schema = plugin.schema();
+            let description = schema["description"].as_str().unwrap_or_default();
+
             for intent in intents {
+                // Capability-based text for better semantic overlap
+                let capability_text = format!("Intent: {}. Description: {}", intent, description);
+
                 // Check if already exists to avoid duplicates
                 let exists = sqlx::query!(
                     r#"
@@ -43,8 +49,8 @@ impl IntentClassifierService {
                 .await?;
 
                 if exists.is_none() {
-                    info!("Syncing new intent from plugin {}: {}", name, intent);
-                    let embedding_res = match get_embedding(api_key, intent).await {
+                    info!("Syncing new capability for plugin {}: {}", name, intent);
+                    let embedding_res = match get_embedding(api_key, &capability_text).await {
                         Ok(res) => res,
                         Err(e) => {
                             error!("Failed to generate embedding for intent {}: {}", intent, e);
@@ -55,12 +61,13 @@ impl IntentClassifierService {
                     let metadata = json!({
                         "type": "intent_classification",
                         "intent": intent,
-                        "plugin": name
+                        "plugin": name,
+                        "description": description
                     });
 
                     let _ = crate::rag::save_to_knowledge_base(
                         &dispatcher.pool,
-                        intent,
+                        &capability_text,
                         embedding_res.embedding.values,
                         Some(metadata),
                         None, // Global intent, no conversation_id
@@ -84,8 +91,10 @@ impl IntentClassifierService {
 
         let mut created_rag_id = Vec::new();
         for intent in payload.intents {
-            // Check if already exists to avoid duplicates
-            let exists = sqlx::query!(
+            let capability_text = format!("Intent: {}. Description: {}", intent, payload.description);
+
+            // Check if already exists
+            let row = sqlx::query!(
                 r#"
                     SELECT id FROM knowledge_base
                     WHERE metadata->>'type' = 'intent_classification'
@@ -96,43 +105,56 @@ impl IntentClassifierService {
             .fetch_optional(&state.pool)
             .await?;
 
-            if exists.is_none() {
-                info!(
-                    "Syncing new intent from plugin {}: {}",
-                    payload.name, intent
-                );
-                let embedding_res = match get_embedding(
-                    state.gemini_api_key.clone().as_str(),
-                    payload.description.clone().as_str(),
-                )
-                .await
-                {
-                    Ok(res) => res,
-                    Err(e) => {
-                        error!("Failed to generate embedding for intent {}: {}", intent, e);
-                        continue;
-                    }
-                };
+            info!(
+                "Syncing capability from dynamic plugin {}: {}",
+                payload.name, intent
+            );
+            
+            let embedding_res = match get_embedding(
+                state.gemini_api_key.as_str(),
+                &capability_text,
+            )
+            .await
+            {
+                Ok(res) => res,
+                Err(e) => {
+                    error!("Failed to generate embedding for intent {}: {}", intent, e);
+                    continue;
+                }
+            };
 
-                let metadata = json!({
-                    "type": "intent_classification",
-                    "intent": intent,
-                    "plugin": payload.name,
-                });
+            let metadata = json!({
+                "type": "intent_classification",
+                "intent": intent,
+                "plugin": payload.name,
+                "description": payload.description,
+                "slug": payload.slug
+            });
 
-                let crated = crate::rag::save_to_knowledge_base(
-                    &state.pool,
-                    intent.as_str(),
-                    embedding_res.embedding.values,
-                    Some(metadata),
-                    None, // Global intent, no conversation_id
-                    0,
-                    0,
-                    0,
-                )
-                .await?;
-
-                created_rag_id.push(crated);
+            match row {
+                Some(r) => {
+                    // Update existing capability record
+                    sqlx::query!(
+                        "UPDATE knowledge_base SET content = $1, embedding = $2, metadata = $3 WHERE id = $4",
+                        capability_text, embedding_res.embedding.values as Vec<f32>, metadata, r.id
+                    ).execute(&state.pool).await?;
+                    created_rag_id.push(r.id);
+                },
+                None => {
+                    // Insert new capability record
+                    let crated = crate::rag::save_to_knowledge_base(
+                        &state.pool,
+                        &capability_text,
+                        embedding_res.embedding.values,
+                        Some(metadata),
+                        None, // Global intent, no conversation_id
+                        0,
+                        0,
+                        0,
+                    )
+                    .await?;
+                    created_rag_id.push(crated);
+                }
             }
         }
 
@@ -190,6 +212,7 @@ impl IntentClassifierService {
 
         let candidate_names: Vec<&str> = candidates.iter().map(|c| c.intent.as_str()).collect();
 
+        info!("Candidate Intent: {}", candidate_names.join(", "));
         // 4. Gemini Finalization & Token Tracking
         let system_prompt = format!(
             "You are an intent classifier for an AI assistant. \

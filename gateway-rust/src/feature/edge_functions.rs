@@ -59,23 +59,19 @@ pub async fn handle_create_edge_function(
     State(state): State<AppState>,
     Json(payload): Json<CreateEdgeFunctionRequest>,
 ) -> ApiResponse<EdgeFunction> {
-    // Generate embedding
-
-    let embedding_data =
-        crate::rag::get_embedding(&state.gemini_api_key, &payload.description).await;
-    if let Err(e) = embedding_data {
-        info!("Failed to load embedding data: {}", e);
-        return ApiResponse::failed(e.as_str());
-    }
-
+    // Sync capabilities to knowledge base
     let save_result =
         IntentClassifierService::sync_dynamic_plugin_intents_to_knowledge(&state, payload.clone())
             .await;
 
-    if let Err(e) = save_result {
-        error!("Failed to save intent classifier: {}", e);
-        return ApiResponse::failed("Database error");
-    }
+    let rag_id = match save_result {
+        Ok(ids) => ids.first().cloned(),
+        Err(e) => {
+            error!("Failed to save intent classifier: {}", e);
+            return ApiResponse::failed("Failed to synchronize plugin capabilities");
+        }
+    };
+
     let function = sqlx::query_as::<_, EdgeFunction>(
             "INSERT INTO edge_functions (slug, name, description, schema_json, rules_text, script_code, intents, rag_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -88,7 +84,7 @@ pub async fn handle_create_edge_function(
             .bind(&payload.rules_text)
             .bind(&payload.script_code)
             .bind(&payload.intents)
-            .bind(save_result.unwrap().first())
+            .bind(rag_id)
             .fetch_one(&state.pool)
             .await;
 
@@ -106,56 +102,18 @@ pub async fn handle_update_edge_function(
     Path(slug): Path<String>,
     Json(payload): Json<CreateEdgeFunctionRequest>,
 ) -> ApiResponse<EdgeFunction> {
-    // First, try to fetch the existing function to get its rag_id
-    #[derive(FromRow)]
-    struct RagIdRow {
-        rag_id: Option<uuid::Uuid>,
-    }
+    // Sync capabilities to knowledge base
+    let save_result =
+        IntentClassifierService::sync_dynamic_plugin_intents_to_knowledge(&state, payload.clone())
+            .await;
 
-    let existing =
-        sqlx::query_as::<_, RagIdRow>("SELECT rag_id FROM edge_functions WHERE slug = $1")
-            .bind(&slug)
-            .fetch_optional(&state.pool)
-            .await
-            .unwrap_or(None);
-
-    let mut rag_id = existing.and_then(|r| r.rag_id);
-
-    // Generate new embedding
-    if let Ok(embedding_data) =
-        crate::rag::get_embedding(&state.gemini_api_key, &payload.description).await
-    {
-        let metadata = serde_json::json!({
-            "type": "intent_classification",
-            "slug": payload.slug,
-            "name": payload.name,
-            "intents": payload.intents
-        });
-
-        if let Some(id) = rag_id {
-            let _ = sqlx::query(
-                "UPDATE knowledge_base SET content = $1, embedding = $2, metadata = $3 WHERE id = $4"
-            )
-            .bind(&payload.description)
-            .bind(embedding_data.embedding.values as Vec<f32>)
-            .bind(&metadata)
-            .bind(id)
-            .execute(&state.pool).await;
-        } else {
-            let k_id = uuid::Uuid::new_v4();
-            let res = sqlx::query(
-                "INSERT INTO knowledge_base (id, content, embedding, metadata, prompt_tokens, answer_tokens, total_tokens) VALUES ($1, $2, $3, $4, 0, 0, 0)"
-            )
-            .bind(k_id)
-            .bind(&payload.description)
-            .bind(embedding_data.embedding.values as Vec<f32>)
-            .bind(&metadata)
-            .execute(&state.pool).await;
-            if res.is_ok() {
-                rag_id = Some(k_id);
-            }
+    let rag_id = match save_result {
+        Ok(ids) => ids.first().cloned(),
+        Err(e) => {
+            error!("Failed to sync plugin intents during update: {}", e);
+            None
         }
-    }
+    };
 
     let function = sqlx::query_as::<_, EdgeFunction>(
         "UPDATE edge_functions

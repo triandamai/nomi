@@ -109,7 +109,12 @@
                                             <div class="text-[10px] font-mono text-sky-400 mt-1">{plugin.slug}</div>
                                         </td>
                                         <td class="p-4">
-                                            <div class="text-sm text-slate-400 line-clamp-2 max-w-md">{plugin.description}</div>
+                                            <div class="text-sm text-slate-400 line-clamp-1 max-w-xs">{plugin.description}</div>
+                                            <div class="flex flex-wrap gap-1 mt-2">
+                                                {#each plugin.intents || [] as intent}
+                                                    <span class="px-1.5 py-0.5 rounded-full text-[9px] bg-slate-950 text-emerald-500 border border-emerald-900/30 font-mono lowercase">#{intent}</span>
+                                                {/each}
+                                            </div>
                                         </td>
                                         <td class="p-4 text-center">
                                             <span class="inline-flex items-center justify-center px-2 py-1 rounded bg-slate-800 text-xs font-bold text-slate-300">
