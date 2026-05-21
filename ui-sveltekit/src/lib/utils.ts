@@ -1,5 +1,7 @@
 import {createHighlighter} from "shiki";
 import MarkdownIt from "markdown-it";
+import {full as emoji} from "markdown-it-emoji";
+import anchor from "markdown-it-anchor";
 
 type EventHandler = (data: any) => void;
 
@@ -24,6 +26,34 @@ class EventBus {
 }
 
 export const eventBus = new EventBus();
+
+export function setupMarkdownHelpers() {
+    if (typeof window === 'undefined') return;
+
+    if (!(window as any).copyToClipboard) {
+        (window as any).copyToClipboard = (btn: HTMLButtonElement) => {
+            const code = decodeURIComponent(btn.getAttribute('data-code') || '');
+            navigator.clipboard.writeText(code).then(() => {
+                const originalInner = btn.innerHTML;
+                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500"><polyline points="20 6 9 17 4 12"/></svg>`;
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.innerHTML = originalInner;
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        };
+    }
+
+    if (!(window as any).toggleCodeBlock) {
+        (window as any).toggleCodeBlock = (btn: HTMLButtonElement) => {
+            const pre = btn.closest('pre');
+            if (pre) {
+                pre.classList.toggle('collapsed');
+            }
+        };
+    }
+}
 
 export function formatTokenCount(tokens: number | string | undefined): string {
     const num = typeof tokens === 'string' ? parseInt(tokens) : (tokens ?? 0);
@@ -71,6 +101,10 @@ export const mdIt = new MarkdownIt({
 	linkify: true,
 	typographer: true,
 	highlight: (code, lang):string => {
+		if (lang === 'mermaid') {
+			return `<pre class="mermaid m-4 p-4">${code}</pre>`;
+		}
+
 		// @ts-ignore
 		const highlighted = lang && highlighter.getLoadedLanguages().includes(lang)
 			? highlighter.codeToHtml(code, { lang, theme: 'github-dark' })
@@ -78,27 +112,32 @@ export const mdIt = new MarkdownIt({
 
 		const languageName = lang || 'code';
 		const headerHtml = `
-                    <div class="code-block-header">
-                        <span class="code-lang">${languageName}</span>
-                        <div class="code-header-actions">
-                            <button 
-                                class="toggle-button"
-                                onclick="window.toggleCodeBlock(this)"
-                                title="Toggle code"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="toggle-icon"><path d="m6 9 6 6 6-6"/></svg>
-                            </button>
-                            <button 
-                                class="copy-button"
-                                data-code="${encodeURIComponent(code)}"
-                                onclick="window.copyToClipboard(this)"
-                                title="Copy code"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="copy-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                            </button>
-                        </div>
-                    </div>`.trim();
+	<div class="code-block-header">
+	<span class="code-lang">${languageName}</span>
+	<div class="code-header-actions">
+	<button 
+	class="toggle-button"
+	onclick="window.toggleCodeBlock(this)"
+	title="Toggle code"
+	>
+	<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="toggle-icon"><path d="m6 9 6 6 6-6"/></svg>
+	</button>
+	<button 
+	class="copy-button"
+	data-code="${encodeURIComponent(code)}"
+	onclick="window.copyToClipboard(this)"
+	title="Copy code"
+	>
+	<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="copy-icon"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+	</button>
+	</div>
+	</div>`.trim();
 
-		return highlighted.replace('<pre', `<pre style="position: relative; padding-top: 2.5rem;" `).replace('>', `>${headerHtml}`);
+		// Robustly inject the header and apply relative positioning
+		return highlighted
+			.replace(/<pre([^>]*)>/, `<pre$1 style="position: relative; padding-top: 2.5rem;">${headerHtml}`);
 	}
-});
+
+		}).use(emoji).use(anchor, {
+		permalink: anchor.permalink.headerLink()
+		});

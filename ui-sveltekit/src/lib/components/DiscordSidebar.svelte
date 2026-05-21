@@ -15,7 +15,7 @@
         RefreshCw,
         MessageSquare,
         LineChart,
-        DollarSign, Terminal, Activity, HeartPulse, Sparkles, ShieldAlert
+        DollarSign, Terminal, Activity, HeartPulse, Sparkles, ShieldAlert, BookOpen
     } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import SoulTimeline from './SoulTimeline.svelte';
@@ -908,6 +908,13 @@
                     >
                         <HeartPulse size={14}/>
                         <span>Health & Vitality</span>
+                    </button>
+                    <button
+                            onclick={() => { sidebarStore.showUserMenu = false; goto('/docs'); }}
+                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
+                    >
+                        <BookOpen size={14}/>
+                        <span>System Blueprint</span>
                     </button>
                     <button
                             onclick={handleShowTools}

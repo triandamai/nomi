@@ -1,7 +1,7 @@
 <script lang="ts">
-    import {onMount} from 'svelte';
+    import {onMount, tick} from 'svelte';
     import {ChevronDown, ChevronRight, Cpu, ExternalLink, FileText, Play, Music, Eye} from 'lucide-svelte';
-    import {mdIt, formatDate} from "$lib/utils";
+    import {mdIt, formatDate, setupMarkdownHelpers} from "$lib/utils";
     import {env} from '$env/dynamic/public';
 
     let {
@@ -34,7 +34,9 @@
         render();
     }
 
-    function render() {
+    let bubbleElement = $state<HTMLElement | null>(null);
+
+    async function render() {
         if (mdIt) {
             let displayContent = content;
             
@@ -63,38 +65,38 @@
                 const cleanThought = thought.replace(/<\/?thinking>/g, '');
                 renderedThought = mdIt.render(cleanThought);
             }
+
+            // If mermaid containers exist, initialize them
+            if (renderedContent.includes('class="mermaid"')) {
+                await tick();
+                try {
+                    const mermaid = (await import('mermaid')).default;
+                    mermaid.initialize({
+                        startOnLoad: false,
+                        theme: 'dark',
+                        securityLevel: 'loose',
+                        fontFamily: 'inherit',
+                    });
+                    
+                    if (bubbleElement) {
+                        const nodes = bubbleElement.querySelectorAll('.mermaid');
+                        if (nodes.length > 0) {
+                            await mermaid.run({
+                                nodes: Array.from(nodes) as HTMLElement[],
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error("Mermaid in chat failed:", e);
+                }
+            }
         }
     }
 
 
     onMount(() => {
         init();
-
-        if (typeof window !== 'undefined') {
-            if (!(window as any).copyToClipboard) {
-                (window as any).copyToClipboard = (btn: HTMLButtonElement) => {
-                    const code = decodeURIComponent(btn.getAttribute('data-code') || '');
-                    navigator.clipboard.writeText(code).then(() => {
-                        const originalInner = btn.innerHTML;
-                        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500"><polyline points="20 6 9 17 4 12"/></svg>`;
-                        btn.classList.add('copied');
-                        setTimeout(() => {
-                            btn.innerHTML = originalInner;
-                            btn.classList.remove('copied');
-                        }, 2000);
-                    });
-                };
-            }
-
-            if (!(window as any).toggleCodeBlock) {
-                (window as any).toggleCodeBlock = (btn: HTMLButtonElement) => {
-                    const pre = btn.closest('pre');
-                    if (pre) {
-                        pre.classList.toggle('collapsed');
-                    }
-                };
-            }
-        }
+        setupMarkdownHelpers();
     });
 
     $effect(() => {
@@ -104,7 +106,7 @@
     });
 </script>
 
-<div class="flex flex-col space-y-4">
+<div bind:this={bubbleElement} class="flex flex-col space-y-4">
     {#if thought}
         <div class="relative group/thought">
             <button
@@ -320,5 +322,40 @@
 
     :global(.toggle-icon) {
         transition: transform 0.2s;
+    }
+
+    :global(.mermaid-container) {
+        max-width: 100%;
+        overflow-x: auto;
+        display: flex;
+        justify-content: center;
+        background: rgba(15, 23, 42, 0.4);
+        border: 1px solid rgba(51, 65, 85, 0.5);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+        backdrop-filter: blur(4px);
+    }
+
+    :global(.mermaid-container pre.mermaid) {
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: flex;
+        justify-content: center;
+        width: 100%;
+    }
+
+    :global(.mermaid) {
+        background-color: transparent !important;
+        display: flex;
+        justify-content: center;
+        width: 100%;
+    }
+
+    :global(.mermaid svg) {
+        max-width: 100% !important;
+        height: auto !important;
     }
 </style>

@@ -74,7 +74,8 @@ pub async fn send_prompt(
             if has_functions {
                 builder = builder
                     .with_tool(tool)
-                    .with_function_calling_mode(FunctionCallingMode::Auto);
+                    .with_function_calling_mode(FunctionCallingMode::Auto)
+                    .with_temperature(0.2); // 🚨 STABILITY FIX: Low temperature prevents tool hallucinations
             }
 
             builder.with_max_output_tokens(4096)
@@ -171,7 +172,8 @@ pub async fn send_prompt(
             if has_functions {
                 builder = builder
                     .with_tool(tool)
-                    .with_function_calling_mode(FunctionCallingMode::Auto);
+                    .with_function_calling_mode(FunctionCallingMode::Auto)
+                    .with_temperature(0.2); // 🚨 STABILITY FIX: Low temperature prevents tool hallucinations
             }
 
             builder.with_max_output_tokens(4096)

@@ -98,6 +98,115 @@ pub async fn handle_get_guardrail_patterns(
     }
 }
 
+#[derive(serde::Deserialize)]
+pub struct WebSkillRequest {
+    pub plugin_name: String,
+    pub args: serde_json::Value,
+    pub conversation_id: Option<Uuid>,
+}
+
+pub async fn handle_get_skill_schemas(
+    State(state): State<AppState>,
+    axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,
+) -> ApiResponse<Vec<Value>> {
+    let dispatcher = crate::common::tools::ToolDispatcher::new(
+        state.pool.clone(),
+        std::path::PathBuf::from("."),
+        None,
+        None,
+        state.gemini.clone(),
+        state.gemini_api_key.clone(),
+        state.storage.clone(),
+        state.clone(),
+    );
+
+    let mut schemas = Vec::new();
+    for plugin in dispatcher.plugins.values() {
+        schemas.push(plugin.schema());
+    }
+
+    // Sort by name for consistent UI
+    schemas.sort_by(|a, b| {
+        let name_a = a["name"].as_str().unwrap_or("");
+        let name_b = b["name"].as_str().unwrap_or("");
+        name_a.cmp(name_b)
+    });
+
+    ApiResponse::ok(schemas, "Skill schemas retrieved")
+}
+
+pub async fn handle_get_readme(
+    State(_state): State<AppState>,
+    axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,
+) -> ApiResponse<String> {
+    // Try current directory first (Docker/Prod), then parent (Local Dev)
+    let paths = ["./README.md", "../README.md"];
+    
+    for path in paths {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            return ApiResponse::ok(content, "README retrieved successfully");
+        }
+    }
+
+    error!("Failed to read README.md from any expected location");
+    ApiResponse::failed("Failed to read documentation")
+}
+
+pub async fn handle_execute_skill(
+    State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
+    Json(payload): Json<WebSkillRequest>,
+) -> ApiResponse<String> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => Some(id),
+        Err(_) => None,
+    };
+
+    let dispatcher = crate::common::tools::ToolDispatcher::new(
+        state.pool.clone(),
+        std::path::PathBuf::from("."),
+        payload.conversation_id,
+        user_id,
+        state.gemini.clone(),
+        state.gemini_api_key.clone(),
+        state.storage.clone(),
+        state.clone(),
+    );
+
+    let plugin = match dispatcher.plugins.get(payload.plugin_name.as_str()) {
+        Some(p) => p,
+        None => return ApiResponse::failed("Skill plugin not found"),
+    };
+
+    match plugin.execute(&dispatcher, payload.args).await {
+        Ok(result) => {
+            // Asynchronous token telemetry logging (Manual execution)
+            let pool_clone = state.pool.clone();
+            let conv_id = payload.conversation_id;
+            let u_id = user_id;
+            let log_type = "skill_test".to_string();
+
+            tokio::spawn(async move {
+                let _ = crate::services::ambient_soul::AmbientSoulService::log_token_transaction(
+                    &pool_clone,
+                    conv_id,
+                    None,
+                    u_id,
+                    &log_type,
+                    "system",
+                    0, 0, 0 
+                ).await;
+            });
+
+            ApiResponse::ok(result, "Skill executed successfully")
+        },
+        Err(e) => {
+            error!("Skill execution failed: {}", e);
+            ApiResponse::failed(&format!("Skill execution error: {}", e))
+        }
+    }
+}
+
 pub async fn handle_insert_guardrail_pattern(
     State(state): State<AppState>,
     axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,

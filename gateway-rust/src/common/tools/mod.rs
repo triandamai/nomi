@@ -118,24 +118,9 @@ impl ToolDispatcher {
 
             if is_matched {
                 let mut schema = plugin.schema();
-                // STRICT ENFORCEMENT: Shield against Gemini API 400 validation drops by removing additionalProperties
-                if let Some(obj) = schema.as_object_mut() {
-                    if let Some(params) = obj.get_mut("parameters") {
-                        if let Some(params_obj) = params.as_object_mut() {
-                            params_obj.remove("additionalProperties");
-                            // Recurse into properties if they exist
-                            if let Some(properties) = params_obj.get_mut("properties") {
-                                if let Some(props_obj) = properties.as_object_mut() {
-                                    for (_, prop_val) in props_obj.iter_mut() {
-                                        if let Some(prop_obj) = prop_val.as_object_mut() {
-                                            prop_obj.remove("additionalProperties");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                // 🚨 BUG FIX: Rigorous Schema Sanitization for Native Gemini Protocol
+                // Gemini rejects additionalProperties: true/false in many contexts.
+                Self::sanitize_schema_for_gemini(&mut schema);
 
                 if let Ok(func_decl) = serde_json::from_value::<FunctionDeclaration>(schema) {
                     tools.push(func_decl);
@@ -153,6 +138,19 @@ impl ToolDispatcher {
         }
 
         Tool::with_functions(unique_tools)
+    }
+
+    fn sanitize_schema_for_gemini(value: &mut serde_json::Value) {
+        if let Some(obj) = value.as_object_mut() {
+            obj.remove("additionalProperties");
+            for (_, v) in obj.iter_mut() {
+                Self::sanitize_schema_for_gemini(v);
+            }
+        } else if let Some(arr) = value.as_array_mut() {
+            for v in arr.iter_mut() {
+                Self::sanitize_schema_for_gemini(v);
+            }
+        }
     }
 }
 

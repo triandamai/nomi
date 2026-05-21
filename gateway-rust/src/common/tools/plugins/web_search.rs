@@ -33,7 +33,7 @@ impl NomiToolPlugin for WebSearchPlugin {
     }
 
     fn matching_intents(&self) -> &[&str] {
-        &["GENERAL", "RESEARCH", "NEWS", "WEB"]
+        &["GENERAL", "RESEARCH", "NEWS", "WEB","RETRIEVE_KNOWLEDGE","SEARCH","KEYWORD"]
     }
 
     fn execute<'a>(

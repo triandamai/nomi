@@ -7,6 +7,8 @@
     import { formatTokenCount } from '$lib/utils';
     import { onMount } from "svelte";
 
+    let { title = '' } = $props<{ title?: string }>();
+
     let activeTab = $derived(page.url.pathname === '/rag' ? 'RAG' : 'Chat');
     let isMenuOpen = $state(false);
 

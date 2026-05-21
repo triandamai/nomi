@@ -9,7 +9,8 @@ use crate::feature::conversation::{
     handle_get_path_file, handle_get_soul_history, handle_get_user_channels,
     handle_restore_conversation_soul, handle_update_conversation, handle_upload_file,
     handle_get_available_tools, handle_get_guardrail_patterns, handle_insert_guardrail_pattern,
-    handle_delete_guardrail_pattern,
+    handle_delete_guardrail_pattern, handle_get_skill_schemas, handle_execute_skill,
+    handle_get_readme,
     };
 
 use crate::feature::graph::{handle_get_graph, handle_search_graph};
@@ -90,7 +91,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/conversations", get(handle_get_conversations))
         .route("/user/channels", get(handle_get_user_channels))
         .route("/tools", get(handle_get_available_tools))
+        .route("/skills/schemas", get(handle_get_skill_schemas))
+        .route("/skills/execute", post(handle_execute_skill))
         .route("/reminders", get(handle_get_reminders))
+        .route("/readme", get(handle_get_readme))
         .route(
             "/money/history",
             get(crate::feature::money_tracking::handle_get_money_history),

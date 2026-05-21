@@ -11,5 +11,6 @@ RUN apk add --no-cache libgcc openssl ca-certificates
 WORKDIR /app
 COPY --from=builder /app/target/release/gateway-rust .
 COPY --from=builder /app/migrations ./migrations
+COPY README.md ./README.md
 EXPOSE 8000
 CMD ["./gateway-rust"]

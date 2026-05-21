@@ -351,11 +351,28 @@ export const chatApi = {
         });
     },
     deleteGuardrailPattern: (id: string) => {
-        return apiFetch<any>(`/v1/admin/guardrails/patterns/${id}`, {
+        return apiFetch<any>(`/guardrails/patterns/${id}`, {
             method: 'DELETE'
         });
     },
+    getSkillSchemas: () => {
+        return apiFetch<any[]>('/skills/schemas');
+    },
+    executeSkill: (pluginName: string, args: any, conversationId?: string) => {
+        return apiFetch<string>('/skills/execute', {
+            method: 'POST',
+            body: JSON.stringify({
+                plugin_name: pluginName,
+                args,
+                conversation_id: conversationId
+            })
+        });
+    },
+    getDocumentation: () => {
+        return apiFetch<string>('/readme');
+    },
     logout: () => {
+
         return apiFetch<any>('/auth/logout', {
             method: 'POST'
         });
