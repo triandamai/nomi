@@ -330,8 +330,6 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
     // 5. Trigger Agentic Loop
     let state_clone = state.clone();
     let user_text = msg.text.clone();
-    let sender_id = msg.sender_id.clone();
-    let chat_id = msg.conversation_id.clone();
     let channel = msg.channel.clone();
     let image_url = msg.image_url.clone();
     let audio_url = msg.audio_url.clone();
@@ -340,24 +338,6 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
     let sticker_url = msg.sticker_url.clone();
 
     tokio::spawn(async move {
-        // A. Presence
-        let _ = state_clone
-            .send_presence_to_user(
-                user_id.to_string().as_str(),
-                json!({
-                    "conversation_id": conversation_id,
-                    "is_typing": true,
-                    "user_id": "nomi"
-                }),
-                &crate::feature::PresenceMessage {
-                    sender_id: sender_id.clone(),
-                    chat_id: chat_id.clone(),
-                    channel: channel.clone(),
-                    status: "typing".to_string(),
-                },
-            )
-            .await;
-
         // B. Unified Processing (Contextual Image Classification if image present)
         let unified_msg = UnifiedMessage {
             is_group: msg.is_group,

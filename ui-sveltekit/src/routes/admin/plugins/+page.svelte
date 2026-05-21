@@ -3,7 +3,6 @@
     import { chatApi } from '$lib/api/client';
     import { Code2, Plus, Search, Trash2, Cpu, FileJson, Clock } from 'lucide-svelte';
     import { formatDate } from '$lib/utils';
-    import Header from '$lib/components/Header.svelte';
     import { goto } from '$app/navigation';
     import toast from 'svelte-french-toast';
 
@@ -48,8 +47,6 @@
 </script>
 
 <div class="flex flex-col h-screen bg-slate-950 text-slate-200">
-    <Header />
-
     <main class="flex-1 overflow-y-auto p-6">
         <div class="max-w-7xl mx-auto space-y-6">
             
