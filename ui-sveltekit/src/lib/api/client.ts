@@ -351,7 +351,7 @@ export const chatApi = {
         });
     },
     deleteGuardrailPattern: (id: string) => {
-        return apiFetch<any>(`/guardrails/patterns/${id}`, {
+        return apiFetch<any>(`/v1/admin/guardrails/patterns/${id}`, {
             method: 'DELETE'
         });
     },
@@ -392,7 +392,7 @@ export const chatApi = {
         });
     },
     executeEdgeFunction: (scriptCode: string, args: any) => {
-        return apiFetch<string>('/v1/admin/plugins/execute', {
+        return apiFetch<{result: string, logs: string}>('/v1/admin/plugins/execute', {
             method: 'POST',
             body: JSON.stringify({
                 script_code: scriptCode,
@@ -400,6 +400,7 @@ export const chatApi = {
             })
         });
     },
+
     logout: () => {
 
         return apiFetch<any>('/auth/logout', {

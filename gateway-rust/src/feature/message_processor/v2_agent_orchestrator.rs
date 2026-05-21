@@ -214,12 +214,32 @@ impl V2AgentOrchestrator {
                 |v| v,
             );
 
-        if let None = self.conversation {
-            info!("conversation is null {:?}", self.conversation);
-            return Ok(());
-        }
-
         let conversation = self.conversation.clone().unwrap();
+
+        let incoming_ctx = json!({
+            "is_group": msg.is_group,
+            "is_mentioned": msg.is_mentioned,
+            "sender_id": msg.user_id,
+            "conversation_id": msg.conversation_id,
+            "text": msg.text_content,
+            "channel": match &msg.source {
+                MessageSource::Web { name } => name.clone(),
+                MessageSource::Telegram { name } => name.clone(),
+                MessageSource::WhatsApp { name } => name.clone(),
+                MessageSource::Other { name } => name.clone(),
+                MessageSource::Multiple { source } => source.join(", "),
+            },
+            "image_url": msg.image_url,
+            "video_url": msg.video_url,
+            "audio_url": msg.audio_url,
+            "doc_url": msg.doc_url,
+            "sticker_url": msg.sticker_url,
+        });
+
+        let workspace_ctx = json!({
+            "id": conversation.id,
+            "title": conversation.title
+        });
 
         let mut intents = intent.intents.clone();
 
@@ -609,7 +629,8 @@ impl V2AgentOrchestrator {
                     let tool_results = execute_tools(
                         &dispatcher,
                         current_calls.clone(),
-                        &text_content, // use the v2-stripped one
+                        incoming_ctx.clone(),
+                        workspace_ctx.clone(),
                     )
                     .await;
 
@@ -880,6 +901,20 @@ impl V2AgentOrchestrator {
         let intents_list = vec!["FULL_REGISTRY".to_string()];
         let system_prompt = build_system_prompt(&intents_list);
 
+        let incoming_ctx = json!({
+            "is_group": false,
+            "is_mentioned": true,
+            "sender_id": user_id,
+            "conversation_id": conversation_id,
+            "text": task_prompt,
+            "channel": "system_task"
+        });
+
+        let workspace_ctx = json!({
+            "id": conversation_id,
+            "title": conversation.title
+        });
+
         let mut loop_count = 0;
         let max_loops = 10;
         let mut tool_turns = Vec::new();
@@ -942,7 +977,7 @@ impl V2AgentOrchestrator {
 
                     let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
                     let tool_results =
-                        execute_tools(&dispatcher, current_calls.clone(), task_prompt).await;
+                        execute_tools(&dispatcher, current_calls.clone(), incoming_ctx.clone(), workspace_ctx.clone()).await;
 
                     tool_turns.push((current_calls, tool_results));
                 }

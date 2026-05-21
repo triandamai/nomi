@@ -8,7 +8,6 @@ use reqwest::Client as ReqwestClient;
 use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::postgres::PgQueryResult;
 use sqlx::{Error, Pool, Postgres};
 use tracing::info;
 use uuid::Uuid;

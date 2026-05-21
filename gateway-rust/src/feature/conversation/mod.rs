@@ -121,8 +121,25 @@ pub async fn handle_get_skill_schemas(
     );
 
     let mut schemas = Vec::new();
+    // 1. Static plugin schemas
     for plugin in dispatcher.plugins.values() {
         schemas.push(plugin.schema());
+    }
+
+    // 2. Dynamic edge function schemas
+    let edge_fns = sqlx::query!("SELECT slug, name, description, schema_json FROM edge_functions")
+        .fetch_all(&state.pool)
+        .await;
+
+    if let Ok(records) = edge_fns {
+        for r in records {
+            let mut schema = r.schema_json.clone();
+            if let Some(obj) = schema.as_object_mut() {
+                obj.insert("name".to_string(), serde_json::Value::String(r.slug));
+                obj.insert("description".to_string(), serde_json::Value::String(r.description));
+            }
+            schemas.push(schema);
+        }
     }
 
     // Sort by name for consistent UI

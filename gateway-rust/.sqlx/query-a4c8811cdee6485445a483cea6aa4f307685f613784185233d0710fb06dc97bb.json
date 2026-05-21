@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO knowledge_base (content, embedding, metadata, conversation_id, prompt_tokens, answer_tokens, total_tokens)\n        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        {
+          "Custom": {
+            "name": "halfvec",
+            "kind": "Simple"
+          }
+        },
+        "Jsonb",
+        "Uuid",
+        "Int4",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a4c8811cdee6485445a483cea6aa4f307685f613784185233d0710fb06dc97bb"
+}

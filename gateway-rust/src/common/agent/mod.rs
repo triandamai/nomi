@@ -59,9 +59,9 @@ pub async fn send_prompt(
                 });
 
             let tool = if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
-                dispatcher.generate_tool_for_prompt(intents)
+                dispatcher.generate_tool_for_prompt(intents).await
             } else {
-                dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()])
+                dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]).await
             };
 
             let has_functions = match &tool {
@@ -157,9 +157,9 @@ pub async fn send_prompt(
             }
 
             let tool = if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
-                dispatcher.generate_tool_for_prompt(intents)
+                dispatcher.generate_tool_for_prompt(intents).await
             } else {
-                dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()])
+                dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]).await
             };
 
             let has_functions = match &tool {
@@ -305,15 +305,17 @@ pub async fn send_prompt(
 pub async fn execute_tools(
     dispatcher: &ToolDispatcher,
     function_calls: Vec<FunctionCall>,
-    user_message: &str,
+    incoming: serde_json::Value,
+    workspace: serde_json::Value,
 ) -> Vec<(String, ToolResult)> {
     let mut futures = Vec::new();
 
     for call in function_calls {
         let dispatcher = dispatcher.clone();
-        let _user_message = user_message.to_string();
         let call_name = call.name.clone();
         let args = call.args.clone();
+        let incoming = incoming.clone();
+        let workspace = workspace.clone();
 
         futures.push(tokio::spawn(async move {
             info!(
@@ -323,13 +325,12 @@ pub async fn execute_tools(
             );
 
             // Send tool_start SSE event
-
             let _ = send_tool_update(
                 &dispatcher.app_state,
                 vec![dispatcher.user_id.unwrap()],
                 dispatcher.conversation_id.unwrap(),
                 MessageSource::Multiple {
-                    source: vec!["web".to_string(),"mobile".to_string()],
+                    source: vec!["web".to_string(), "mobile".to_string()],
                 },
                 false,
                 "tool_start".to_string(),
@@ -337,7 +338,7 @@ pub async fn execute_tools(
             )
             .await;
 
-            // Check if it's a plugin tool
+            // 1. Check Static Plugins
             if let Some(plugin) = dispatcher.plugins.get(call_name.as_str()) {
                 let plugin_res = plugin.execute(&dispatcher, args).await;
 
@@ -365,7 +366,7 @@ pub async fn execute_tools(
                     vec![dispatcher.user_id.unwrap()],
                     dispatcher.conversation_id.unwrap(),
                     MessageSource::Multiple {
-                        source: vec!["web".to_string(),"mobile".to_string()],
+                        source: vec!["web".to_string(), "mobile".to_string()],
                     },
                     false,
                     "tool_end".to_string(),
@@ -376,19 +377,73 @@ pub async fn execute_tools(
                 return (call_name, result);
             }
 
-            // Send tool_end SSE event
+            // 2. Check Dynamic Edge Plugins
+            let edge_fn = sqlx::query!(
+                "SELECT script_code, slug FROM edge_functions WHERE slug = $1 LIMIT 1",
+                call_name
+            )
+            .fetch_optional(&dispatcher.pool)
+            .await;
+
+            if let Ok(Some(record)) = edge_fn {
+                info!("Executing dynamic edge plugin: {}", record.slug);
+
+                let executor = crate::common::tools::edge_runner::BunEdgeExecutor {
+                    slug: record.slug,
+                    script_code: record.script_code,
+                };
+
+                // Secure Bridge Configuration
+                let bridge_token = "TODO_GENERATE_SECURE_JWT"; 
+                let api_base_url = "http://localhost:8000";
+
+                let plugin_res = executor.run(args, incoming, workspace, bridge_token, api_base_url).await;
+
+                let result = match plugin_res {
+                    Ok(exec_res) => ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content: exec_res.result,
+                        follow_up_prompt: "".to_string(),
+                    },
+                    Err(e) => ToolResult {
+                        error: format!("Edge Execution Failed: {}", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                    },
+                };
+
+                let _ = send_tool_update(
+                    &dispatcher.app_state,
+                    vec![dispatcher.user_id.unwrap()],
+                    dispatcher.conversation_id.unwrap(),
+                    MessageSource::Multiple {
+                        source: vec!["web".to_string(), "mobile".to_string()],
+                    },
+                    false,
+                    "tool_end".to_string(),
+                    call_name.clone(),
+                )
+                .await;
+
+                return (call_name, result);
+            }
+
+            // Fallback for missing tools
             let _ = send_tool_update(
                 &dispatcher.app_state,
                 vec![dispatcher.user_id.unwrap()],
                 dispatcher.conversation_id.unwrap(),
                 MessageSource::Multiple {
-                    source: vec!["web".to_string(),"mobile".to_string()],
+                    source: vec!["web".to_string(), "mobile".to_string()],
                 },
                 false,
                 "tool_end".to_string(),
                 StatusRegistry::random_action_phrase(call_name.clone().as_str()),
             )
             .await;
+
             (call_name.clone(), ToolResult{
                 error: format!("Plugin : {} Failed because is not exist or you calling old deprecated tool", call_name),
                 success: false,

@@ -18,6 +18,35 @@
     let testArgsSchema = $state<Record<string, any>>({});
     let intentsInput = $state('');
 
+    let isResizing = $state(false);
+    let consoleHeight = $state(192); // default height in pixels (12rem)
+
+    function startResizing(e: MouseEvent) {
+        isResizing = true;
+        e.preventDefault();
+    }
+
+    function stopResizing() {
+        isResizing = false;
+    }
+
+    function handleMouseMove(e: MouseEvent) {
+        if (!isResizing) return;
+        const newHeight = window.innerHeight - e.clientY;
+        if (newHeight > 60 && newHeight < window.innerHeight * 0.8) {
+            consoleHeight = newHeight;
+        }
+    }
+
+    onMount(() => {
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', stopResizing);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', stopResizing);
+        };
+    });
+
     let plugin = $state({
         slug: originalSlug,
         name: '',
@@ -119,7 +148,12 @@
         try {
             const res = await chatApi.executeEdgeFunction(plugin.script_code, testArgs);
             if (res.meta.code >= 200 && res.meta.code <= 299) {
-                executionOutput = res.data;
+                // If there are logs, prepend them to the output or handle separately
+                if (res.data.logs) {
+                    executionOutput = `[LOGS]\n${res.data.logs}\n\n[RESULT]\n${res.data.result}`;
+                } else {
+                    executionOutput = res.data.result;
+                }
             } else {
                 executionError = res.meta.message;
             }
@@ -137,7 +171,8 @@
             if (found) {
                 plugin = {
                     ...found,
-                    schema_json: JSON.stringify(found.schema_json, null, 2)
+                    schema_json: JSON.stringify(found.schema_json, null, 2),
+                    script_code: found.script_code
                 };
                 intentsInput = (found.intents || []).join(', ');
             } else {
@@ -263,8 +298,10 @@
             </div>
 
             <!-- Console Output -->
-            <div class="border-t border-slate-800 bg-slate-950 flex flex-col shrink-0" style="height: 12rem; min-height: 8rem; max-height: 80vh; resize: vertical; overflow: hidden;">
-                <div class="h-8 shrink-0 border-b border-slate-800/50 flex items-center px-4 bg-slate-900/30">
+            <div class="border-t border-slate-800 bg-slate-950 flex flex-col shrink-0 overflow-hidden" 
+                 style="height: {consoleHeight}px;">
+                <div class="h-8 shrink-0 border-b border-slate-800/50 flex items-center px-4 bg-slate-900/30 cursor-ns-resize select-none"
+                     onmousedown={startResizing}>
                     <span class="text-[9px] font-mono text-slate-500 uppercase tracking-widest">Console Output</span>
                 </div>
                 <div class="flex-1 p-4 font-mono text-xs overflow-y-auto custom-scrollbar whitespace-pre-wrap {executionError ? 'text-rose-400' : 'text-slate-300'}">

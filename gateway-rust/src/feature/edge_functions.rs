@@ -216,7 +216,7 @@ pub struct ExecuteEdgeFunctionRequest {
 pub async fn handle_execute_edge_function(
     State(_state): State<AppState>,
     axum::Json(payload): axum::Json<ExecuteEdgeFunctionRequest>,
-) -> ApiResponse<String> {
+) -> ApiResponse<serde_json::Value> {
     let executor = crate::common::tools::edge_runner::BunEdgeExecutor {
         slug: "playground".to_string(),
         script_code: payload.script_code,
@@ -242,7 +242,13 @@ pub async fn handle_execute_edge_function(
     });
 
     match executor.run(payload.args, incoming, workspace, bridge_token, api_base_url).await {
-        Ok(output) => ApiResponse::ok(output, "Execution successful"),
+        Ok(exec_result) => {
+            // Return both result and logs to the frontend
+            ApiResponse::ok(serde_json::json!({
+                "result": exec_result.result,
+                "logs": exec_result.logs
+            }), "Execution successful")
+        },
         Err(e) => {
             error!("Edge function execution failed: {}", e);
             ApiResponse::failed(&format!("{}", e))

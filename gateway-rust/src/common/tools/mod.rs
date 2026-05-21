@@ -108,10 +108,10 @@ impl ToolDispatcher {
     }
     
 
-    pub fn generate_tool_for_prompt(&self, intents: &[String]) -> Tool {
+    pub async fn generate_tool_for_prompt(&self, intents: &[String]) -> Tool {
         let mut tools = Vec::new();
 
-        // Plugable Tools Interception
+        // 1. Static Plugable Tools
         for plugin in self.plugins.values() {
             let plugin_intents = plugin.matching_intents();
             let is_matched = intents.iter().any(|i| plugin_intents.contains(&i.as_str()))
@@ -119,8 +119,6 @@ impl ToolDispatcher {
 
             if is_matched {
                 let mut schema = plugin.schema();
-                // 🚨 BUG FIX: Rigorous Schema Sanitization for Native Gemini Protocol
-                // Gemini rejects additionalProperties: true/false in many contexts.
                 Self::sanitize_schema_for_gemini(&mut schema);
 
                 if let Ok(func_decl) = serde_json::from_value::<FunctionDeclaration>(schema) {
@@ -129,7 +127,47 @@ impl ToolDispatcher {
             }
         }
 
-        // De-duplicate tools based on name if multiple intents added the same tool
+        // 2. Dynamic Edge Plugins
+        #[derive(sqlx::FromRow)]
+        struct EdgeFnRow {
+            slug: String,
+            description: String,
+            schema_json: serde_json::Value,
+        }
+
+        let dynamic_plugins = if intents.contains(&"FULL_REGISTRY".to_string()) {
+            sqlx::query_as::<_, EdgeFnRow>(
+                "SELECT slug, description, schema_json FROM edge_functions"
+            )
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query_as::<_, EdgeFnRow>(
+                "SELECT slug, description, schema_json FROM edge_functions WHERE intents && $1"
+            )
+            .bind(intents)
+            .fetch_all(&self.pool)
+            .await
+        };
+
+        if let Ok(plugins) = dynamic_plugins {
+            for p in plugins {
+                let mut schema = p.schema_json.clone();
+                // Ensure name and description match the DB record handle
+                if let Some(obj) = schema.as_object_mut() {
+                    obj.insert("name".to_string(), serde_json::Value::String(p.slug.clone()));
+                    obj.insert("description".to_string(), serde_json::Value::String(p.description.clone()));
+                }
+                
+                Self::sanitize_schema_for_gemini(&mut schema);
+
+                if let Ok(func_decl) = serde_json::from_value::<FunctionDeclaration>(schema) {
+                    tools.push(func_decl);
+                }
+            }
+        }
+
+        // De-duplicate tools based on name
         let mut unique_tools = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
         for t in tools {
