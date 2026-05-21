@@ -10,7 +10,7 @@ pub struct CommunicationPlugin;
 impl NomiToolPlugin for CommunicationPlugin {
     fn schema(&self) -> Value {
         json!({
-            "name": "send_direct_message",
+            "name": "send_message",
             "description": "Fires an outbound message payload to a specified target. Accepts a database UUID string, a standard phone JID, or a protocol LID string as the target parameter.",
             "parameters": {
                 "type": "object",
@@ -30,7 +30,7 @@ impl NomiToolPlugin for CommunicationPlugin {
     }
 
     fn rules(&self) -> &str {
-        "OUTBOUND MESSAGING CORE RULES:\n\
+        "\n##OUTBOUND MESSAGING CORE RULES:\n\
         1. When instructed to send a message to a user, always call your user lookup/search tool first.\n\
         2. As soon as the search tool returns an identifier (whether it is a database UUID string, JID, or LID), pass that identifier directly into the 'target' field of this tool.\n\
         3. Do not halt execution or request additional format conversions if the target identifier looks like a UUID or a non-phone string; the native tool wrapper has full responsibility for resolving routing addresses."
@@ -64,8 +64,8 @@ impl NomiToolPlugin for CommunicationPlugin {
 
                 match row {
                     Some(r) => (
-                        r.external_id, 
-                        r.channel_type, 
+                        r.external_id,
+                        r.channel_type,
                         r.conversation_id.unwrap_or(uuid::Uuid::nil()),
                         r.user_id
                     ),
@@ -74,14 +74,14 @@ impl NomiToolPlugin for CommunicationPlugin {
             } else {
                 // 🅱️/🅲 TARGET IS JID OR LID: Resolve channel info
                 let row = sqlx::query!(
-                    "SELECT channel_type, conversation_id, user_id FROM channels WHERE external_id = $1 LIMIT 1",
+                    "SELECT channel_type, conversation_id, user_id FROM channels WHERE external_id = $1 OR external_chat_id= $1 LIMIT 1",
                     target
                 ).fetch_optional(&dispatcher.pool).await?;
 
                 match row {
                     Some(r) => (
-                        target.to_string(), 
-                        r.channel_type, 
+                        target.to_string(),
+                        r.channel_type,
                         r.conversation_id.unwrap_or(uuid::Uuid::nil()),
                         r.user_id
                     ),
@@ -103,7 +103,7 @@ impl NomiToolPlugin for CommunicationPlugin {
                 let msg_id = message_id.clone();
                 let conv_id = conversation_id.clone();
                 let content = message_body.to_string();
-                
+
                 tokio::spawn(async move {
                     let _ = sqlx::query!(
                         "INSERT INTO messages (id, conversation_id, user_id, role, content) VALUES ($1, $2, $3, $4, $5)",
@@ -138,9 +138,11 @@ impl NomiToolPlugin for CommunicationPlugin {
                 &dispatcher.app_state,
                 members,
                 conversation_id,
-                crate::feature::MessageSource::Other { name: channel_type },
+                crate::feature::MessageSource::Multiple {
+                    source: vec!["whatsapp".to_string(), "telegram".to_string(), "web".to_string()],
+                },
                 message_item.to_sse_json(0),
-                message_item
+                message_item,
             ).await;
 
             let res_content = format!("Message successfully dispatched to target: {}", resolved_jid);
@@ -153,9 +155,9 @@ impl NomiToolPlugin for CommunicationPlugin {
                     target
                 ),
             };
-            
+
             Ok(serde_json::to_string(&result)?)
         }
-        .boxed()
+            .boxed()
     }
 }
