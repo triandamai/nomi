@@ -1,4 +1,3 @@
-use crate::common::app_state::AppState;
 use crate::common::tools::ToolDispatcher;
 use crate::feature::edge_functions::CreateEdgeFunctionRequest;
 use crate::rag::get_embedding;
@@ -84,34 +83,40 @@ impl IntentClassifierService {
     }
 
     pub async fn sync_dynamic_plugin_intents_to_knowledge(
-        state: &AppState,
-        payload: CreateEdgeFunctionRequest,
-    ) -> anyhow::Result<Vec<Uuid>> {
-        info!("Saving intent synchronization for dynamic plugin...");
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        gemini_api_key: &str,
+        payload: &CreateEdgeFunctionRequest,
+        edge_function_id: Uuid,
+    ) -> anyhow::Result<()> {
+        info!("Syncing capabilities for dynamic plugin: {}", payload.name);
 
-        let mut created_rag_id = Vec::new();
-        for intent in payload.intents {
+        // 1. Clear existing links for this function to avoid orphans
+        sqlx::query(
+            "DELETE FROM knowledge_edge_function WHERE edge_function_id = $1"
+        )
+        .bind(edge_function_id)
+        .execute(&mut **tx).await?;
+
+        for intent in &payload.intents {
             let capability_text = format!("Intent: {}. Description: {}", intent, payload.description);
 
-            // Check if already exists
-            let row = sqlx::query!(
+            // Check if a capability for this intent already exists in knowledge_base
+            #[derive(sqlx::FromRow)]
+            struct KnowledgeIdRow { id: Uuid }
+
+            let row = sqlx::query_as::<_, KnowledgeIdRow>(
                 r#"
                     SELECT id FROM knowledge_base
                     WHERE metadata->>'type' = 'intent_classification'
                     AND metadata->>'intent' = $1
-                    "#,
-                intent
+                    "#
             )
-            .fetch_optional(&state.pool)
+            .bind(intent)
+            .fetch_optional(&mut **tx)
             .await?;
 
-            info!(
-                "Syncing capability from dynamic plugin {}: {}",
-                payload.name, intent
-            );
-            
             let embedding_res = match get_embedding(
-                state.gemini_api_key.as_str(),
+                gemini_api_key,
                 &capability_text,
             )
             .await
@@ -131,35 +136,44 @@ impl IntentClassifierService {
                 "slug": payload.slug
             });
 
-            match row {
+            let knowledge_id = match row {
                 Some(r) => {
                     // Update existing capability record
-                    sqlx::query!(
-                        "UPDATE knowledge_base SET content = $1, embedding = $2, metadata = $3 WHERE id = $4",
-                        capability_text, embedding_res.embedding.values as Vec<f32>, metadata, r.id
-                    ).execute(&state.pool).await?;
-                    created_rag_id.push(r.id);
+                    sqlx::query(
+                        "UPDATE knowledge_base SET content = $1, embedding = $2, metadata = $3 WHERE id = $4"
+                    )
+                    .bind(&capability_text)
+                    .bind(embedding_res.embedding.values as Vec<f32>)
+                    .bind(&metadata)
+                    .bind(r.id)
+                    .execute(&mut **tx).await?;
+                    r.id
                 },
                 None => {
                     // Insert new capability record
-                    let crated = crate::rag::save_to_knowledge_base(
-                        &state.pool,
-                        &capability_text,
-                        embedding_res.embedding.values,
-                        Some(metadata),
-                        None, // Global intent, no conversation_id
-                        0,
-                        0,
-                        0,
+                    let k_id = Uuid::new_v4();
+                    sqlx::query(
+                        "INSERT INTO knowledge_base (id, content, embedding, metadata, prompt_tokens, answer_tokens, total_tokens) VALUES ($1, $2, $3, $4, 0, 0, 0)"
                     )
-                    .await?;
-                    created_rag_id.push(crated);
+                    .bind(k_id)
+                    .bind(&capability_text)
+                    .bind(embedding_res.embedding.values as Vec<f32>)
+                    .bind(&metadata)
+                    .execute(&mut **tx).await?;
+                    k_id
                 }
-            }
+            };
+
+            // 2. Link the capability to the edge function
+            sqlx::query(
+                "INSERT INTO knowledge_edge_function (knowledge_id, edge_function_id) VALUES ($1, $2) ON CONFLICT DO NOTHING"
+            )
+            .bind(knowledge_id)
+            .bind(edge_function_id)
+            .execute(&mut **tx).await?;
         }
 
-        info!("Intent dynamic plugin synchronization complete.");
-        Ok(created_rag_id)
+        Ok(())
     }
 
     pub async fn classify_user_intent(
