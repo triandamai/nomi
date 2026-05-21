@@ -16,6 +16,11 @@ use crate::feature::conversation::{
 use crate::feature::graph::{handle_get_graph, handle_search_graph};
 use crate::feature::reminder::handle_get_reminders;
 use crate::feature::waitlist::handle_waitlist;
+use crate::feature::edge_functions::{
+    handle_get_edge_functions, handle_create_edge_function, handle_delete_edge_function,
+    handle_internal_retrieve_knowledge, handle_internal_incoming_history, handle_update_edge_function,
+    handle_execute_edge_function
+};
 use axum::extract::DefaultBodyLimit;
 use axum::extract::Request;
 use axum::http::StatusCode;
@@ -70,6 +75,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/guardrails/patterns", get(handle_get_guardrail_patterns))
         .route("/guardrails/patterns", post(handle_insert_guardrail_pattern))
         .route("/guardrails/patterns/{id}", delete(handle_delete_guardrail_pattern))
+        .route("/plugins", get(handle_get_edge_functions))
+        .route("/plugins/execute", post(handle_execute_edge_function))
+        .route("/plugins", post(handle_create_edge_function))
+        .route("/plugins/{slug}", put(handle_update_edge_function))
+        .route("/plugins/{slug}", delete(handle_delete_edge_function))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             crate::feature::admin::admin_middleware,
@@ -158,6 +168,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/waitlist", post(handle_waitlist))
         .route("/files/{filename}", get(handle_get_file))
         .route("/files/{path}/{filename}", get(handle_get_path_file))
+        .route("/internal/rpc/retrieve-knowledge", post(handle_internal_retrieve_knowledge))
+        .route("/internal/rpc/incoming-history", post(handle_internal_incoming_history))
         .nest("/v1/admin", admin_routes)
         .nest("/v1/money", money_routes)
         .merge(protected_routes)

@@ -1,8 +1,11 @@
+use crate::common::app_state::AppState;
 use crate::common::tools::ToolDispatcher;
+use crate::feature::edge_functions::CreateEdgeFunctionRequest;
 use crate::rag::get_embedding;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{info, error};
+use tracing::{error, info};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassificationResult {
@@ -18,10 +21,12 @@ impl IntentClassifierService {
     pub fn new() -> Self {
         IntentClassifierService {}
     }
-    pub async fn sync_plugin_intents_to_knowledge(dispatcher: &ToolDispatcher) -> anyhow::Result<()> {
+    pub async fn sync_plugin_intents_to_knowledge(
+        dispatcher: &ToolDispatcher,
+    ) -> anyhow::Result<()> {
         info!("Starting boot-time intent synchronization...");
         let api_key = &dispatcher.gemini_api_key;
-        
+
         for (name, plugin) in &dispatcher.plugins {
             let intents = plugin.matching_intents();
             for intent in intents {
@@ -46,7 +51,7 @@ impl IntentClassifierService {
                             continue;
                         }
                     };
-                    
+
                     let metadata = json!({
                         "type": "intent_classification",
                         "intent": intent,
@@ -59,8 +64,11 @@ impl IntentClassifierService {
                         embedding_res.embedding.values,
                         Some(metadata),
                         None, // Global intent, no conversation_id
-                        0, 0, 0
-                    ).await?;
+                        0,
+                        0,
+                        0,
+                    )
+                    .await?;
                 }
             }
         }
@@ -68,23 +76,87 @@ impl IntentClassifierService {
         Ok(())
     }
 
+    pub async fn sync_dynamic_plugin_intents_to_knowledge(
+        state: &AppState,
+        payload: CreateEdgeFunctionRequest,
+    ) -> anyhow::Result<Vec<Uuid>> {
+        info!("Saving intent synchronization for dynamic plugin...");
+
+        let mut created_rag_id = Vec::new();
+        for intent in payload.intents {
+            // Check if already exists to avoid duplicates
+            let exists = sqlx::query!(
+                r#"
+                    SELECT id FROM knowledge_base
+                    WHERE metadata->>'type' = 'intent_classification'
+                    AND metadata->>'intent' = $1
+                    "#,
+                intent
+            )
+            .fetch_optional(&state.pool)
+            .await?;
+
+            if exists.is_none() {
+                info!(
+                    "Syncing new intent from plugin {}: {}",
+                    payload.name, intent
+                );
+                let embedding_res = match get_embedding(
+                    state.gemini_api_key.clone().as_str(),
+                    payload.description.clone().as_str(),
+                )
+                .await
+                {
+                    Ok(res) => res,
+                    Err(e) => {
+                        error!("Failed to generate embedding for intent {}: {}", intent, e);
+                        continue;
+                    }
+                };
+
+                let metadata = json!({
+                    "type": "intent_classification",
+                    "intent": intent,
+                    "plugin": payload.name,
+                });
+
+                let crated = crate::rag::save_to_knowledge_base(
+                    &state.pool,
+                    intent.as_str(),
+                    embedding_res.embedding.values,
+                    Some(metadata),
+                    None, // Global intent, no conversation_id
+                    0,
+                    0,
+                    0,
+                )
+                .await?;
+
+                created_rag_id.push(crated);
+            }
+        }
+
+        info!("Intent dynamic plugin synchronization complete.");
+        Ok(created_rag_id)
+    }
+
     pub async fn classify_user_intent(
         &self,
         dispatcher: &ToolDispatcher,
         user_message: &str,
-        chat_history_summary: &str
+        chat_history_summary: &str,
     ) -> anyhow::Result<ClassificationResult> {
         // 1. Context Vector Creation
         let context_payload = format!(
             "History: {}\nMessage: {}",
-            chat_history_summary,
-            user_message
+            chat_history_summary, user_message
         );
-        let embedding_res = match get_embedding(&dispatcher.gemini_api_key, &context_payload).await {
+        let embedding_res = match get_embedding(&dispatcher.gemini_api_key, &context_payload).await
+        {
             Ok(res) => res,
             Err(e) => return Err(anyhow::anyhow!("Embedding error: {}", e)),
         };
-        
+
         // 2. Vector DB Query (Coarse Filtering)
         let vector = embedding_res.embedding.values;
         let candidates = sqlx::query!(
@@ -104,8 +176,10 @@ impl IntentClassifierService {
 
         // 3. Similarity Threshold Guard Gate
         if candidates.is_empty() || candidates[0].score < 0.40 {
-            info!("Intent classification: Below threshold ({:.4}), returning CHITCHAT", 
-                candidates.get(0).map(|c| c.score).unwrap_or(0.0));
+            info!(
+                "Intent classification: Below threshold ({:.4}), returning CHITCHAT",
+                candidates.get(0).map(|c| c.score).unwrap_or(0.0)
+            );
             return Ok(ClassificationResult {
                 intents: vec!["CHITCHAT".to_string()],
                 input_tokens: 0,
@@ -115,7 +189,7 @@ impl IntentClassifierService {
         }
 
         let candidate_names: Vec<&str> = candidates.iter().map(|c| c.intent.as_str()).collect();
-        
+
         // 4. Gemini Finalization & Token Tracking
         let system_prompt = format!(
             "You are an intent classifier for an AI assistant. \
@@ -128,11 +202,12 @@ impl IntentClassifierService {
 
         let user_prompt = format!(
             "History: {}\nUser Message: {}",
-            chat_history_summary,
-            user_message
+            chat_history_summary, user_message
         );
 
-        let res = dispatcher.gemini.generate_content()
+        let res = dispatcher
+            .gemini
+            .generate_content()
             .with_system_prompt(system_prompt)
             .with_user_message(user_prompt)
             .execute()

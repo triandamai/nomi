@@ -108,11 +108,11 @@ pub async fn save_to_knowledge_base(
     prompt_tokens: i32,
     answer_tokens: i32,
     total_tokens: i32,
-) -> Result<PgQueryResult, Error> {
-    sqlx::query!(
+) -> Result<Uuid, Error> {
+    match sqlx::query!(
         r#"
         INSERT INTO knowledge_base (content, embedding, metadata, conversation_id, prompt_tokens, answer_tokens, total_tokens)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
         "#,
         content,
         embedding as Vec<f32>,
@@ -122,8 +122,11 @@ pub async fn save_to_knowledge_base(
         answer_tokens,
         total_tokens
     )
-        .execute(pool)
-        .await
+        .fetch_one(pool)
+        .await{
+        Ok(value) => Ok(value.id),
+        Err(err) => Err(err)
+    }
 }
 
 pub(crate) async fn trigger_memory_consolidation(

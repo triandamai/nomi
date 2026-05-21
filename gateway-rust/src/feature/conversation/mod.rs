@@ -194,7 +194,7 @@ pub async fn handle_execute_skill(
                     u_id,
                     &log_type,
                     "system",
-                    0, 0, 0 
+                    0, 0, 0
                 ).await;
             });
 

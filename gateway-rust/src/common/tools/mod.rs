@@ -1,6 +1,7 @@
 pub mod plugin_trait;
 pub mod plugins;
 pub mod tools_model;
+pub mod edge_runner;
 
 use crate::Arc;
 use crate::common::tools::plugin_trait::NomiToolPlugin;

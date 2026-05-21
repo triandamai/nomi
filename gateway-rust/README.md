@@ -50,8 +50,8 @@ graph TD
 **Operational Mechanics:**
 - **Multimodal Interception**: The `MediaInterpreterService` intercepts S3 media URLs (Images and Audio) from incoming messages.
 - **Multimodal Inference**:
-    - **Images**: Extracts OCR text, financial amounts, code snippets, and environmental scenery.
-    - **Audio**: Transcribes vocal spoken wording cleanly into text.
+   - **Images**: Extracts OCR text, financial amounts, code snippets, and environmental scenery.
+   - **Audio**: Transcribes vocal spoken wording cleanly into text.
 - **Context Hydration**: The result is synthesized into a bracketed header (e.g., `[Media Context Description: <Result>] <User Caption>`), allowing downstream text-only systems (Interaction Gate, Intent Classifier) to process the media context as if it were natural language.
 - **Token Logging**: Parallel, non-blocking telemetry logs the LLM cost of the interpreter turn to the `token_usage_history` ledger.
 
@@ -93,19 +93,19 @@ graph TD
 
 **Step-by-Step Evaluation Pass:**
 1. **Tier 1: Mechanical Fast-Pass (0 Token Cost)**:
-      - Converts the message to lowercase and checks for the keyword **"nomi"**.
-      - Checks if the message is a **direct reply** to Nomi's previous message.
-      - If either matches, it returns `true` immediately, bypassing all AI/Vector calls.
+   - Converts the message to lowercase and checks for the keyword **"nomi"**.
+   - Checks if the message is a **direct reply** to Nomi's previous message.
+   - If either matches, it returns `true` immediately, bypassing all AI/Vector calls.
 
 2. **Tier 2: Semantic Interaction Vector Query**:
-      - Generates a text embedding for the message body.
-      - Performs a vector similarity search in the `knowledge_base` table, filtered by `metadata->>'type' = 'interaction_triggers'`.
-      - These triggers are expert-seeded rules (e.g., *"When group discusses production errors"*).
+   - Generates a text embedding for the message body.
+   - Performs a vector similarity search in the `knowledge_base` table, filtered by `metadata->>'type' = 'interaction_triggers'`.
+   - These triggers are expert-seeded rules (e.g., *"When group discusses production errors"*).
 
 3. **Tier 3: The Confidence Threshold Gate**:
-      - Evaluates the similarity score of the single closest match.
-      - **Guard Gate**: If the result set is empty OR the score is **`< 0.60`**, it returns `false`. The message is dropped silently.
-      - **Passed**: If the score is **`>= 0.60`**, it returns `true`, allowing Nomi to chime into the conversation naturally.
+   - Evaluates the similarity score of the single closest match.
+   - **Guard Gate**: If the result set is empty OR the score is **`< 0.60`**, it returns `false`. The message is dropped silently.
+   - **Passed**: If the score is **`>= 0.60`**, it returns `true`, allowing Nomi to chime into the conversation naturally.
 
 ### 3. Prompt Injection Guardrail Flow
 A dedicated security firewall to protect Nomi from adversarial manipulation and jailbreaks.
@@ -191,19 +191,20 @@ Nomi is built for infinite extensibility. Every capability (Skill) is an isolate
 All plugins must implement these four core methods:
 
 ```rust
+//Plugin
 pub trait NomiToolPlugin: Send + Sync {
-    // Defines the JSON schema for model-side tool calling
-    fn schema(&self) -> Value;
-    
-    // Injected into the system prompt when the skill is active
-    fn rules(&self) -> &str;
-    
-    // Links the tool to specific AI intentions
-    fn matching_intents(&self) -> &[&str];
-    
-    // The asynchronous execution logic
-    fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value) 
-        -> BoxFuture<'a, anyhow::Result<String>>;
+   // Defines the JSON schema for model-side tool calling
+   fn schema(&self) -> Value;
+
+   // Injected into the system prompt when the skill is active
+   fn rules(&self) -> &str;
+
+   // Links the tool to specific AI intentions
+   fn matching_intents(&self) -> &[&str];
+
+   // The asynchronous execution logic
+   fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value)
+                  -> BoxFuture<'a, anyhow::Result<String>>;
 }
 ```
 
@@ -232,5 +233,6 @@ pub trait NomiToolPlugin: Send + Sync {
 - **Architecture First**: Always respect the boundary between Gateway, Channel, and Frontend.
 - **Type Safety**: Prioritize Rust's type system and Svelte's TypeScript integration.
 - **Memory Preservation**: Ensure all new knowledge is "memorable" by integrating with the RAG/Graph pipeline.
+
 
 > **Design Principle:** *Architecture First. Type Safety Always. Memory is Permanent.*

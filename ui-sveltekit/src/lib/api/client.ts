@@ -371,6 +371,35 @@ export const chatApi = {
     getDocumentation: () => {
         return apiFetch<string>('/readme');
     },
+    getEdgeFunctions: () => {
+        return apiFetch<any[]>('/v1/admin/plugins');
+    },
+    createEdgeFunction: (payload: any) => {
+        return apiFetch<any>('/v1/admin/plugins', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+    updateEdgeFunction: (slug: string, payload: any) => {
+        return apiFetch<any>(`/v1/admin/plugins/${slug}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+    },
+    deleteEdgeFunction: (slug: string) => {
+        return apiFetch<any>(`/v1/admin/plugins/${slug}`, {
+            method: 'DELETE'
+        });
+    },
+    executeEdgeFunction: (scriptCode: string, args: any) => {
+        return apiFetch<string>('/v1/admin/plugins/execute', {
+            method: 'POST',
+            body: JSON.stringify({
+                script_code: scriptCode,
+                args: args
+            })
+        });
+    },
     logout: () => {
 
         return apiFetch<any>('/auth/logout', {

@@ -191,6 +191,7 @@ Nomi is built for infinite extensibility. Every capability (Skill) is an isolate
 All plugins must implement these four core methods:
 
 ```rust
+//Plugin
 pub trait NomiToolPlugin: Send + Sync {
    // Defines the JSON schema for model-side tool calling
    fn schema(&self) -> Value;

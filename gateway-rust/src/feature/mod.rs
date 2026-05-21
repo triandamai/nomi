@@ -13,6 +13,7 @@ pub mod waitlist;
 pub mod health_tracking;
 pub mod money_tracking;
 pub mod reminder;
+pub mod edge_functions;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InboundMessage {
