@@ -1,12 +1,26 @@
 <script lang="ts">
     import {onMount} from 'svelte';
     import {chatApi} from '$lib/api/client';
-    import {Save, ArrowLeft, Terminal, FileJson, BookOpen, Fingerprint, Play, Loader2, Hash} from 'lucide-svelte';
+    import {
+        Save,
+        ArrowLeft,
+        Terminal,
+        FileJson,
+        BookOpen,
+        Fingerprint,
+        Play,
+        Loader2,
+        Hash,
+        Edit2
+    } from 'lucide-svelte';
     import {goto} from '$app/navigation';
     import {page} from '$app/state';
     import toast from 'svelte-french-toast';
     import MonacoEditor from '$lib/components/MonacoEditor.svelte';
     import {popupStore} from '$lib/stores/popup.svelte';
+    import {generateNomiTypeDefinition} from '$lib/utils/plugin';
+    import JsonSchemaEditorPopUp from '$lib/components/JsonSchemaEditorPopUp.svelte';
+    import IntentEditorPopUp from '$lib/components/IntentEditorPopUp.svelte';
 
     let isSaving = $state(false);
     let isExecuting = $state(false);
@@ -17,7 +31,7 @@
 
     let testArgs = $state<Record<string, any>>({});
     let testArgsSchema = $state<Record<string, any>>({});
-    let intentsInput = $state('');
+    let intents = $state<string[]>([]);
 
     let isResizing = $state(false);
     let consoleHeight = $state(192); // default height in pixels (12rem)
@@ -48,59 +62,7 @@
         script_code: ''
     });
 
-    let dynamicTypeDefinition = $derived.by(() => {
-        try {
-            const schema = JSON.parse(plugin.schema_json);
-            const props = schema.properties || {};
-
-            let tsInterface = "/** Auto-generated payload from your JSON Schema. */\ninterface NomiPayload {\n";
-            for (const [key, config] of Object.entries(props)) {
-                const conf = config as any;
-                const isOptional = schema.required && !schema.required.includes(key);
-                let tsType = 'any';
-                if (conf.type === 'string') tsType = 'string';
-                else if (conf.type === 'integer' || conf.type === 'number') tsType = 'number';
-                else if (conf.type === 'boolean') tsType = 'boolean';
-                else if (conf.type === 'array') tsType = 'any[]';
-                else if (conf.type === 'object') tsType = 'Record<string, any>';
-
-                if (conf.description) tsInterface += `    /** ${conf.description} */\n`;
-                tsInterface += `    ${key}${isOptional ? '?' : ''}: ${tsType};\n`;
-            }
-            tsInterface += "}\n\n";
-
-            tsInterface += `interface InboundMessage {
-    is_group: boolean;
-    is_private: boolean;
-    is_mentioned: boolean;
-    sender_id: string;
-    conversation_id: string;
-    message_id: string;
-    text: string;
-    channel: string;
-    image_url?: string;
-    video_url?: string;
-    audio_url?: string;
-}\n\n`;
-
-            tsInterface += `interface Workspace {
-    id: string;
-    title: string;
-}\n\n`;
-
-            tsInterface += `interface NomiArgs {
-    incoming: InboundMessage;
-    payload: NomiPayload;
-    workspace: Workspace;
-}\n\n`;
-
-            tsInterface += "/** Built-in: Semantic Knowledge Retrieval */\ndeclare function retrieve_knowledge(query: string, limit?: number): Promise<any>;";
-
-            return tsInterface;
-        } catch {
-            return "interface NomiArgs { incoming: any; payload: any; workspace: any; }\ndeclare function retrieve_knowledge(query: string, limit?: number): Promise<any>;";
-        }
-    });
+    let dynamicTypeDefinition = $derived(generateNomiTypeDefinition(plugin.schema_json));
 
     function handleOpenTest() {
         try {
@@ -131,6 +93,22 @@
         }
     }
 
+    function handleEditSchema() {
+        popupStore.open({
+            title: 'Schema Architect',
+            width: 'max-w-3xl',
+            contentSnippet: schemaSnippet
+        });
+    }
+
+    function handleOpenIntentEditor() {
+        popupStore.open({
+            title: 'Routing Trigger Architect',
+            width: 'max-w-xl',
+            contentSnippet: intentSnippet
+        });
+    }
+
     async function handleSimulate() {
         popupStore.closeLast();
         isExecuting = true;
@@ -140,7 +118,6 @@
         try {
             const res = await chatApi.executeEdgeFunction(plugin.script_code, testArgs);
             if (res.meta.code >= 200 && res.meta.code <= 299) {
-                // If there are logs, prepend them to the output or handle separately
                 if (res.data.logs) {
                     executionOutput = `[LOGS]\n${res.data.logs}\n\n[RESULT]\n${res.data.result}`;
                 } else {
@@ -166,7 +143,7 @@
                     ...found,
                     schema_json: JSON.stringify(found.schema_json, null, 2)
                 };
-                intentsInput = (found.intents || []).join(', ');
+                intents = found.intents || [];
             } else {
                 toast.error("Plugin not found");
                 goto('/admin/plugins');
@@ -194,7 +171,6 @@
             }
 
             isSaving = true;
-            const intents = intentsInput.split(',').map(i => i.trim()).filter(Boolean);
 
             await chatApi.updateEdgeFunction(originalSlug, {
                 ...plugin,
@@ -266,26 +242,52 @@
                     <BookOpen class="w-3 h-3"/>
                     Description (For LLM)</label>
                 <textarea bind:value={plugin.description} rows="3"
-                          class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-sm focus:border-sky-500 outline-none transition-colors"></textarea>
+                          class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-sm focus:border-sky-500 outline-none transition-colors"
+                          placeholder="Fetches current cryptocurrency prices..."></textarea>
             </div>
 
             <div class="space-y-1.5">
-                <label class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    <Hash class="w-3 h-3"/>
-                    Routing Intents</label>
-                <input type="text" bind:value={intentsInput}
-                       class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-sm focus:border-sky-500 outline-none transition-colors font-mono text-emerald-400"
-                       placeholder="FINANCE, CRYPTO, WEB"/>
-                <p class="text-[9px] text-slate-600 font-medium ml-1 italic">Comma separated triggers for semantic
-                    routing.</p>
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <Hash class="w-3 h-3"/>
+                        Routing Intents</label>
+                    <button
+                            onclick={handleOpenIntentEditor}
+                            class="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-sky-400 hover:text-sky-300 transition-colors"
+                    >
+                        <Edit2 class="w-2.5 h-2.5"/>
+                        Edit Triggers
+                    </button>
+                </div>
+                <div class="flex flex-wrap gap-1.5 p-3 bg-slate-950 border border-slate-800 rounded-lg min-h-[3rem]">
+                    {#if intents.length === 0}
+                        <span class="text-[10px] text-slate-700 italic">No triggers configured...</span>
+                    {:else}
+                        {#each intents as intent}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] bg-slate-900 text-emerald-500 border border-emerald-900/30 font-mono">#{intent}</span>
+                        {/each}
+                    {/if}
+                </div>
+                <p class="text-[9px] text-slate-600 font-medium ml-1 italic">Semantic triggers for Nomi's routing
+                    engine.</p>
             </div>
 
             <div class="space-y-1.5">
-                <label class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    <FileJson class="w-3 h-3"/>
-                    JSON Schema</label>
-                <textarea bind:value={plugin.schema_json} rows="8"
-                          class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs font-mono text-sky-300 focus:border-sky-500 outline-none transition-colors"></textarea>
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <FileJson class="w-3 h-3"/>
+                        JSON Schema</label>
+                    <button
+                            onclick={handleEditSchema}
+                            class="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-sky-400 hover:text-sky-300 transition-colors"
+                    >
+                        <Edit2 class="w-2.5 h-2.5"/>
+                        Edit Schema
+                    </button>
+                </div>
+                <div class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-[11px] font-mono text-sky-300/70 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar whitespace-pre">
+                    {plugin.schema_json}
+                </div>
             </div>
 
             <div class="space-y-1.5">
@@ -321,11 +323,10 @@
                         <Loader2 class="w-8 h-8 text-sky-500 animate-spin mb-4"/>
                         <span class="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 animate-pulse">Hydrating Source...</span>
                     </div>
-                {:else}
+                {:else }
                     <MonacoEditor bind:value={plugin.script_code} language="typescript"
                                   typeDefinition={dynamicTypeDefinition}/>
                 {/if}
-
             </div>
 
             <!-- Console Output -->
@@ -348,6 +349,20 @@
     </div>
 </div>
 
+{#snippet schemaSnippet()}
+    <JsonSchemaEditorPopUp
+            bind:schemaJson={plugin.schema_json}
+            onSave={() => popupStore.closeLast()}
+    />
+{/snippet}
+
+{#snippet intentSnippet()}
+    <IntentEditorPopUp
+            bind:intents={intents}
+            onSave={() => popupStore.closeLast()}
+    />
+{/snippet}
+
 {#snippet testArgsSnippet()}
     <div class="space-y-4">
         <p class="text-xs text-slate-400 mb-4">Provide arguments for the execution run:</p>
@@ -359,7 +374,7 @@
                            class="w-full bg-slate-900 border border-slate-800 rounded-md py-2 px-3 text-sm focus:outline-none focus:border-sky-500 transition-all placeholder:text-slate-700"/>
                 {:else if prop.type === 'integer' || prop.type === 'number'}
                     <input type="number" bind:value={testArgs[key]}
-                           class="w-full bg-slate-900 border border-slate-800 rounded-md py-2 px-3 text-sm focus:outline-none focus:border-sky-500 transition-all"/>
+                           class="w-full bg-slate-950 border border-slate-800 rounded-md py-2 px-3 text-sm focus:outline-none focus:border-sky-500 transition-all"/>
                 {:else if prop.type === 'boolean'}
                     <div class="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-md p-2">
                         <input type="checkbox" bind:checked={testArgs[key]}
