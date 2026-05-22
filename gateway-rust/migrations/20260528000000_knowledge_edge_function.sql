@@ -7,3 +7,8 @@ CREATE TABLE IF NOT EXISTS knowledge_edge_function (
 
 -- Remove the old single rag_id link as we now support multiple via the join table
 ALTER TABLE edge_functions DROP COLUMN IF EXISTS rag_id;
+-- Add user_id to edge_functions to track ownership
+ALTER TABLE edge_functions ADD COLUMN user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+
+-- If you have existing data, you might want to assign them to a default admin user
+-- UPDATE edge_functions SET user_id = 'your-admin-uuid-here' WHERE user_id IS NULL;

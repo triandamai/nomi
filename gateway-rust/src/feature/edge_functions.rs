@@ -10,9 +10,13 @@ use tracing::{error, info};
 use crate::services::intent_classifier::IntentClassifierService;
 use sqlx::FromRow;
 
+use crate::feature::conversation::auth::Claims;
+use axum::extract::Extension;
+
 #[derive(Serialize, Deserialize, FromRow)]
 pub struct EdgeFunction {
     pub id: uuid::Uuid,
+    pub user_id: Option<uuid::Uuid>,
     pub slug: String,
     pub name: String,
     pub description: String,
@@ -22,6 +26,7 @@ pub struct EdgeFunction {
     pub intents: Vec<String>,
     pub version: i32,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub display_name: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -37,12 +42,34 @@ pub struct CreateEdgeFunctionRequest {
 
 pub async fn handle_get_edge_functions(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
 ) -> ApiResponse<Vec<EdgeFunction>> {
-    let functions = sqlx::query_as::<_, EdgeFunction>(
-        "SELECT id, slug, name, description, schema_json, rules_text, script_code, intents, version, created_at FROM edge_functions ORDER BY created_at DESC"
-    )
-    .fetch_all(&state.pool)
-    .await;
+    let user_id = uuid::Uuid::parse_str(&claims.sub).unwrap_or_default();
+    
+    // Admins see all, users see only theirs
+    let query = if claims.role == "admin" {
+        "SELECT ef.id, ef.user_id, ef.slug, ef.name, ef.description, ef.schema_json, ef.rules_text, ef.script_code, ef.intents, ef.version, ef.created_at, u.display_name \
+         FROM edge_functions ef \
+         LEFT JOIN users u ON ef.user_id = u.id \
+         ORDER BY ef.created_at DESC"
+    } else {
+        "SELECT ef.id, ef.user_id, ef.slug, ef.name, ef.description, ef.schema_json, ef.rules_text, ef.script_code, ef.intents, ef.version, ef.created_at, u.display_name \
+         FROM edge_functions ef \
+         LEFT JOIN users u ON ef.user_id = u.id \
+         WHERE ef.user_id = $1 \
+         ORDER BY ef.created_at DESC"
+    };
+
+    let functions = if claims.role == "admin" {
+        sqlx::query_as::<_, EdgeFunction>(query)
+            .fetch_all(&state.pool)
+            .await
+    } else {
+        sqlx::query_as::<_, EdgeFunction>(query)
+            .bind(user_id)
+            .fetch_all(&state.pool)
+            .await
+    };
 
     match functions {
         Ok(f) => ApiResponse::ok(f, "Edge functions retrieved"),
@@ -55,17 +82,37 @@ pub async fn handle_get_edge_functions(
 
 pub async fn handle_create_edge_function(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     axum::Json(payload): axum::Json<CreateEdgeFunctionRequest>,
 ) -> ApiResponse<EdgeFunction> {
+    let user_id = uuid::Uuid::parse_str(&claims.sub).unwrap_or_default();
+
+    // 1. Check Limits for non-admins
+    if claims.role != "admin" {
+        #[derive(FromRow)]
+        struct CountRow { count: Option<i64> }
+
+        let count_res = sqlx::query_as::<_, CountRow>("SELECT COUNT(*) as count FROM edge_functions WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_one(&state.pool)
+            .await;
+        
+        if let Ok(res) = count_res {
+            if res.count.unwrap_or(0) >= 10 {
+                return ApiResponse::failed("Plugin limit reached. Non-admin users are restricted to 10 dynamic plugins.");
+            }
+        }
+    }
+
     let mut tx = match state.pool.begin().await {
         Ok(t) => t,
         Err(e) => return ApiResponse::failed(&format!("Failed to start transaction: {}", e)),
     };
 
     let function_res = sqlx::query_as::<_, EdgeFunction>(
-        "INSERT INTO edge_functions (slug, name, description, schema_json, rules_text, script_code, intents)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, slug, name, description, schema_json, rules_text, script_code, intents, version, created_at"
+        "INSERT INTO edge_functions (slug, name, description, schema_json, rules_text, script_code, intents, user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, user_id, slug, name, description, schema_json, rules_text, script_code, intents, version, created_at"
     )
     .bind(&payload.slug)
     .bind(&payload.name)
@@ -74,6 +121,7 @@ pub async fn handle_create_edge_function(
     .bind(&payload.rules_text)
     .bind(&payload.script_code)
     .bind(&payload.intents)
+    .bind(user_id)
     .fetch_one(&mut *tx)
     .await;
 
@@ -100,26 +148,48 @@ pub async fn handle_create_edge_function(
         Err(e) => {
             error!("Failed to create edge function: {}", e);
             let _ = tx.rollback().await;
-            ApiResponse::failed("Database error")
+            ApiResponse::failed("Database error (maybe slug already exists?)")
         }
     }
 }
 
 pub async fn handle_update_edge_function(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(slug): Path<String>,
     axum::Json(payload): axum::Json<CreateEdgeFunctionRequest>,
 ) -> ApiResponse<EdgeFunction> {
+    let user_id = uuid::Uuid::parse_str(&claims.sub).unwrap_or_default();
+
     let mut tx = match state.pool.begin().await {
         Ok(t) => t,
         Err(e) => return ApiResponse::failed(&format!("Failed to start transaction: {}", e)),
     };
 
+    // Check ownership unless admin
+    #[derive(FromRow)]
+    struct UserRow { user_id: Option<uuid::Uuid> }
+
+    let existing = sqlx::query_as::<_, UserRow>("SELECT user_id FROM edge_functions WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&mut *tx)
+        .await;
+    
+    match existing {
+        Ok(Some(record)) => {
+            if claims.role != "admin" && record.user_id != Some(user_id) {
+                return ApiResponse::failed("Unauthorized: You do not own this plugin.");
+            }
+        },
+        Ok(None) => return ApiResponse::failed("Edge function not found"),
+        Err(e) => return ApiResponse::failed(&format!("Database error: {}", e)),
+    }
+
     let function_res = sqlx::query_as::<_, EdgeFunction>(
         "UPDATE edge_functions
          SET name = $1, description = $2, schema_json = $3, rules_text = $4, script_code = $5, intents = $6, version = version + 1
          WHERE slug = $7
-         RETURNING id, slug, name, description, schema_json, rules_text, script_code, intents, version, created_at"
+         RETURNING id, user_id, slug, name, description, schema_json, rules_text, script_code, intents, version, created_at"
     )
     .bind(&payload.name)
     .bind(&payload.description)
@@ -161,23 +231,31 @@ pub async fn handle_update_edge_function(
 
 pub async fn handle_delete_edge_function(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(slug): Path<String>,
 ) -> ApiResponse<()> {
+    let user_id = uuid::Uuid::parse_str(&claims.sub).unwrap_or_default();
+
     let mut tx = match state.pool.begin().await {
         Ok(t) => t,
         Err(e) => return ApiResponse::failed(&format!("Failed to start transaction: {}", e)),
     };
 
+    // Check ownership unless admin
     #[derive(FromRow)]
-    struct IdRow { id: uuid::Uuid }
+    struct IdUserRow { id: uuid::Uuid, user_id: Option<uuid::Uuid> }
 
-    let row = sqlx::query_as::<_, IdRow>("SELECT id FROM edge_functions WHERE slug = $1")
+    let existing = sqlx::query_as::<_, IdUserRow>("SELECT id, user_id FROM edge_functions WHERE slug = $1")
         .bind(&slug)
         .fetch_optional(&mut *tx)
         .await;
 
-    match row {
+    match existing {
         Ok(Some(record)) => {
+            if claims.role != "admin" && record.user_id != Some(user_id) {
+                return ApiResponse::failed("Unauthorized: You do not own this plugin.");
+            }
+
             let result = sqlx::query("DELETE FROM edge_functions WHERE id = $1")
                 .bind(record.id)
                 .execute(&mut *tx)
@@ -215,8 +293,11 @@ pub struct ExecuteEdgeFunctionRequest {
 
 pub async fn handle_execute_edge_function(
     State(_state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     axum::Json(payload): axum::Json<ExecuteEdgeFunctionRequest>,
 ) -> ApiResponse<serde_json::Value> {
+    let user_id = claims.sub.clone();
+    
     let executor = crate::common::tools::edge_runner::BunEdgeExecutor {
         slug: "playground".to_string(),
         script_code: payload.script_code,
@@ -229,7 +310,7 @@ pub async fn handle_execute_edge_function(
         "is_group": false,
         "is_private": true,
         "is_mentioned": true,
-        "sender_id": "playground_user",
+        "sender_id": user_id,
         "conversation_id": uuid::Uuid::nil(),
         "message_id": "playground_msg_1",
         "text": "Playground message",

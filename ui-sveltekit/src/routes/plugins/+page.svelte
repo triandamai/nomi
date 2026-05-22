@@ -1,10 +1,11 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { chatApi } from '$lib/api/client';
-    import { Code2, Plus, Search, Trash2, Cpu, FileJson, Clock } from 'lucide-svelte';
+    import { Code2, Plus, Search, Trash2, Cpu, FileJson, Clock, User } from 'lucide-svelte';
     import { formatDate } from '$lib/utils';
     import { goto } from '$app/navigation';
     import toast from 'svelte-french-toast';
+    import { profileStore } from '$lib/stores/profile.svelte';
 
     let plugins = $state<any[]>([]);
     let isLoading = $state(true);
@@ -16,6 +17,11 @@
             p.slug.toLowerCase().includes(searchQuery.toLowerCase())
         )
     );
+
+    const isAuthorized = (plugin: any) => {
+        if (!profileStore.currentUser) return false;
+        return profileStore.currentUser.role === 'admin' || profileStore.currentUser.id === plugin.user_id;
+    };
 
     async function loadPlugins() {
         isLoading = true;
@@ -57,7 +63,7 @@
                 </div>
 
                 <button 
-                    onclick={() => goto('/admin/plugins/new')}
+                    onclick={() => goto('/plugins/new')}
                     class="flex items-center gap-2 bg-sky-500 hover:bg-sky-400 text-slate-950 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-colors"
                 >
                     <Plus class="w-4 h-4" />
@@ -94,6 +100,7 @@
                                 <tr class="bg-slate-950/50 border-b border-slate-800">
                                     <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-widest">Name / Slug</th>
                                     <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-widest">Description</th>
+                                    <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-widest">Created By</th>
                                     <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-widest text-center">Version</th>
                                     <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
                                 </tr>
@@ -113,27 +120,35 @@
                                                 {/each}
                                             </div>
                                         </td>
+                                        <td class="p-4">
+                                            <div class="flex items-center gap-2 text-xs font-medium text-slate-400">
+                                                <User class="w-3 h-3 text-slate-600" />
+                                                {plugin.display_name || 'System'}
+                                            </div>
+                                        </td>
                                         <td class="p-4 text-center">
                                             <span class="inline-flex items-center justify-center px-2 py-1 rounded bg-slate-800 text-xs font-bold text-slate-300">
                                                 v{plugin.version}
                                             </span>
                                         </td>
                                         <td class="p-4">
-                                            <div class="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button 
-                                                    onclick={() => goto(`/admin/plugins/${plugin.slug}`)}
-                                                    class="p-2 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded transition-colors"
-                                                    title="Edit Plugin"
-                                                >
-                                                    <Code2 class="w-4 h-4" />
-                                                </button>
-                                                <button 
-                                                    onclick={() => deletePlugin(plugin.slug)}
-                                                    class="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition-colors"
-                                                    title="Delete Plugin"
-                                                >
-                                                    <Trash2 class="w-4 h-4" />
-                                                </button>
+                                            <div class="flex items-center justify-end gap-2 {isAuthorized(plugin) ? 'opacity-0 group-hover:opacity-100' : 'opacity-0'} transition-opacity">
+                                                {#if isAuthorized(plugin)}
+                                                    <button 
+                                                        onclick={() => goto(`/plugins/${plugin.slug}`)}
+                                                        class="p-2 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded transition-colors"
+                                                        title="Edit Plugin"
+                                                    >
+                                                        <Code2 class="w-4 h-4" />
+                                                    </button>
+                                                    <button 
+                                                        onclick={() => deletePlugin(plugin.slug)}
+                                                        class="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition-colors"
+                                                        title="Delete Plugin"
+                                                    >
+                                                        <Trash2 class="w-4 h-4" />
+                                                    </button>
+                                                {/if}
                                             </div>
                                         </td>
                                     </tr>

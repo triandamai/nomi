@@ -75,11 +75,6 @@ pub fn create_router(state: AppState) -> Router {
         .route("/guardrails/patterns", get(handle_get_guardrail_patterns))
         .route("/guardrails/patterns", post(handle_insert_guardrail_pattern))
         .route("/guardrails/patterns/{id}", delete(handle_delete_guardrail_pattern))
-        .route("/plugins", get(handle_get_edge_functions))
-        .route("/plugins/execute", post(handle_execute_edge_function))
-        .route("/plugins", post(handle_create_edge_function))
-        .route("/plugins/{slug}", put(handle_update_edge_function))
-        .route("/plugins/{slug}", delete(handle_delete_edge_function))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             crate::feature::admin::admin_middleware,
@@ -94,6 +89,11 @@ pub fn create_router(state: AppState) -> Router {
             "/health/sync",
             post(crate::feature::health_tracking::handle_health_sync),
         )
+        .route("/plugins", get(handle_get_edge_functions))
+        .route("/plugins/execute", post(handle_execute_edge_function))
+        .route("/plugins", post(handle_create_edge_function))
+        .route("/plugins/{slug}", put(handle_update_edge_function))
+        .route("/plugins/{slug}", delete(handle_delete_edge_function))
         .route("/user/profile", get(handle_get_profile))
         .route("/model/info", get(handle_get_model_info))
         .route("/auth/logout", post(handle_logout))

@@ -146,7 +146,7 @@
                 intents = found.intents || [];
             } else {
                 toast.error("Plugin not found");
-                goto('/admin/plugins');
+                goto('/plugins');
             }
         } catch (e) {
             toast.error("Failed to load plugin details");
@@ -178,7 +178,7 @@
                 intents
             });
             toast.success("Plugin Updated Successfully!");
-            goto('/admin/plugins');
+            goto('/plugins');
         } catch (e: any) {
             toast.error("Failed to update plugin");
         } finally {
@@ -200,7 +200,7 @@
 <div class="flex flex-col h-screen bg-slate-950 text-slate-200">
     <div class="flex h-14 shrink-0 items-center justify-between px-6 bg-slate-900 border-b border-slate-800">
         <div class="flex items-center gap-4">
-            <button onclick={() => goto('/admin/plugins')}
+            <button onclick={() => goto('/plugins')}
                     class="p-2 text-slate-400 hover:text-white transition-colors">
                 <ArrowLeft class="w-4 h-4"/>
             </button>

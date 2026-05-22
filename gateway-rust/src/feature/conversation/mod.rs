@@ -51,6 +51,7 @@ pub struct SkillInfo {
     pub skill_type: SkillType,
     pub script_code: Option<String>,
     pub schema_json: Option<serde_json::Value>,
+    pub creator_name: Option<String>,
 }
 
 pub async fn handle_get_public_skills(
@@ -86,12 +87,15 @@ pub async fn handle_get_public_skills(
             skill_type: SkillType::System,
             script_code: None,
             schema_json: Some(schema),
+            creator_name: Some("System".to_string()),
         });
     }
 
     // 2. Dynamic Edge Plugins
     let dynamic_plugins = sqlx::query!(
-        "SELECT slug, description, intents, script_code, schema_json FROM edge_functions"
+        "SELECT ef.slug, ef.description, ef.intents, ef.script_code, ef.schema_json, u.display_name \
+         FROM edge_functions ef \
+         LEFT JOIN users u ON ef.user_id = u.id"
     )
     .fetch_all(&state.pool)
     .await;
@@ -100,11 +104,12 @@ pub async fn handle_get_public_skills(
         for p in plugins {
             skills.push(SkillInfo {
                 name: p.slug,
-                description: p.description.to_string(),
+                description: p.description,
                 intents: p.intents,
                 skill_type: SkillType::Dynamic,
                 script_code: Some(p.script_code),
                 schema_json: Some(p.schema_json),
+                creator_name: p.display_name,
             });
         }
     }

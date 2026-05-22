@@ -29,7 +29,8 @@
         ShieldCheck,
         Terminal,
         Code2,
-        Brackets
+        Brackets,
+        User
     } from 'lucide-svelte';
 
     type Skill = {
@@ -39,6 +40,7 @@
         skill_type: 'System' | 'Dynamic';
         script_code?: string;
         schema_json?: any;
+        creator_name?: string;
     };
 
     let skills = $state<Skill[]>([]);
@@ -120,10 +122,16 @@
                     <Icon class="w-8 h-8 text-blue-400" />
                 </div>
                 <div class="space-y-2">
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-3">
                         <span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-widest border {selectedSkill.skill_type === 'System' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}">
                             {selectedSkill.skill_type} Plugin
                         </span>
+                        {#if selectedSkill.creator_name}
+                            <div class="flex items-center gap-1.5 text-slate-500">
+                                <User class="w-3 h-3" />
+                                <span class="text-[10px] font-bold uppercase tracking-widest">Created by {selectedSkill.creator_name}</span>
+                            </div>
+                        {/if}
                     </div>
                     <h2 class="text-3xl font-black text-white tracking-tighter uppercase">{selectedSkill.name.replace(/_/g, ' ')}</h2>
                 </div>

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT slug, description, intents, script_code, schema_json FROM edge_functions",
+  "query": "SELECT ef.slug, ef.description, ef.intents, ef.script_code, ef.schema_json, u.display_name FROM edge_functions ef LEFT JOIN users u ON ef.user_id = u.id",
   "describe": {
     "columns": [
       {
@@ -27,6 +27,11 @@
         "ordinal": 4,
         "name": "schema_json",
         "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "display_name",
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -37,8 +42,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "46c8342197a27918c591a5327d487e3df26ac3636dcc0654853bd461b9d41b48"
+  "hash": "a5217e8fecb43eae71d396919d51ebcd515eff3bece3dde4cd7bf95afc059a2d"
 }

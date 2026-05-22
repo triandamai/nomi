@@ -164,7 +164,7 @@ export const chatApi = {
         const url = new URL(`${BASE_URL}/conversations/${conversationId}/messages`);
         if (cursor) url.searchParams.append('cursor', cursor);
         url.searchParams.append('limit', limit.toString());
-        return apiFetch<any[]>(url.pathname.replace("/api", "") + url.search);
+        return apiFetch<any[]>(`/conversations/${conversationId}/messages` + url.search);
     },
     getGraph: (conversationId?: string) => {
         const url = conversationId ? `/graph?conversation_id=${conversationId}` : '/graph';
@@ -180,7 +180,7 @@ export const chatApi = {
         const url = new URL(`${BASE_URL}/reminders`);
         if (cursor) url.searchParams.append('cursor', cursor);
         url.searchParams.append('limit', limit.toString());
-        return apiFetch<any[]>(url.pathname.replace("/api", "") + url.search);
+        return apiFetch<any[]>('/reminders' + url.search);
     },
     restoreSoul: (conversationId: string, version: number) => {
         return apiFetch<any>(`/conversations/${conversationId}/restore-soul`, {
@@ -211,12 +211,12 @@ export const chatApi = {
     exploreStorage: (prefix?: string) => {
         const url = new URL(`${BASE_URL}/v1/admin/storage/explore`);
         if (prefix) url.searchParams.append('prefix', prefix);
-        return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
+        return apiFetch<any>('/v1/admin/storage/explore' + url.search);
     },
     deleteStorage: (path: string) => {
         const url = new URL(`${BASE_URL}/v1/admin/storage/delete`);
         url.searchParams.append('path', path);
-        return apiFetch<any>(url.pathname.replace("/api", "") + url.search, {
+        return apiFetch<any>('/v1/admin/storage/delete' + url.search, {
             method: 'DELETE'
         });
     },
@@ -256,13 +256,13 @@ export const chatApi = {
         url.searchParams.append('page', page.toString());
         if (query) url.searchParams.append('query', query);
         if (category) url.searchParams.append('category', category);
-        return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
+        return apiFetch<any>('/v1/money/history' + url.search);
     },
     getHealthHistory: (startDate?: string, endDate?: string) => {
         const url = new URL(`${BASE_URL}/health/history`);
         if (startDate) url.searchParams.append('start_date', startDate);
         if (endDate) url.searchParams.append('end_date', endDate);
-        return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
+        return apiFetch<any>('/health/history' + url.search);
     },
     updateMoneyHistory: (id: string, updates: { amount?: number, merchant_name?: string, category?: string }) => {
         return apiFetch<any>(`/v1/money/history/${id}`, {
@@ -279,7 +279,7 @@ export const chatApi = {
         const url = new URL(`${BASE_URL}/v1/admin/conversations`);
         if (cursor) url.searchParams.append('cursor', cursor);
         url.searchParams.append('limit', limit.toString());
-        return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
+        return apiFetch<any>('/v1/admin/conversations' + url.search);
     },
     updateAdminConversation: (id: string, updates: { max_token_usage?: number, title?: string }) => {
         return apiFetch<any>(`/v1/admin/conversations/${id}`, {
@@ -292,7 +292,7 @@ export const chatApi = {
         if (cursor) url.searchParams.append('cursor', cursor);
         url.searchParams.append('limit', limit.toString());
         if (query) url.searchParams.append('query', query);
-        return apiFetch<any>(url.pathname.replace("/api", "") + url.search);
+        return apiFetch<any>('/v1/admin/users' + url.search);
     },
     getAdminUserDetail: (id: string) => {
         return apiFetch<any>(`/v1/admin/users/${id}`);
@@ -372,27 +372,27 @@ export const chatApi = {
         return apiFetch<string>('/readme');
     },
     getEdgeFunctions: () => {
-        return apiFetch<any[]>('/v1/admin/plugins');
+        return apiFetch<any[]>('/plugins');
     },
     createEdgeFunction: (payload: any) => {
-        return apiFetch<any>('/v1/admin/plugins', {
+        return apiFetch<any>('/plugins', {
             method: 'POST',
             body: JSON.stringify(payload)
         });
     },
     updateEdgeFunction: (slug: string, payload: any) => {
-        return apiFetch<any>(`/v1/admin/plugins/${slug}`, {
+        return apiFetch<any>(`/plugins/${slug}`, {
             method: 'PUT',
             body: JSON.stringify(payload)
         });
     },
     deleteEdgeFunction: (slug: string) => {
-        return apiFetch<any>(`/v1/admin/plugins/${slug}`, {
+        return apiFetch<any>(`/plugins/${slug}`, {
             method: 'DELETE'
         });
     },
     executeEdgeFunction: (scriptCode: string, args: any) => {
-        return apiFetch<{result: string, logs: string}>('/v1/admin/plugins/execute', {
+        return apiFetch<{result: string, logs: string}>('/plugins/execute', {
             method: 'POST',
             body: JSON.stringify({
                 script_code: scriptCode,

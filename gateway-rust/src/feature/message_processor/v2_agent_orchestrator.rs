@@ -64,6 +64,17 @@ impl V2AgentOrchestrator {
             "Processing v2 message loop with intent"
         );
 
+        // Broadcast initial presence (Typing: ON)
+        send_status_presence_update(
+            &state,
+            self.conversation_member_ids.clone(),
+            conversation_id,
+            msg.source.clone(),
+            msg.is_group,
+            true,
+        )
+        .await;
+
         // Group is registered, only respond if mentioned
         if msg.is_group
             && !msg.is_mentioned
@@ -1064,6 +1075,19 @@ impl V2AgentOrchestrator {
             )
             .await;
         }
+
+        // --- 🚨 FINAL PRESENCE UPDATE (OFF) 🚨 ---
+        send_status_presence_update(
+            &self.state,
+            self.conversation_member_ids.clone(),
+            conversation_id,
+            MessageSource::Multiple {
+                source: vec!["web".to_string(), "whatsapp".to_string(), "telegram".to_string()],
+            },
+            false, // is_group fallback
+            false, // is_typing: OFF
+        )
+        .await;
 
         Ok(final_text)
     }
