@@ -314,12 +314,14 @@ impl V2AgentOrchestrator {
                 timezone_str
             ));
 
-            combined.push_str("\n### Timezone Instructions\n");
+            combined.push_str("\n### Timezone & Tool Parameter Instructions\n");
             combined.push_str(&format!(
-                "The user's current local time is {} ({}). When the user asks for a time like \"6:00\", assume they mean this local time and calculate the UTC equivalent for storage using the +07:00 offset or by converting from Asia/Jakarta. ALWAYS provide the due_at in ISO 8601 format including the local offset (e.g., {} ) for the tool call, but you can acknowledge the local time in your thoughts.\n",
+                "The user's current local time is {} (Asia/Jakarta). \n\
+                 When calling date-range tracking tools like `get_reminder_stats`, you MUST format parameters like `start_after` and `end_before` as absolute strict ISO 8601 strings with offsets.\n\
+                 For a query about 'today', start_after MUST be formatted exactly as '{}-00:00:00+07:00' and end_before as '{}-23:59:59+07:00'.\n",
                 now_local.format("%H:%M"),
-                timezone_str,
-                now_local.format("%Y-%m-%dT%H:%M:%S%z")
+                now_local.format("%Y-%m-%d"),
+                now_local.format("%Y-%m-%d")
             ));
 
             combined.push_str("\n### Orchestrator Instructions \n");
@@ -365,7 +367,23 @@ impl V2AgentOrchestrator {
         info!("Tokens saved by modular assembly: {:.2}%", saved_percent);
 
         let embedding = rag::get_embedding(&state.gemini_api_key, &text_content).await;
-        let memories_text = if embedding.is_ok() {
+
+        // --- 🚀 Step 1: Dynamic Context Pruning via Intent Classifier 🚀 ---
+        // Safety: Only bypass RAG if it's pure chitchat without complex entities or questions
+        let is_pure_chitchat = (intents.contains(&"CHITCHAT".to_string())
+            || intents.contains(&"GENERAL".to_string()))
+            && intents.len() == 1;
+
+        // Simple entity check: contains non-alphanumeric chars (excluding space) often indicates technical data or complex names
+        let has_potential_entities = text_content
+            .chars()
+            .any(|c| !c.is_alphanumeric() && !c.is_whitespace() && c != '?' && c != '!' && c != '.');
+        let is_question = text_content.trim().ends_with('?');
+
+        let memories_text = if is_pure_chitchat && !has_potential_entities && !is_question {
+            info!("Pure chitchat detected (intent: {:?}). Bypassing RAG retrieval to save context tokens.", intents);
+            String::new()
+        } else if embedding.is_ok() {
             crate::utils::rag::hybrid_retrieve(
                 &state.pool,
                 &text_content,
@@ -497,6 +515,18 @@ impl V2AgentOrchestrator {
                 .await;
             }
 
+            // --- 🚀 Step 2: Shape Persona Velocity via InteractionGate 🚀 ---
+            // Adjusting token output depth to feel casually human
+            let is_short_message = text_content.len() < 30;
+            let (_temp, _max_tokens) = if is_short_message && !msg.is_group {
+                (0.8, Some(128)) // Higher temperature for casual warmth; small token cap
+            } else {
+                (0.2, None) // Low temperature for precision; standard cap (None uses default)
+            };
+
+            // Implementation Note: We are currently using the default Gemini configuration.
+            // Future refinement: Add dynamic parameter support to gemini-rust or ToolDispatcher.
+            
             let result =
                 crate::common::agent::send_prompt(&dispatcher, current_actor, &intents).await;
 
@@ -617,6 +647,13 @@ impl V2AgentOrchestrator {
                     }
 
                     let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
+
+                    // --- 🚀 Step 1: Fix Content Accumulation 🚀 ---
+                    if !current_calls.is_empty() && !finish_reason.eq_ignore_ascii_case("stop") {
+                        // If the model is calling tools and not yet finished, 
+                        // clear the teaser text ("Let me check...") to prevent duplication in final answer.
+                        accumulated_content.clear();
+                    }
 
                     // Status: Tool checking
                     for call in &current_calls {

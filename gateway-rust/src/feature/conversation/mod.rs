@@ -1247,7 +1247,7 @@ pub async fn handle_chat_stream(
 
     let unified_msg = UnifiedMessage {
         is_group: conv_info.conversation_type != "private",
-        is_mentioned: false,
+        is_mentioned: true,
         display_name: Some(conv_info.title.clone().unwrap()),
         conversation_id,
         user_id,
