@@ -126,15 +126,29 @@
     }
   }
 
+
   async function deployToProduction(slug: string) {
-    liveLogs = [...liveLogs, `[DEPLOYMENT]: Sending hot-patch request to gateway production runtime...`];
+
+    liveLogs = [...liveLogs, {
+        time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        log: `[DEPLOYMENT]: Sending hot-patch request to gateway production runtime...`,
+        step: "deploy"
+    }];
     try {
         const res = await chatApi.deployProposal(slug);
         if (res.meta && res.meta.code === 200) {
-          liveLogs = [...liveLogs, `[SUCCESS]: Plugin hot-patched into live edge execution memory!`];
+          liveLogs = [...liveLogs, {
+            time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            log: `[SUCCESS]: Plugin hot-patched into live edge execution memory!`,
+            step: "success"
+          }];
           reloadProposalsList();
         } else {
-          liveLogs = [...liveLogs, `[DEPLOY ERROR]: Execution pass aborted.`];
+          liveLogs = [...liveLogs, {
+            time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            log: `[DEPLOY ERROR]: Execution pass aborted.`,
+            step: "failed"
+          }];
         }
     } catch (e) {
         console.error("Deployment error", e);
