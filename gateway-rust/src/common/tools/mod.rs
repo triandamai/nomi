@@ -23,6 +23,7 @@ use crate::common::tools::plugins::read_workspace_file::ReadWorkspaceFilePlugin;
 use crate::common::tools::plugins::retrieve_knowledge::RetrieveKnowledgePlugin;
 use crate::common::tools::plugins::schedule_task::ScheduleTaskPlugin;
 use crate::common::tools::plugins::sticker_generator::StickerGeneratorPlugin;
+use crate::common::tools::plugins::suggest_skill::SuggestSkillPlugin;
 use crate::common::tools::plugins::update_conversation_soul::UpdateConversationSoulPlugin;
 use crate::common::tools::plugins::update_conversation_title::UpdateConversationTitlePlugin;
 use crate::common::tools::plugins::update_knowledge::UpdateKnowledgeBasePlugin;
@@ -75,6 +76,7 @@ impl ToolDispatcher {
         plugins.insert("read_web_page", Arc::new(ReadWebPagePlugin));
         plugins.insert("schedule_task", Arc::new(ScheduleTaskPlugin));
         plugins.insert("modify_reminder", Arc::new(ModifyReminderPlugin));
+        plugins.insert("suggest_new_skill", Arc::new(SuggestSkillPlugin));
         plugins.insert("get_reminder_stats", Arc::new(GetReminderStatsPlugin));
         plugins.insert("update_knowledge_base", Arc::new(UpdateKnowledgeBasePlugin));
         plugins.insert("retrieve_knowledge", Arc::new(RetrieveKnowledgePlugin));
@@ -119,6 +121,17 @@ impl ToolDispatcher {
             Self::sanitize_schema_for_gemini(&mut schema);
             if let Ok(func_decl) = serde_json::from_value::<gemini_rust::FunctionDeclaration>(schema) {
                 tools.push(func_decl);
+            }
+        }
+
+        // 🌟 ALWAYS FORCE INJECT SUGGEST_NEW_SKILL IF DISCOVERY IS ACTIVE
+        if intents.contains(&"SYSTEM_INTERNAL_DISCOVERY".to_string()) {
+            if let Some(suggest_plugin) = self.plugins.get("suggest_new_skill") {
+                let mut schema = suggest_plugin.schema();
+                Self::sanitize_schema_for_gemini(&mut schema);
+                if let Ok(func_decl) = serde_json::from_value::<gemini_rust::FunctionDeclaration>(schema) {
+                    tools.push(func_decl);
+                }
             }
         }
 

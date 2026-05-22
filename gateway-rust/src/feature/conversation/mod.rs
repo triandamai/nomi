@@ -22,6 +22,7 @@ use uuid::Uuid;
 pub mod auth;
 pub mod command;
 pub mod model;
+pub mod srp_factory;
 
 pub async fn handle_get_model_info(
     State(state): State<AppState>,
@@ -1290,7 +1291,7 @@ pub struct SrpTestRequest {
 pub async fn handle_get_srp_state(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> impl IntoResponse {
+) -> ApiResponse<Value> {
     let res = sqlx::query(
         "SELECT enriched_description, additional_rules, learned_phrases FROM static_plugin_reinforcements WHERE plugin_slug = $1"
     )
@@ -1307,17 +1308,17 @@ pub async fn handle_get_srp_state(
                 "additional_rules": row.get::<Vec<String>, _>("additional_rules"),
                 "learned_phrases": row.get::<Vec<String>, _>("learned_phrases"),
             });
-            (StatusCode::OK, Json(data)).into_response()
+            ApiResponse::ok(data, "SRP state retrieved")
         }
-        Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "No reinforcement found for this plugin"}))).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+        Ok(None) => ApiResponse::not_found("No reinforcement found for this plugin"),
+        Err(e) => ApiResponse::failed(&e.to_string()),
     }
 }
 
 pub async fn handle_test_srp(
     State(state): State<AppState>,
     Json(payload): Json<SrpTestRequest>,
-) -> impl IntoResponse {
+) -> ApiResponse<Value> {
     // 🌟 Simulation Pass: Temporarily bypass real tool execution to check alignment
     let dispatcher = crate::common::tools::ToolDispatcher::new(
         state.pool.clone(),
@@ -1334,9 +1335,9 @@ pub async fn handle_test_srp(
         let schema = plugin.schema();
         let base_desc = schema["description"].as_str().unwrap_or_default();
         let outcome = format!("Simulated alignment for tool [{}]: Phrasing '{}' was evaluated against base description '{}'. Reinforcement logic would suggest expanding vocabulary to include context-specific keywords.", payload.slug, payload.text, base_desc);
-        (StatusCode::OK, Json(json!({"outcome": outcome}))).into_response()
+        ApiResponse::ok(json!({"outcome": outcome}), "Simulation successful")
     } else {
-        (StatusCode::NOT_FOUND, Json(json!({"error": "Plugin not found"}))).into_response()
+        ApiResponse::not_found("Plugin not found")
     }
 }
 

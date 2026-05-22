@@ -435,5 +435,29 @@ export const chatApi = {
     },
     getAvailablePlugins: () => {
         return apiFetch<string[]>('/srp/available');
+    },
+    getProposals: () => {
+        return apiFetch<any[]>('/srp/proposals');
+    },
+    updateProposal: (slug: string, payload: any) => {
+        return apiFetch<any>(`/srp/proposals/${slug}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+    },
+    deleteProposal: (slug: string) => {
+        return apiFetch<any>(`/srp/proposals/${slug}`, {
+            method: 'DELETE'
+        });
+    },
+    approveProposal: (slug: string) => {
+        return apiFetch<any>(`/srp/proposals/${slug}/approve`, {
+            method: 'POST'
+        });
+    },
+    deployProposal: (slug: string) => {
+        return apiFetch<any>(`/srp/proposals/${slug}/deploy`, {
+            method: 'POST'
+        });
     }
 };

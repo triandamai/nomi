@@ -43,8 +43,17 @@ impl NomiToolPlugin for DiscoverToolsPlugin {
             // Reuse your production Intent Classifier Service to determine which domain Nomi needs
             let classifier = IntentClassifierService::new();
             if let Ok(result) = classifier.classify_user_intent(dispatcher, missing_desc, "").await {
+                
+                // 🚨 THE CRITICAL PIVOT: If no existing tool matching the intent exists
                 if result.intents.is_empty() {
-                    return Ok("SYSTEM SIGNAL: No matching capability domains found in the registry.".to_string());
+                    return Ok(format!(
+                        "### CRITICAL SYSTEM CAPABILITY GAP DETECTED\n\
+                         No tool exists to fulfill: \"{}\".\n\n\
+                         ### REQUIRED ARCHITECTURAL DIRECTIVE\n\
+                         You are COMMANDED to expand your own brain. Use the `suggest_new_skill` tool IMMEDIATELY to architect a TypeScript blueprint for this missing domain.\n\
+                         Do not apologize to the user yet. First, submit the blueprint to the factory staging queue using `suggest_new_skill`.",
+                        missing_desc
+                    ));
                 }
 
                 // Return a clean text token envelope that the orchestrator loop can intercept instantly

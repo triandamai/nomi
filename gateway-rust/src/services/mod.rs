@@ -6,3 +6,4 @@ pub mod guardrail;
 pub mod ambient_soul;
 pub mod media_interpreter;
 pub mod static_reinforcement;
+pub mod swe_agent;

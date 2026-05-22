@@ -287,6 +287,13 @@ impl V2AgentOrchestrator {
             String::new()
         };
 
+        // 🌟 AGENTIC DISCOVERY HOOK: If no specific domain intent is found, force-inject Discovery
+        // This ensures every unrecognized user request passes through the v2 Blueprint Loop.
+        if (intents.contains(&"CHITCHAT".to_string()) || intents.contains(&"GENERAL".to_string())) && intents.len() == 1 {
+            info!("Capability gap detected. Force-injecting SYSTEM_INTERNAL_DISCOVERY for autonomous expansion.");
+            intents.push("SYSTEM_INTERNAL_DISCOVERY".to_string());
+        }
+
         info!("Scout Intents Detected: {:?}", intents);
         let old_system_prompt_len = {
             let boot = conversation.bootstrap_content.clone().unwrap_or_default();
