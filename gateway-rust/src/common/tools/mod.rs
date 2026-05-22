@@ -133,6 +133,23 @@ impl ToolDispatcher {
 
             if is_matched {
                 let mut schema = plugin.schema();
+
+                // 🌟 SHADOW INJECTION: Fetch runtime optimizations for this static tool handle
+                if let Ok(Some(row)) = sqlx::query(
+                    "SELECT enriched_description FROM static_plugin_reinforcements WHERE plugin_slug = $1"
+                )
+                .bind(*name)
+                .fetch_optional(&self.pool)
+                .await {
+                    use sqlx::Row;
+                    if let Ok(reinforced_desc) = row.try_get::<String, _>("enriched_description") {
+                        if let Some(obj) = schema.as_object_mut() {
+                            // Hydrate the compiled description with the dynamically learned variation context!
+                            obj.insert("description".to_string(), serde_json::Value::String(reinforced_desc));
+                        }
+                    }
+                }
+
                 Self::sanitize_schema_for_gemini(&mut schema);
 
                 if let Ok(func_decl) = serde_json::from_value::<FunctionDeclaration>(schema) {
@@ -167,10 +184,31 @@ impl ToolDispatcher {
         if let Ok(plugins) = dynamic_plugins {
             for p in plugins {
                 let mut schema = p.schema_json.clone();
-                // Ensure name and description match the DB record handle
+
+                // 🌟 SHADOW INJECTION: Fetch runtime optimizations for this dynamic tool handle
+                if let Ok(Some(row)) = sqlx::query(
+                    "SELECT enriched_description FROM static_plugin_reinforcements WHERE plugin_slug = $1"
+                )
+                .bind(&p.slug)
+                .fetch_optional(&self.pool)
+                .await {
+                    use sqlx::Row;
+                    if let Ok(reinforced_desc) = row.try_get::<String, _>("enriched_description") {
+                        if let Some(obj) = schema.as_object_mut() {
+                            // Hydrate the dynamic description with the learned variation context!
+                            obj.insert("description".to_string(), serde_json::Value::String(reinforced_desc));
+                        }
+                    }
+                }
+
+                // Ensure name and description match the DB record handle if not already set by reinforcement
                 if let Some(obj) = schema.as_object_mut() {
-                    obj.insert("name".to_string(), serde_json::Value::String(p.slug.clone()));
-                    obj.insert("description".to_string(), serde_json::Value::String(p.description.clone()));
+                    if !obj.contains_key("name") {
+                        obj.insert("name".to_string(), serde_json::Value::String(p.slug.clone()));
+                    }
+                    if !obj.contains_key("description") {
+                        obj.insert("description".to_string(), serde_json::Value::String(p.description.clone()));
+                    }
                 }
                 
                 Self::sanitize_schema_for_gemini(&mut schema);

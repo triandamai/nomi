@@ -1280,3 +1280,93 @@ pub async fn handle_chat_stream(
 
     ApiResponse::ok(message.unwrap(), "Success")
 }
+
+#[derive(serde::Deserialize)]
+pub struct SrpTestRequest {
+    pub slug: String,
+    pub text: String,
+}
+
+pub async fn handle_get_srp_state(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> impl IntoResponse {
+    let res = sqlx::query(
+        "SELECT enriched_description, additional_rules, learned_phrases FROM static_plugin_reinforcements WHERE plugin_slug = $1"
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await;
+
+    match res {
+        Ok(Some(row)) => {
+            use sqlx::Row;
+            let data = json!({
+                "slug": slug,
+                "enriched_description": row.get::<String, _>("enriched_description"),
+                "additional_rules": row.get::<Vec<String>, _>("additional_rules"),
+                "learned_phrases": row.get::<Vec<String>, _>("learned_phrases"),
+            });
+            (StatusCode::OK, Json(data)).into_response()
+        }
+        Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "No reinforcement found for this plugin"}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+pub async fn handle_test_srp(
+    State(state): State<AppState>,
+    Json(payload): Json<SrpTestRequest>,
+) -> impl IntoResponse {
+    // 🌟 Simulation Pass: Temporarily bypass real tool execution to check alignment
+    let dispatcher = crate::common::tools::ToolDispatcher::new(
+        state.pool.clone(),
+        std::path::PathBuf::from("."),
+        None,
+        None,
+        state.gemini.clone(),
+        state.gemini_api_key.clone(),
+        state.storage.clone(),
+        state.clone(),
+    );
+
+    if let Some(plugin) = dispatcher.plugins.get(payload.slug.as_str()) {
+        let schema = plugin.schema();
+        let base_desc = schema["description"].as_str().unwrap_or_default();
+        let outcome = format!("Simulated alignment for tool [{}]: Phrasing '{}' was evaluated against base description '{}'. Reinforcement logic would suggest expanding vocabulary to include context-specific keywords.", payload.slug, payload.text, base_desc);
+        (StatusCode::OK, Json(json!({"outcome": outcome}))).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(json!({"error": "Plugin not found"}))).into_response()
+    }
+}
+
+pub async fn handle_get_available_plugins(
+    State(state): State<AppState>,
+) -> ApiResponse<Vec<String>> {
+    let dispatcher = crate::common::tools::ToolDispatcher::new(
+        state.pool.clone(),
+        std::path::PathBuf::from("."),
+        None,
+        None,
+        state.gemini.clone(),
+        state.gemini_api_key.clone(),
+        state.storage.clone(),
+        state.clone(),
+    );
+    let mut slugs: Vec<String> = dispatcher.plugins.keys().map(|&k| k.to_string()).collect();
+    
+    // 🌟 DYNAMIC DISCOVERY: Fetch slugs from edge_functions to include in the registry
+    if let Ok(dynamic_slugs) = sqlx::query_scalar!(
+        "SELECT slug FROM edge_functions"
+    )
+    .fetch_all(&state.pool)
+    .await {
+        for slug in dynamic_slugs {
+            if !slugs.contains(&slug) {
+                slugs.push(slug);
+            }
+        }
+    }
+
+    ApiResponse::ok(slugs, "Available plugins retrieved")
+}

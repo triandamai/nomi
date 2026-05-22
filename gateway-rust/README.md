@@ -173,6 +173,27 @@ graph TD
 - **Recursive Correction**: If a response is truncated or a tool fails, the orchestrator detects the error and injects a system-level "self-correction" prompt to continue.
 - **Memory Consolidation**: Once the conversation turn is finished, a background task summarizes the interaction and updates the `knowledge_base` with new facts and graph relationships.
 
+### 6. Self-Reinforcement Engine (SRP)
+Nomi autonomously evolves her core tool-handling logic through a background self-optimization cycle. This allows static core plugins to learn user vocabulary and refine their own operational guardrails without code changes.
+
+```mermaid
+graph TD
+    Exec[Successful Tool Execution] --> Trigger[Reinforcement Trigger]
+    Trigger --> Pass{Tier 1: Verification Pass}
+    Pass -->|Drift Detected| Stop[Discard]
+    Pass -->|Aligned| Gemini[Gemini Optimization Engine]
+    Gemini --> Extract[Extract Keywords & New Rules]
+    Extract --> DB[(SRP Shadow Table)]
+    DB --> FIFO[FIFO Truncation: 5 Rules / 10 Phrases]
+    DB --> Hydrate[Dynamic Prompt Injection]
+    Hydrate --> Next[Next Tool Turn]
+```
+
+**Key Operational Safeguards:**
+- **Anti-Drift Guardrail**: A temperature-0 evaluation pass verifies if new phrasing organically matches the tool's true utility scope before any learning is committed.
+- **Prompt Bloat Prevention**: A strict **FIFO (First-In, First-Out)** array limit ensures that each tool only carries its 5 most recent learned rules and 10 most recent vocabulary expansions, preventing context window exhaustion.
+- **Dynamic Schema Hydration**: Learned optimizations are injected into the tool's JSON schema (descriptions) and domain rules at runtime, effectively bypassing binary compilation limits.
+
 ## Database Schema Highlights
 - `users`: Core user profiles and authentication.
 - `conversations`: Stores the AI "soul" (personality) and "bootstrap" (context).
@@ -214,53 +235,6 @@ pub trait NomiToolPlugin: Send + Sync {
 3. **Map Intents**: Add your skill to relevant intent categories (e.g., `FINANCE`, `WEB`, `DASHBOARD`).
 4. **Logic Hook**: Implement the `execute` method to interact with databases, external APIs, or the filesystem.
 5. **Register**: Add your plugin instance to the `ToolDispatcher` hashmap in `src/common/tools/mod.rs`.
-
----
-
-## ⚡ Dynamic Edge Functions (TypeScript Plugins)
-
-Beyond static Rust plugins, Nomi supports **Serverless TypeScript execution** via a high-performance Edge Engine. These functions are stored in the database and executed on-demand in an ephemeral **Bun** sandbox.
-
-### 1. Architectural Flow
-- **Execution**: When called, the `BunEdgeExecutor` generates a temporary `.ts` wrapper, injects the conversation context (`NomiArgs`), and spawns a Bun subprocess.
-- **Sandboxing**: The process is capped at 10 seconds and is explicitly terminated (`kill_on_drop`) to protect system memory.
-- **Secure RPC Bridge**: Edge functions can "call back" into the Rust Gateway to retrieve knowledge or perform system actions via an internal RPC bridge secured by a short-lived **Bridge Token**.
-
-### 2. Discovery & Semantic Routing
-Every Edge function is semantically indexed. If Nomi's initial toolset is insufficient, she can use the `discover_tools` meta-plugin to search the database for an Edge function that matches her current objective based on its name and description.
-
-### 3. Example: Crypto Price Tracker
-A dynamic plugin defined in the Nomi Dashboard:
-
-**JSON Schema:**
-```json
-
-{
-  "type": "object",
-  "properties": {
-    "symbol": { "type": "string", "description": "The crypto ticker (e.g. BTC, ETH)" }
-  },
-  "required": ["symbol"]
-}
-```
-
-**TypeScript Logic:**
-```typescript
-
-export default async function run(args: NomiArgs) {
-    const { symbol } = args.payload;
-    const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}USDT`);
-    const data = await response.json();
-    
-    // You can also use built-in functions via the bridge
-    // const memories = await retrieve_knowledge(`What does the user think about ${symbol}?`);
-
-    return {
-        message: `Current ${symbol} price is $${parseFloat(data.price).toLocaleString()}`,
-        raw: data
-    };
-}
-```
 
 ---
 

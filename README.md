@@ -173,6 +173,27 @@ graph TD
 - **Recursive Correction**: If a response is truncated or a tool fails, the orchestrator detects the error and injects a system-level "self-correction" prompt to continue.
 - **Memory Consolidation**: Once the conversation turn is finished, a background task summarizes the interaction and updates the `knowledge_base` with new facts and graph relationships.
 
+### 6. Self-Reinforcement Engine (SRP)
+Nomi autonomously evolves her core tool-handling logic through a background self-optimization cycle. This allows static core plugins to learn user vocabulary and refine their own operational guardrails without code changes.
+
+```mermaid
+graph TD
+    Exec[Successful Tool Execution] --> Trigger[Reinforcement Trigger]
+    Trigger --> Pass{Tier 1: Verification Pass}
+    Pass -->|Drift Detected| Stop[Discard]
+    Pass -->|Aligned| Gemini[Gemini Optimization Engine]
+    Gemini --> Extract[Extract Keywords & New Rules]
+    Extract --> DB[(SRP Shadow Table)]
+    DB --> FIFO[FIFO Truncation: 5 Rules / 10 Phrases]
+    DB --> Hydrate[Dynamic Prompt Injection]
+    Hydrate --> Next[Next Tool Turn]
+```
+
+**Key Operational Safeguards:**
+- **Anti-Drift Guardrail**: A temperature-0 evaluation pass verifies if new phrasing organically matches the tool's true utility scope before any learning is committed.
+- **Prompt Bloat Prevention**: A strict **FIFO (First-In, First-Out)** array limit ensures that each tool only carries its 5 most recent learned rules and 10 most recent vocabulary expansions, preventing context window exhaustion.
+- **Dynamic Schema Hydration**: Learned optimizations are injected into the tool's JSON schema (descriptions) and domain rules at runtime, effectively bypassing binary compilation limits.
+
 ## Database Schema Highlights
 - `users`: Core user profiles and authentication.
 - `conversations`: Stores the AI "soul" (personality) and "bootstrap" (context).

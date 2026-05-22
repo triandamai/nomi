@@ -15,7 +15,7 @@
         RefreshCw,
         MessageSquare,
         LineChart,
-        DollarSign, Terminal, Activity, HeartPulse, Sparkles, ShieldAlert, BookOpen, Cpu
+        DollarSign, Terminal, Activity, HeartPulse, Sparkles, ShieldAlert, BookOpen, Cpu, Brain
     } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import SoulTimeline from './SoulTimeline.svelte';
@@ -997,6 +997,14 @@
 
                         <div class="h-px bg-slate-900 my-1"></div>
                     {/if}
+
+                    <button
+                            onclick={() => { sidebarStore.showUserMenu = false; goto('/dashboard/srp'); }}
+                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
+                    >
+                        <Brain size={14}/>
+                        <span>Reinforcement Engine</span>
+                    </button>
 
                     <button
                             onclick={handleLogout}

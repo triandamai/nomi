@@ -418,6 +418,31 @@ impl V2AgentOrchestrator {
                         if !rules.is_empty() && !domain_rules.contains(rules) {
                             domain_rules.push_str(rules);
                         }
+
+                        // 🌟 SHADOW RULE INJECTION: Fetch runtime optimizations for this static tool handle
+                        let plugin_slug = plugin.schema()["name"].as_str().unwrap_or_default().to_string();
+                        if !plugin_slug.is_empty() {
+                            if let Some(Some(row)) = tokio::task::block_in_place(|| {
+                                tokio::runtime::Handle::current().block_on(async {
+                                    sqlx::query("SELECT additional_rules FROM static_plugin_reinforcements WHERE plugin_slug = $1")
+                                        .bind(&plugin_slug)
+                                        .fetch_optional(&state.pool)
+                                        .await
+                                        .ok()
+                                })
+                            }) {
+                                use sqlx::Row;
+                                if let Ok(extra_rules) = row.try_get::<Vec<String>, _>("additional_rules") {
+                                    for rule in extra_rules {
+                                        if !rule.is_empty() && !domain_rules.contains(&rule) {
+                                            domain_rules.push_str("\n- Learned Operational Guardrail: ");
+                                            domain_rules.push_str(&rule);
+                                            domain_rules.push_str("\n");
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 combined.push_str(&domain_rules);
@@ -794,7 +819,42 @@ impl V2AgentOrchestrator {
                         ));
                     }
 
-                    tool_turns.push((current_calls, tool_results));
+                    tool_turns.push((current_calls, tool_results.clone()));
+
+                    // --- 🚨 SELF-REINFORCEMENT ENGINE TRIGGER 🚨 ---
+                    let pool_clone = state.pool.clone();
+                    let gemini_clone = state.gemini.clone();
+                    let raw_user_text = msg.text_content.clone();
+                    let dispatcher_clone = dispatcher.clone();
+
+                    let executed_slugs: Vec<(String, String)> = tool_results.iter()
+                        .filter_map(|(name, res)| {
+                            if res.success {
+                                // Extract description from either static or dynamic plugins
+                                let description = if let Some(static_plugin) = dispatcher_clone.plugins.get(name.as_str()) {
+                                    static_plugin.schema()["description"].as_str().unwrap_or_default().to_string()
+                                } else {
+                                    // Fallback for dynamic plugins - we'll let the reinforcement service handle the lookup if needed
+                                    // but we pass name as slug for now.
+                                    String::new()
+                                };
+                                Some((name.clone(), description))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    tokio::spawn(async move {
+                        for (slug, base_desc) in executed_slugs {
+                            if let Err(e) = crate::services::static_reinforcement::reinforce_static_plugin_profile(
+                                pool_clone.clone(), gemini_clone.clone(), slug, raw_user_text.clone(), base_desc
+                            ).await {
+                                error!("Failed plugin reinforcement pass: {}", e);
+                            }
+                        }
+                    });
+                    // --- 🚨 END SELF-REINFORCEMENT ENGINE TRIGGER 🚨 ---
                 }
                 Err(e) => {
                     error!("V2 Agentic loop error: {}", e);

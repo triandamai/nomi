@@ -423,5 +423,17 @@ export const chatApi = {
     },
     getPublicSkills: () => {
         return apiFetch<any[]>('/skills');
+    },
+    getSrpState: (slug: string) => {
+        return apiFetch<any>(`/srp/${slug}`);
+    },
+    testSrp: (slug: string, text: string) => {
+        return apiFetch<any>('/srp/test', {
+            method: 'POST',
+            body: JSON.stringify({slug, text})
+        });
+    },
+    getAvailablePlugins: () => {
+        return apiFetch<string[]>('/srp/available');
     }
 };
