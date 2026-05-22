@@ -254,6 +254,23 @@ pub async fn handle_get_readme(
     ApiResponse::failed("Failed to read documentation")
 }
 
+pub async fn handle_get_skills_readme(
+    State(_state): State<AppState>,
+    axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,
+) -> ApiResponse<String> {
+    // Try current directory first (Docker/Prod), then parent (Local Dev)
+    let paths = ["./docs/SKILLS.md", "../docs/SKILLS.md"];
+    
+    for path in paths {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            return ApiResponse::ok(content, "Skills documentation retrieved successfully");
+        }
+    }
+
+    error!("Failed to read docs/SKILLS.md from any expected location");
+    ApiResponse::failed("Failed to read skills documentation")
+}
+
 pub async fn handle_execute_skill(
     State(state): State<AppState>,
     axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,

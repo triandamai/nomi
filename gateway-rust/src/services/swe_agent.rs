@@ -40,14 +40,26 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
             });
         };
 
-        emit_factory_event("thinking", "[FACTORY]: SWE Agent awakened. Composing dynamic code manual variants...", "");
+        emit_factory_event("thinking", "[FACTORY]: SWE Agent awakened. Synchronizing with Skill Creation Protocol...", "");
 
-        let swe_system_prompt = "\
-        You are an elite automated backend architect specializing in serverless V8 and Bun runtime environments. \
-        Your output must be 100% executable TypeScript code block statements without introductory filler or markdown chatter. \
-        CRITICAL STRUCTURE RULE: You MUST export a default function matching exactly this entrypoint format:\n\
-        export default function run(args: any) {\n  // your implementation here\n}\n\
-        The `args` parameter maps directly to your input properties schema matrix variables. Ensure all data processing happens inside this function framework.";
+        // 🌟 PROTOCOL SYNCHRONIZATION: Read the latest standards from SKILLS.md
+        let protocol_paths = ["./docs/SKILLS.md", "../docs/SKILLS.md"];
+        let mut protocol_doc = String::new();
+        for path in protocol_paths {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                protocol_doc = content;
+                break;
+            }
+        }
+
+        let swe_system_prompt = format!(
+            "You are an elite automated backend architect specializing in serverless V8 and Bun runtime environments. \
+            Your output must be 100% executable TypeScript code block statements without introductory filler or markdown chatter. \
+            \n\n### ARCHITECTURAL PROTOCOL STANDARDS:\n{}\n\n\
+            CRITICAL STRUCTURE RULE: You MUST export a default function matching exactly the entrypoint format defined in the protocol. \
+            The `args` parameter maps directly to your input properties schema matrix variables. Ensure all data processing happens inside this function framework.",
+            protocol_doc
+        );
 
         let mut coding_prompt = format!(
             "Synthesize a complete, production-grade TypeScript edge plugin file. Specifications:\n\

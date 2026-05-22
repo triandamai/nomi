@@ -459,7 +459,7 @@
                         </div>
 
                         <div class="pt-8">
-                            <a href="/docs" class="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm font-bold text-white transition-all group">
+                            <a href="/gateway-rust/docs" class="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm font-bold text-white transition-all group">
                                 <BookOpen class="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
                                 {t.stack.viewDocs}
                             </a>

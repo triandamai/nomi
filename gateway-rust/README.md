@@ -174,25 +174,34 @@ graph TD
 - **Memory Consolidation**: Once the conversation turn is finished, a background task summarizes the interaction and updates the `knowledge_base` with new facts and graph relationships.
 
 ### 6. Self-Reinforcement Engine (SRP)
-Nomi autonomously evolves her core tool-handling logic through a background self-optimization cycle. This allows static core plugins to learn user vocabulary and refine their own operational guardrails without code changes.
+Nomi autonomously evolves her core tool-handling logic and **architects new capabilities from scratch**. This transitions her from a static assistant into a self-expanding Operating System.
+
+#### 🧠 Autonomous Evolution & Learning
+- **Zero-Latency Optimization**: Background workers analyze successful interactions at **0.0 Temperature** to extract slang, shorthand, and behavioral guardrails without causing semantic drift.
+- **Dynamic Schema Hydration**: Learned optimizations are injected into tool schemas at runtime, bypassing binary compilation limits.
+- **SRP Summary Audit**: Nomi can autonomously generate reports on her own progress via the `get_srp_summary` tool, proving her evolution through data.
+
+#### 🏭 Distributed Agent Factory (DAF)
+Nomi can now identify "capability vacuums" and **propose her own upgrades**. She doesn't just use tools; she builds them.
 
 ```mermaid
 graph TD
-    Exec[Successful Tool Execution] --> Trigger[Reinforcement Trigger]
-    Trigger --> Pass{Tier 1: Verification Pass}
-    Pass -->|Drift Detected| Stop[Discard]
-    Pass -->|Aligned| Gemini[Gemini Optimization Engine]
-    Gemini --> Extract[Extract Keywords & New Rules]
-    Extract --> DB[(SRP Shadow Table)]
-    DB --> FIFO[FIFO Truncation: 5 Rules / 10 Phrases]
-    DB --> Hydrate[Dynamic Prompt Injection]
-    Hydrate --> Next[Next Tool Turn]
+    User[User Request] --> Gap{Capability Gap?}
+    Gap -->|Yes| Suggest[SuggestSkillPlugin]
+    Suggest --> Blueprint[Synthesize Blueprint: Schema/Roadmap]
+    Blueprint --> Staging[(Factory Staging Queue)]
+    Staging --> Review[Admin Review & Approval]
+    Review --> SWE[SWE Agent: Recursive Healing Loop]
+    SWE --> Sandbox[Sandbox Validation: Bun/V8]
+    Sandbox -->|Success| Production{Production Hot-Patch}
+    Production --> Deploy[Unified Deployment Pipeline]
 ```
 
-**Key Operational Safeguards:**
-- **Anti-Drift Guardrail**: A temperature-0 evaluation pass verifies if new phrasing organically matches the tool's true utility scope before any learning is committed.
-- **Prompt Bloat Prevention**: A strict **FIFO (First-In, First-Out)** array limit ensures that each tool only carries its 5 most recent learned rules and 10 most recent vocabulary expansions, preventing context window exhaustion.
-- **Dynamic Schema Hydration**: Learned optimizations are injected into the tool's JSON schema (descriptions) and domain rules at runtime, effectively bypassing binary compilation limits.
+**The Autonomous Engineering Loop:**
+1.  **Autonomous Blueprinting**: When a user request cannot be met by existing tools, Nomi invokes the `suggest_new_skill` tool to architect a solution (slug, parameters, and roadmap).
+2.  **Recursive SWE Agent**: Once approved via the **Factory Console**, a dedicated background SWE Agent synthesizes the TypeScript source code. It uses a **Recursive Healing Loop** to automatically fix its own bugs in an isolated sandbox before presentation.
+3.  **Human-In-The-Loop Security**: To ensure safety, only an **Admin** can trigger the final deployment. Once deployed, the plugin is instantly available to Nomi's RAG and intent classification layers.
+4.  **Self-Oversight**: Nomi uses the `manage_skill_proposals` tool to monitor her own engineering pipeline and inform users of build progress.
 
 ## Database Schema Highlights
 - `users`: Core user profiles and authentication.

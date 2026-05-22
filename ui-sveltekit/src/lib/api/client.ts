@@ -371,6 +371,9 @@ export const chatApi = {
     getDocumentation: () => {
         return apiFetch<string>('/readme');
     },
+    getSkillsDocumentation: () => {
+        return apiFetch<string>('/skills/readme');
+    },
     getEdgeFunctions: () => {
         return apiFetch<any[]>('/plugins');
     },

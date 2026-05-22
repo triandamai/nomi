@@ -10,7 +10,7 @@ use crate::feature::conversation::{
     handle_restore_conversation_soul, handle_update_conversation, handle_upload_file,
     handle_get_available_tools, handle_get_guardrail_patterns, handle_insert_guardrail_pattern,
     handle_delete_guardrail_pattern, handle_get_skill_schemas, handle_execute_skill,
-    handle_get_readme, handle_get_public_skills,
+    handle_get_readme, handle_get_skills_readme, handle_get_public_skills,
     handle_get_srp_state, handle_test_srp, handle_get_available_plugins,
     srp_factory::{get_proposals, update_proposal, delete_proposal, approve_proposal, deploy_proposal},
     };
@@ -105,6 +105,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/tools", get(handle_get_available_tools))
         .route("/skills/schemas", get(handle_get_skill_schemas))
         .route("/skills/execute", post(handle_execute_skill))
+        .route("/skills/readme", get(handle_get_skills_readme))
         .route("/reminders", get(handle_get_reminders))
         .route("/readme", get(handle_get_readme))
         .route("/srp/available", get(handle_get_available_plugins))
