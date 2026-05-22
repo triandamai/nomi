@@ -109,24 +109,38 @@ pub async fn handle_create_edge_function(
         Err(e) => return ApiResponse::failed(&format!("Failed to start transaction: {}", e)),
     };
 
-    let function_res = sqlx::query_as::<_, EdgeFunction>(
+    let function_res = sqlx::query!(
         "INSERT INTO edge_functions (slug, name, description, schema_json, rules_text, script_code, intents, user_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id, user_id, slug, name, description, schema_json, rules_text, script_code, intents, version, created_at"
+         RETURNING id, user_id, slug, name, description, schema_json, rules_text, script_code, intents, version, created_at",
+        payload.slug,
+        payload.name,
+        payload.description,
+        payload.schema_json,
+        payload.rules_text,
+        payload.script_code,
+        &payload.intents,
+        user_id
     )
-    .bind(&payload.slug)
-    .bind(&payload.name)
-    .bind(&payload.description)
-    .bind(&payload.schema_json)
-    .bind(&payload.rules_text)
-    .bind(&payload.script_code)
-    .bind(&payload.intents)
-    .bind(user_id)
     .fetch_one(&mut *tx)
     .await;
 
     match function_res {
-        Ok(f) => {
+        Ok(r) => {
+            let f = EdgeFunction {
+                id: r.id,
+                user_id: r.user_id,
+                slug: r.slug,
+                name: r.name,
+                description: r.description,
+                schema_json: r.schema_json,
+                rules_text: r.rules_text,
+                script_code: r.script_code,
+                intents: r.intents,
+                version: r.version,
+                created_at: r.created_at,
+                display_name: None, // Will be hydrated on next GET
+            };
             if let Err(e) = IntentClassifierService::sync_dynamic_plugin_intents_to_knowledge(
                 &mut tx,
                 &state.gemini_api_key,
@@ -185,24 +199,38 @@ pub async fn handle_update_edge_function(
         Err(e) => return ApiResponse::failed(&format!("Database error: {}", e)),
     }
 
-    let function_res = sqlx::query_as::<_, EdgeFunction>(
+    let function_res = sqlx::query!(
         "UPDATE edge_functions
          SET name = $1, description = $2, schema_json = $3, rules_text = $4, script_code = $5, intents = $6, version = version + 1
          WHERE slug = $7
-         RETURNING id, user_id, slug, name, description, schema_json, rules_text, script_code, intents, version, created_at"
+         RETURNING id, user_id, slug, name, description, schema_json, rules_text, script_code, intents, version, created_at",
+        payload.name,
+        payload.description,
+        payload.schema_json,
+        payload.rules_text,
+        payload.script_code,
+        &payload.intents,
+        slug
     )
-    .bind(&payload.name)
-    .bind(&payload.description)
-    .bind(&payload.schema_json)
-    .bind(&payload.rules_text)
-    .bind(&payload.script_code)
-    .bind(&payload.intents)
-    .bind(&slug)
     .fetch_one(&mut *tx)
     .await;
 
     match function_res {
-        Ok(f) => {
+        Ok(r) => {
+            let f = EdgeFunction {
+                id: r.id,
+                user_id: r.user_id,
+                slug: r.slug,
+                name: r.name,
+                description: r.description,
+                schema_json: r.schema_json,
+                rules_text: r.rules_text,
+                script_code: r.script_code,
+                intents: r.intents,
+                version: r.version,
+                created_at: r.created_at,
+                display_name: None,
+            };
             if let Err(e) = IntentClassifierService::sync_dynamic_plugin_intents_to_knowledge(
                 &mut tx,
                 &state.gemini_api_key,

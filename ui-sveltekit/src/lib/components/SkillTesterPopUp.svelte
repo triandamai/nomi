@@ -18,11 +18,15 @@
         };
     }
 
-    let { schema = null as Schema | null } = $props();
+    let { 
+        schema = null as Schema | null,
+        scriptCode = null as string | null
+    } = $props();
 
     let formData = $state<Record<string, any>>({});
     let isExecuting = $state(false);
     let executionResult = $state<string | null>(null);
+    let executionLogs = $state<string | null>(null);
     let executionError = $state<string | null>(null);
 
     // Initializer function to prevent infinite loops
@@ -51,6 +55,7 @@
             // We use a single assignment to formData to avoid multiple triggers
             formData = initial;
             executionResult = null;
+            executionLogs = null;
             executionError = null;
         }
     });
@@ -60,19 +65,33 @@
         
         isExecuting = true;
         executionResult = null;
+        executionLogs = null;
         executionError = null;
         
         try {
-            const res = await chatApi.executeSkill(
-                schema.name, 
-                formData,
-                conversationStore.activeConversationId || undefined
-            );
-            
-            if (res.meta.code >= 200 && res.meta.code <= 299) {
-                executionResult = res.data;
+            if (scriptCode) {
+                // 🚀 DIRECT PLAYGROUND EXECUTION (Dry Run)
+                // This bypasses the need for the plugin to exist in the database
+                const res = await chatApi.executeEdgeFunction(scriptCode, formData);
+                if (res.meta.code >= 200 && res.meta.code <= 299) {
+                    executionResult = JSON.stringify(res.data.result, null, 2);
+                    executionLogs = res.data.logs;
+                } else {
+                    executionError = res.meta.message;
+                }
             } else {
-                executionError = res.meta.message;
+                // STANDARD PRODUCTION EXECUTION
+                const res = await chatApi.executeSkill(
+                    schema.name, 
+                    formData,
+                    conversationStore.activeConversationId || undefined
+                );
+                
+                if (res.meta.code >= 200 && res.meta.code <= 299) {
+                    executionResult = res.data;
+                } else {
+                    executionError = res.meta.message;
+                }
             }
         } catch (e: any) {
             executionError = e.message || "Execution failed";
@@ -89,7 +108,7 @@
                 <div class="flex items-center gap-3">
                     <h2 class="text-xl font-black text-sky-400 uppercase tracking-tighter">{schema.name.replace(/_/g, ' ')}</h2>
                     <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-500/10 text-sky-500 border border-sky-500/20 uppercase">
-                        Lab Test
+                        {scriptCode ? 'Dry Run Test' : 'Lab Test'}
                     </span>
                 </div>
                 <p class="text-xs text-slate-300 leading-relaxed italic">{schema.description}</p>
@@ -176,6 +195,18 @@
                 </div>
             {/if}
 
+            {#if executionLogs}
+                <div class="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300 mt-4">
+                    <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-sky-500 ml-1">
+                        <Terminal class="w-3 h-3" />
+                        Execution Logs
+                    </div>
+                    <div class="p-4 bg-sky-500/5 border border-sky-500/20 rounded-lg text-[10px] font-mono text-sky-300/60 whitespace-pre overflow-x-auto leading-relaxed border-l-2 border-l-sky-500">
+                        {executionLogs}
+                    </div>
+                </div>
+            {/if}
+
             {#if executionError}
                 <div class="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-rose-500 ml-1">
@@ -194,6 +225,7 @@
 <style>
     .custom-scrollbar::-webkit-scrollbar {
         width: 4px;
+        height: 4px;
     }
     .custom-scrollbar::-webkit-scrollbar-track {
         background: transparent;

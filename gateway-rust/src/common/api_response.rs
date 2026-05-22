@@ -70,8 +70,8 @@ impl PaginationRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Meta {
-    code: i32,
-    message: String,
+    pub code: i32,
+    pub message: String,
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FieldError {

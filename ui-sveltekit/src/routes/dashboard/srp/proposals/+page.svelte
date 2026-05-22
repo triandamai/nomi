@@ -1,31 +1,36 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { eventBus } from '$lib/utils';
-  import { 
-    Factory, 
-    History, 
-    Play, 
-    Zap, 
-    CheckCircle2, 
-    XCircle, 
-    Loader2, 
-    ChevronRight, 
-    Terminal, 
-    Code2,
-    Settings2,
-    Trash2,
-    RefreshCw,
-    Brain,
-    Rocket,
-    MonitorDot,
-    FileCode,
-    ChevronUp,
-    ChevronDown,
-    Maximize2,
-    Minimize2
+  import {
+      Factory,
+      History,
+      Play,
+      Zap,
+      CheckCircle2,
+      XCircle,
+      Loader2,
+      ChevronRight,
+      Terminal,
+      Code2,
+      Settings2,
+      Trash2,
+      RefreshCw,
+      Brain,
+      Rocket,
+      MonitorDot,
+      FileCode,
+      ChevronUp,
+      ChevronDown,
+      Maximize2,
+      Minimize2,
+      Beaker, ShieldAlert
   } from 'lucide-svelte';
   import { chatApi } from '$lib/api/client';
   import MonacoEditor from '$lib/components/MonacoEditor.svelte';
+  import { popupStore } from '$lib/stores/popup.svelte';
+  import BlueprintReviewPopUp from '$lib/components/BlueprintReviewPopUp.svelte';
+  import SkillTesterPopUp from '$lib/components/SkillTesterPopUp.svelte';
+  import { profileStore } from '$lib/stores/profile.svelte';
 
   let proposals = $state<any[]>([]);
   let selectedProposal = $state<any>(null);
@@ -98,6 +103,14 @@
     }];
     currentStep = item.status;
     activeCodeOutput = item.compiled_code || "";
+
+    if (item.status === 'pending') {
+        popupStore.open({
+            title: 'Blueprint Review',
+            width: 'max-w-2xl',
+            contentSnippet: blueprintReviewSnippet
+        });
+    }
   }
 
   async function launchBuild(slug: string) {
@@ -139,6 +152,15 @@
     } catch (e) {
         console.error("Deletion failed", e);
     }
+  }
+
+  function launchTester() {
+    if (!selectedProposal) return;
+    popupStore.open({
+        title: `Test Skill: ${selectedProposal.name}`,
+        width: 'max-w-4xl',
+        contentSnippet: skillTesterSnippet
+    });
   }
 </script>
 
@@ -232,26 +254,43 @@
             </div>
 
             <div class="flex items-center gap-3">
-                <button onclick={() => deleteProposal(selectedProposal.slug)} class="p-2.5 hover:bg-rose-500/10 text-text-muted hover:text-rose-500 rounded-xl transition-all border border-transparent hover:border-rose-500/20" title="Discard Proposal">
-                    <Trash2 class="w-4 h-4" />
-                </button>
-                
-                {#if selectedProposal.status === 'pending' || selectedProposal.status === 'failed'}
-                    <button 
-                        onclick={() => launchBuild(selectedProposal.slug)}
-                        class="px-6 py-2.5 bg-accent-emerald hover:bg-accent-emerald/80 text-bg-main font-bold rounded-xl text-xs uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-accent-emerald/10"
-                    >
-                        <Play class="w-3.5 h-3.5 fill-current" />
-                        Initiate Build
+                {#if profileStore.currentUser?.role === 'admin'}
+                    <button onclick={() => deleteProposal(selectedProposal.slug)} class="p-2.5 hover:bg-rose-500/10 text-text-muted hover:text-rose-500 rounded-xl transition-all border border-transparent hover:border-rose-500/20" title="Discard Proposal">
+                        <Trash2 class="w-4 h-4" />
                     </button>
-                {:else if selectedProposal.status === 'ready'}
-                    <button 
-                        onclick={() => deployToProduction(selectedProposal.slug)}
-                        class="px-6 py-2.5 bg-primary-blue hover:bg-primary-blue/80 text-white font-bold rounded-xl text-xs uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-primary-blue/20"
-                    >
-                        <Rocket class="w-3.5 h-3.5 fill-current" />
-                        Deploy to Edge
-                    </button>
+                    
+                    {#if selectedProposal.status === 'ready' || selectedProposal.status === 'deployed'}
+                        <button 
+                            onclick={launchTester}
+                            class="px-4 py-2.5 bg-bg-main hover:bg-border-main text-text-muted hover:text-white border border-border-main rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center gap-2"
+                        >
+                            <Beaker class="w-3.5 h-3.5 text-amber-500" />
+                            Test Execution
+                        </button>
+                    {/if}
+
+                    {#if selectedProposal.status === 'pending' || selectedProposal.status === 'failed'}
+                        <button 
+                            onclick={() => launchBuild(selectedProposal.slug)}
+                            class="px-6 py-2.5 bg-accent-emerald hover:bg-accent-emerald/80 text-bg-main font-bold rounded-xl text-xs uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-accent-emerald/10"
+                        >
+                            <Play class="w-3.5 h-3.5 fill-current" />
+                            Initiate Build
+                        </button>
+                    {:else if selectedProposal.status === 'ready'}
+                        <button 
+                            onclick={() => deployToProduction(selectedProposal.slug)}
+                            class="px-6 py-2.5 bg-primary-blue hover:bg-primary-blue/80 text-white font-bold rounded-xl text-xs uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-primary-blue/20"
+                        >
+                            <Rocket class="w-3.5 h-3.5 fill-current" />
+                            Deploy to Edge
+                        </button>
+                    {/if}
+                {:else}
+                    <div class="flex items-center gap-2 px-4 py-2 bg-border-main/40 rounded-xl border border-border-main/60">
+                        <ShieldAlert class="w-3.5 h-3.5 text-amber-500" />
+                        <span class="text-[10px] font-bold text-text-muted uppercase tracking-widest text-center">Read Only Access</span>
+                    </div>
                 {/if}
             </div>
           </div>
@@ -392,3 +431,22 @@
     background-color: #0b141a;
   }
 </style>
+
+{#snippet blueprintReviewSnippet()}
+    {#if selectedProposal}
+        <BlueprintReviewPopUp data={selectedProposal} />
+    {/if}
+{/snippet}
+
+{#snippet skillTesterSnippet()}
+    {#if selectedProposal}
+        <SkillTesterPopUp 
+            schema={{
+                name: selectedProposal.slug,
+                description: selectedProposal.description,
+                parameters: selectedProposal.schema_json.parameters || selectedProposal.schema_json
+            }} 
+            scriptCode={selectedProposal.compiled_code}
+        />
+    {/if}
+{/snippet}

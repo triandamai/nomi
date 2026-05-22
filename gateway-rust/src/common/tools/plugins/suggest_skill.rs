@@ -9,7 +9,7 @@ pub struct SuggestSkillPlugin;
 
 impl NomiToolPlugin for SuggestSkillPlugin {
     fn matching_intents(&self) -> &[&str] {
-        &["SKILL","PLUGIN"] // Triggered via conversation when Nomi detects a capability gap
+        &["GENERAL"] // Triggered via conversation when Nomi detects a capability gap
     }
 
     fn rules(&self) -> &str {
@@ -26,10 +26,15 @@ impl NomiToolPlugin for SuggestSkillPlugin {
                     "slug": { "type": "string", "description": "Unique snake_case identifier, e.g., 'crypto_tracker'" },
                     "name": { "type": "string", "description": "Human-readable name" },
                     "description": { "type": "string", "description": "What this tool does in detail" },
+                    "intents": { 
+                        "type": "array", 
+                        "items": { "type": "string" },
+                        "description": "List of intent keywords that should trigger this tool, e.g., ['CRYPTO_PRICE', 'TRACK_PORTFOLIO']"
+                    },
                     "schema_json": { "type": "object", "description": "The JSON schema for tool parameters" },
                     "how_it_works": { "type": "string", "description": "Logical roadmap or algorithm for the SWE agent to follow" }
                 },
-                "required": ["slug", "name", "description", "schema_json", "how_it_works"]
+                "required": ["slug", "name", "description", "intents", "schema_json", "how_it_works"]
             }
         })
     }
@@ -41,14 +46,25 @@ impl NomiToolPlugin for SuggestSkillPlugin {
             let description = args["description"].as_str().unwrap_or_default();
             let schema_json = args["schema_json"].clone();
             let how_it_works = args["how_it_works"].as_str().unwrap_or_default();
+            
+            // Extract intents array
+            let intents: Vec<String> = args["intents"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
 
             sqlx::query(
-                "INSERT INTO plugin_creation_suggestions (slug, name, description, schema_json, how_it_works, status) \
-                 VALUES ($1, $2, $3, $4, $5, 'pending') \
+                "INSERT INTO plugin_creation_suggestions (slug, name, description, schema_json, how_it_works, intents, status) \
+                 VALUES ($1, $2, $3, $4, $5, $6, 'pending') \
                  ON CONFLICT (slug) DO UPDATE SET \
                     description = EXCLUDED.description, \
                     schema_json = EXCLUDED.schema_json, \
                     how_it_works = EXCLUDED.how_it_works, \
+                    intents = EXCLUDED.intents, \
                     updated_at = NOW()"
             )
             .bind(slug)
@@ -56,10 +72,11 @@ impl NomiToolPlugin for SuggestSkillPlugin {
             .bind(description)
             .bind(schema_json)
             .bind(how_it_works)
+            .bind(&intents)
             .execute(&dispatcher.pool)
             .await?;
 
-            Ok(format!("Success: I have submitted a blueprint for the [{}] skill to the Distributed Agent Factory. You can review and approve the build in the SRP Factory Console.", name))
+            Ok(format!("Success: I have submitted a blueprint for the [{}] skill with {} intents to the Distributed Agent Factory.", name, intents.len()))
         }
         .boxed()
     }

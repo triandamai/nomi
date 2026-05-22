@@ -23,3 +23,5 @@ pub mod sticker_generator;
 pub mod forecast;
 pub mod discover_tools;
 pub mod suggest_skill;
+pub mod manage_proposals;
+pub mod srp_summary;

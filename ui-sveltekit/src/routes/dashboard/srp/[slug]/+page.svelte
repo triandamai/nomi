@@ -21,6 +21,10 @@
 
   onMount(() => {
     srpStore.loadAvailablePlugins();
+  });
+
+  // 🌟 REACTIVE REFRESH: Trigger loadState whenever the URL slug changes
+  $effect(() => {
     if (data.slug) {
         srpStore.loadState(data.slug);
     }

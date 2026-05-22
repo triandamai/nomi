@@ -187,6 +187,7 @@ pub struct WebSkillRequest {
     pub plugin_name: String,
     pub args: serde_json::Value,
     pub conversation_id: Option<Uuid>,
+    pub script_code: Option<String>,
 }
 
 pub async fn handle_get_skill_schemas(
@@ -257,12 +258,52 @@ pub async fn handle_execute_skill(
     State(state): State<AppState>,
     axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
     Json(payload): Json<WebSkillRequest>,
-) -> ApiResponse<String> {
-    let user_id = match Uuid::parse_str(&claims.sub) {
+) -> ApiResponse<Value> {
+    let user_id_str = claims.sub.clone();
+    let user_id = match Uuid::parse_str(&user_id_str) {
         Ok(id) => Some(id),
         Err(_) => None,
     };
 
+    // 🚀 OPTION A: DIRECT SANDBOX EXECUTION (Dry Run)
+    if let Some(code) = payload.script_code {
+        let executor = crate::common::tools::edge_runner::BunEdgeExecutor {
+            slug: payload.plugin_name.clone(),
+            script_code: code,
+        };
+
+        let bridge_token = "TEMP_SKILL_TEST_TOKEN";
+        let api_base_url = "http://localhost:8000";
+
+        let incoming = serde_json::json!({
+            "is_group": false,
+            "is_mentioned": true,
+            "sender_id": user_id_str,
+            "conversation_id": payload.conversation_id.unwrap_or(Uuid::nil()),
+            "text": "Skill test execution",
+            "channel": "web"
+        });
+
+        let workspace = serde_json::json!({
+            "id": payload.conversation_id.unwrap_or(Uuid::nil()),
+            "title": "Skill Test Workspace"
+        });
+
+        return match executor.run(payload.args, incoming, workspace, bridge_token, api_base_url).await {
+            Ok(exec_result) => {
+                ApiResponse::ok(serde_json::json!({
+                    "result": exec_result.result,
+                    "logs": exec_result.logs
+                }), "Execution successful")
+            },
+            Err(e) => {
+                error!("Edge execution failed: {}", e);
+                ApiResponse::failed(&format!("{}", e))
+            }
+        };
+    }
+
+    // 🚀 OPTION B: STANDARD PRODUCTION EXECUTION
     let dispatcher = crate::common::tools::ToolDispatcher::new(
         state.pool.clone(),
         std::path::PathBuf::from("."),
@@ -299,7 +340,7 @@ pub async fn handle_execute_skill(
                 ).await;
             });
 
-            ApiResponse::ok(result, "Skill executed successfully")
+            ApiResponse::ok(Value::String(result), "Skill executed successfully")
         },
         Err(e) => {
             error!("Skill execution failed: {}", e);
