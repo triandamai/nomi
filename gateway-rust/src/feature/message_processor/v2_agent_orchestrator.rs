@@ -254,6 +254,39 @@ impl V2AgentOrchestrator {
 
         let mut intents = intent.intents.clone();
 
+        let embedding = rag::get_embedding(&state.gemini_api_key, &msg.text_content).await;
+
+        // --- 🚀 Step 1: Dynamic Context Pruning via Intent Classifier 🚀 ---
+        // Safety: Only bypass RAG if it's pure chitchat without complex entities or questions
+        let is_pure_chitchat = (intents.contains(&"CHITCHAT".to_string())
+            || intents.contains(&"GENERAL".to_string()))
+            && intents.len() == 1;
+
+        // Simple entity check: contains non-alphanumeric chars (excluding space) often indicates technical data or complex names
+        let has_potential_entities = msg.text_content
+            .chars()
+            .any(|c| !c.is_alphanumeric() && !c.is_whitespace() && c != '?' && c != '!' && c != '.');
+        let is_question = msg.text_content.trim().ends_with('?');
+
+        let memories_text = if is_pure_chitchat && !has_potential_entities && !is_question {
+            info!("Pure chitchat detected (intent: {:?}). Bypassing RAG retrieval to save context tokens.", intents);
+            String::new()
+        } else if embedding.is_ok() {
+            crate::utils::rag::hybrid_retrieve(
+                &state.pool,
+                &msg.text_content,
+                embedding.unwrap().embedding.values,
+                Some(conversation_id),
+                None,
+                None,
+            )
+            .await
+            .unwrap_or_default()
+            .join("---")
+        } else {
+            String::new()
+        };
+
         info!("Scout Intents Detected: {:?}", intents);
         let old_system_prompt_len = {
             let boot = conversation.bootstrap_content.clone().unwrap_or_default();
@@ -266,14 +299,58 @@ impl V2AgentOrchestrator {
 
         let build_system_prompt = |intents_val: &[String]| -> String {
             let mut combined = String::new();
-            combined.push_str(crate::prompts::PromptRegistry::CORE_RULES);
-            combined.push_str(crate::prompts::PromptRegistry::BOUNDARIES);
+
+            // 1. Identity Extraction & Clean Name Logic
+            let raw_display_name = self
+                .current_user
+                .as_ref()
+                .map(|u| u.display_name.clone())
+                .unwrap_or_else(|| "Human".to_string());
+
+            let is_technical_id = |s: &str| {
+                let s = s.trim();
+                s.is_empty()
+                    || s.contains('@') // JID
+                    || (s.contains('-') && s.len() > 20) // UUID
+                    || s.chars().all(|c| c.is_numeric() || c == '+') // Phone/Telegram ID
+            };
+
+            let safe_name = if is_technical_id(&raw_display_name) {
+                "Human"
+            } else {
+                &raw_display_name
+            };
+
+            // 2. Base Rules with Dynamic Name
+            combined.push_str(
+                &crate::prompts::PromptRegistry::CORE_RULES.replace("[Human]", safe_name),
+            );
+            combined.push_str(
+                &crate::prompts::PromptRegistry::BOUNDARIES.replace("[Human]", safe_name),
+            );
+
+            // 3. Dynamic Onboarding & ID Profile
+            if let Some(user_identity) = &self.current_user {
+                combined.push_str("\n### CURRENT INTERACTOR IDENTITY PROFILE\n");
+                combined.push_str(&format!("- Database User ID: {}\n", user_identity.id));
+
+                if is_technical_id(&raw_display_name) {
+                    combined.push_str("- Verified Speaker Name: UNKNOWN / TECHNICAL ID\n");
+                    combined.push_str("- Onboarding Protocol: This user has no saved profile name or is using a technical identifier (JID/UUID). DO NOT call them by their ID. Politely ask what they would like you to call them as part of your organic conversation.\n");
+                } else {
+                    combined.push_str(&format!("- Verified Speaker Name: {}\n", raw_display_name));
+                    combined.push_str(&format!(
+                        "- Contextual History Recollections:\n{}\n",
+                        memories_text
+                    ));
+                }
+            }
 
             let boot = conversation.bootstrap_content.clone().unwrap_or_default();
             let soul = conversation.soul_content.clone().unwrap_or_default();
 
             combined.push_str("\n### Identity Layer\n");
-            combined.push_str(&boot);
+            combined.push_str(&boot.replace("[Human]", safe_name));
 
             // [FIX] Visual Context Injection
             // Fetch the latest unprocessed media directly from history and inject it as context.
@@ -300,7 +377,7 @@ impl V2AgentOrchestrator {
 
             if !soul.is_empty() {
                 combined.push_str("\n### Current Personality/Soul\n");
-                combined.push_str(&soul);
+                combined.push_str(&soul.replace("[Human]", safe_name));
             }
 
             let timezone_str = "Asia/Jakarta";
@@ -365,39 +442,6 @@ impl V2AgentOrchestrator {
             0.0
         };
         info!("Tokens saved by modular assembly: {:.2}%", saved_percent);
-
-        let embedding = rag::get_embedding(&state.gemini_api_key, &text_content).await;
-
-        // --- 🚀 Step 1: Dynamic Context Pruning via Intent Classifier 🚀 ---
-        // Safety: Only bypass RAG if it's pure chitchat without complex entities or questions
-        let is_pure_chitchat = (intents.contains(&"CHITCHAT".to_string())
-            || intents.contains(&"GENERAL".to_string()))
-            && intents.len() == 1;
-
-        // Simple entity check: contains non-alphanumeric chars (excluding space) often indicates technical data or complex names
-        let has_potential_entities = text_content
-            .chars()
-            .any(|c| !c.is_alphanumeric() && !c.is_whitespace() && c != '?' && c != '!' && c != '.');
-        let is_question = text_content.trim().ends_with('?');
-
-        let memories_text = if is_pure_chitchat && !has_potential_entities && !is_question {
-            info!("Pure chitchat detected (intent: {:?}). Bypassing RAG retrieval to save context tokens.", intents);
-            String::new()
-        } else if embedding.is_ok() {
-            crate::utils::rag::hybrid_retrieve(
-                &state.pool,
-                &text_content,
-                embedding.unwrap().embedding.values,
-                Some(conversation_id),
-                None,
-                None,
-            )
-            .await
-            .unwrap_or_default()
-            .join("---")
-        } else {
-            String::new()
-        };
 
         // [FIX] Proper Async Fetch for Pending Media
         let pending_media = crate::common::repository::message_repo::get_latest_unprocessed_media(
