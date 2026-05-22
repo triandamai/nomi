@@ -10,7 +10,7 @@ use crate::feature::conversation::{
     handle_restore_conversation_soul, handle_update_conversation, handle_upload_file,
     handle_get_available_tools, handle_get_guardrail_patterns, handle_insert_guardrail_pattern,
     handle_delete_guardrail_pattern, handle_get_skill_schemas, handle_execute_skill,
-    handle_get_readme,
+    handle_get_readme, handle_get_public_skills,
     };
 
 use crate::feature::graph::{handle_get_graph, handle_search_graph};
@@ -165,6 +165,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/auth/request-otp", post(handle_request_otp))
         .route("/auth/verify-otp", post(handle_verify_otp))
         .route("/auth/pair", post(handle_pairing_handshake))
+        .route("/skills", get(handle_get_public_skills))
         .route("/waitlist", post(handle_waitlist))
         .route("/files/{filename}", get(handle_get_file))
         .route("/files/{path}/{filename}", get(handle_get_path_file))

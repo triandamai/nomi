@@ -106,9 +106,23 @@ export const mdIt = new MarkdownIt({
 		}
 
 		// @ts-ignore
-		const highlighted = lang && highlighter.getLoadedLanguages().includes(lang)
-			? highlighter.codeToHtml(code, { lang, theme: 'github-dark' })
-			: `<pre class="shiki github-dark"><code>${mdIt?.utils.escapeHtml(code)}</code></pre>`;
+		const isLoaded = lang && highlighter.getLoadedLanguages().includes(lang);
+		let highlighted;
+
+		if (isLoaded) {
+			// Use codeToTokens to get the internal tokens and render them manually to avoid nested <pre>
+            //@ts-ignore
+			const tokens = highlighter.codeToTokens(code, { lang, theme: 'github-dark' });
+			const linesHtml = tokens.tokens.map(line => {
+				return `<span class="line">${line.map(token => {
+					const style = `color: ${token.color || 'inherit'}`;
+					return `<span style="${style}">${mdIt?.utils.escapeHtml(token.content)}</span>`;
+				}).join('')}</span>`;
+			}).join('\n');
+			highlighted = `<pre class="shiki github-dark"><code>${linesHtml}</code></pre>`;
+		} else {
+			highlighted = `<pre class="shiki github-dark"><code>${mdIt?.utils.escapeHtml(code)}</code></pre>`;
+		}
 
 		const languageName = lang || 'code';
 		const headerHtml = `
@@ -133,9 +147,9 @@ export const mdIt = new MarkdownIt({
 	</div>
 	</div>`.trim();
 
-		// Robustly inject the header and apply relative positioning
+		// Replace the inner pre tag with our styled version and header
 		return highlighted
-			.replace(/<pre([^>]*)>/, `<pre$1 style="position: relative; padding-top: 2.5rem;">${headerHtml}`);
+			.replace(/<pre([^>]*)>/, `<pre$1 style="position: relative;">${headerHtml}`);
 	}
 
 		}).use(emoji).use(anchor, {

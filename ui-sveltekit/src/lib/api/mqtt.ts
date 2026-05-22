@@ -12,11 +12,9 @@ class MqttClient {
 
     connect() {
         if (this.client) return;
-        console.log("Starting mqtt")
 
         const [token, userId] = getSession();
         if (!userId) {
-            console.warn('MQTT: No user ID found, skipping connection');
             return;
         }
 
@@ -45,7 +43,6 @@ class MqttClient {
         // Using a hierarchical client ID allows EMQX ACLs to use %c wildcards easily
         const clientId = `nomi/users/${this.userId}/web_${deviceId()}`;
 
-        console.log('MQTT: Connecting to', finalUrl, 'with clientId', clientId);
 
         this.client = mqtt.connect(finalUrl, {
             clientId: clientId, 
@@ -58,22 +55,20 @@ class MqttClient {
         });
 
         this.client.on('connect', () => {
-            console.log('MQTT: Connected');
             eventBus.emit('gateway-status', {online: true, transport: 'mqtt'});
             this.subscribeToBasicTopics();
         });
 
         this.client.on('disconnect', () => {
-            console.log('MQTT: Disconnected');
+            // eventBus.emit('gateway-status', {online: false, transport: 'mqtt'});
         })
         this.client.on('reconnect', () => {
-            console.log('MQTT: Reconnected');
+            // console.log('MQTT: Reconnected');
         })
         this.client.on('offline', () => {
-            console.log('MQTT: Offline');
+            // console.log('MQTT: Offline');
         })
         this.client.on('error', (err) => {
-            console.error('MQTT: Connection error', err);
             eventBus.emit('gateway-status', {online: false, transport: 'mqtt'});
         });
 
@@ -92,9 +87,9 @@ class MqttClient {
 
         this.client.subscribe(topics, (err) => {
             if (err) {
-                console.error('MQTT: Subscription error', err);
+                // console.error('MQTT: Subscription error', err);
             } else {
-                console.log('MQTT: Subscribed to basic topics');
+                // console.log('MQTT: Subscribed to basic topics');
             }
         });
     }
@@ -112,9 +107,9 @@ class MqttClient {
         if (this.currentConversationId) {
             this.client.subscribe(`nomi/conversations/${this.currentConversationId}/#`, (err) => {
                 if (err) {
-                    console.error('MQTT: Conversation subscription error', err);
+                    // console.error('MQTT: Conversation subscription error', err);
                 } else {
-                    console.log(`MQTT: Subscribed to conversation ${this.currentConversationId}`);
+                    // console.log(`MQTT: Subscribed to conversation ${this.currentConversationId}`);
                 }
             });
         }
@@ -126,7 +121,6 @@ class MqttClient {
             const parts = topic.split('/');
             const eventName = parts[parts.length - 1];
 
-            console.log(`MQTT: Received [${eventName}] on [${topic}]`);
 
             // Map MQTT topic events back to SSE-style eventBus events for legacy compatibility
             switch (eventName) {

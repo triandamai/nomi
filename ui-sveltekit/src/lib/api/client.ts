@@ -420,5 +420,8 @@ export const chatApi = {
             method: 'POST',
             body: JSON.stringify({email})
         });
+    },
+    getPublicSkills: () => {
+        return apiFetch<any[]>('/skills');
     }
 };

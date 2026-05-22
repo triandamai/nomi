@@ -37,6 +37,84 @@ pub struct ToolInfo {
     pub intents: Vec<String>,
 }
 
+#[derive(serde::Serialize)]
+pub enum SkillType {
+    System,
+    Dynamic,
+}
+
+#[derive(serde::Serialize)]
+pub struct SkillInfo {
+    pub name: String,
+    pub description: String,
+    pub intents: Vec<String>,
+    pub skill_type: SkillType,
+    pub script_code: Option<String>,
+    pub schema_json: Option<serde_json::Value>,
+}
+
+pub async fn handle_get_public_skills(
+    State(state): State<AppState>,
+) -> ApiResponse<Vec<SkillInfo>> {
+    let dispatcher = crate::common::tools::ToolDispatcher::new(
+        state.pool.clone(),
+        std::path::PathBuf::from("."),
+        None,
+        None,
+        state.gemini.clone(),
+        state.gemini_api_key.clone(),
+        state.storage.clone(),
+        state.clone(),
+    );
+
+    let mut skills = Vec::new();
+
+    // 1. Static System Plugins
+    for (name, plugin) in &dispatcher.plugins {
+        let schema = plugin.schema();
+        let description = schema["description"].as_str().unwrap_or("").to_string();
+        let intents = plugin
+            .matching_intents()
+            .iter()
+            .map(|i| i.to_string())
+            .collect();
+
+        skills.push(SkillInfo {
+            name: name.to_string(),
+            description,
+            intents,
+            skill_type: SkillType::System,
+            script_code: None,
+            schema_json: Some(schema),
+        });
+    }
+
+    // 2. Dynamic Edge Plugins
+    let dynamic_plugins = sqlx::query!(
+        "SELECT slug, description, intents, script_code, schema_json FROM edge_functions"
+    )
+    .fetch_all(&state.pool)
+    .await;
+
+    if let Ok(plugins) = dynamic_plugins {
+        for p in plugins {
+            skills.push(SkillInfo {
+                name: p.slug,
+                description: p.description.to_string(),
+                intents: p.intents,
+                skill_type: SkillType::Dynamic,
+                script_code: Some(p.script_code),
+                schema_json: Some(p.schema_json),
+            });
+        }
+    }
+
+    // Sort by name for consistent UI
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+
+    ApiResponse::ok(skills, "Public skills retrieved")
+}
+
 pub async fn handle_get_available_tools(
     State(state): State<AppState>,
     axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,

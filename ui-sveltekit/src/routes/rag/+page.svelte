@@ -5,7 +5,7 @@
     import {conversationStore} from '$lib/stores/conversation.svelte';
     import {popupStore} from '$lib/stores/popup.svelte';
     import * as THREE from 'three';
-    import {eventBus} from "$lib/utils";
+    import {eventBus, mdIt, setupMarkdownHelpers} from "$lib/utils";
     import {browser} from "$app/environment";
 
     let graphContainer: HTMLElement;
@@ -33,6 +33,7 @@
     });
 
     onMount(() => {
+        setupMarkdownHelpers();
         let isMounted = true;
         let cleanup = () => {
         };
@@ -341,12 +342,16 @@
                     </div>
                     
                     <div class="space-y-4 overflow-x-auto">
-                        <div class="prose prose-invert prose-sm max-w-none">
-                            <p class="text-zinc-400 leading-relaxed">
-                                This entity was extracted from your interactions. It represents a key concept, person, or object within the knowledge graph of this workspace.
-                            </p>
+                        <div class="prose prose-invert prose-sm max-w-none text-zinc-400">
+                            {#if mdIt}
+                                {@html mdIt.render(selectedNode.label || '')}
+                            {:else}
+                                <p class="leading-relaxed">
+                                    {selectedNode.label}
+                                </p>
+                            {/if}
                             
-                            <div class="mt-4 grid grid-cols-2 gap-4">
+                            <div class="mt-6 grid grid-cols-2 gap-4">
                                 <div class="p-4 rounded-xl bg-zinc-950 border border-zinc-900">
                                     <p class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Node ID</p>
                                     <p class="text-xs font-mono text-zinc-300 truncate">{selectedNode.id}</p>

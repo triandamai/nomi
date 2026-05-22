@@ -4,6 +4,7 @@
         Shield,
         Cpu,
         Database,
+        BookOpen,
         CheckCircle2,
         CreditCard,
         Activity,
@@ -34,6 +35,7 @@
             nav: {
                 features: "Features",
                 stack: "Stack",
+                skills: "Skills",
                 login: "Login"
             },
             hero: {
@@ -71,7 +73,8 @@
                 gemini: "Intelligence",
                 svelte: "Responsive UI",
                 postgres: "Reliable Storage",
-                security: "Fast and Lightweight Agent"
+                security: "Fast and Lightweight Agent",
+                viewDocs: "View Documentation"
             },
             finalCta: {
                 title: "Ready to Decode?",
@@ -93,6 +96,7 @@
             nav: {
                 features: "Fitur",
                 stack: "Teknologi",
+                skills: "Skill",
                 login: "Masuk"
             },
             hero: {
@@ -130,7 +134,8 @@
                 gemini: "Kecerdasan",
                 svelte: "UI Responsif",
                 postgres: "Penyimpanan Andal",
-                security: "Agen Cepat & Ringan"
+                security: "Agen Cepat & Ringan",
+                viewDocs: "Lihat Dokumentasi"
             },
             finalCta: {
                 title: "Siap Bergabung?",
@@ -186,6 +191,8 @@
                    class="text-sm font-medium text-slate-400 hover:text-white transition-colors">{t.nav.features}</a>
                 <a href="#stack"
                    class="text-sm font-medium text-slate-400 hover:text-white transition-colors">{t.nav.stack}</a>
+                <a href="/skills"
+                   class="text-sm font-medium text-slate-400 hover:text-white transition-colors">{t.nav.skills}</a>
 
                 <!-- Language Toggle -->
                 <div class="flex items-center bg-slate-900/50 border border-slate-800 rounded-lg p-1">
@@ -240,6 +247,11 @@
                                 class="text-lg font-medium text-slate-400"
                                 onclick={() => mobileMenuOpen = false}
                         >{t.nav.stack}</a>
+                        <a
+                                href="/skills"
+                                class="text-lg font-medium text-slate-400"
+                                onclick={() => mobileMenuOpen = false}
+                        >{t.nav.skills}</a>
                     </div>
 
                     <!-- Mobile Language Toggle -->
@@ -444,6 +456,13 @@
                                     <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">{t.stack.postgres}</p>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="pt-8">
+                            <a href="/docs" class="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm font-bold text-white transition-all group">
+                                <BookOpen class="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
+                                {t.stack.viewDocs}
+                            </a>
                         </div>
                     </div>
 

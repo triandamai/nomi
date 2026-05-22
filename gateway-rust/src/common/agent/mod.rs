@@ -503,9 +503,12 @@ pub fn parse_llm_output(raw_text: &str) -> ChatResponse {
     // 2. Extract Code Block (Improved)
     let mut code_block = String::new();
     if let Some(start) = clean_content.find("```") {
-        let rest = &clean_content[start + 3..];
-        if let Some(end_offset) = rest.find("```") {
-            code_block = clean_content[start..start + 3 + end_offset + 3].to_string();
+        if let Some(end) = clean_content.rfind("```") {
+            if end > start {
+                code_block = clean_content[start..end + 3].to_string();
+            } else {
+                code_block = clean_content[start..].to_string();
+            }
         } else {
             code_block = clean_content[start..].to_string();
         }

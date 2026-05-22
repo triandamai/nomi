@@ -6,7 +6,7 @@
     import {Zap, ShieldCheck, ArrowRight, Loader2, Lock} from 'lucide-svelte';
     import {fly, fade} from 'svelte/transition';
     import {eventBus} from '$lib/utils';
-    import {setSession} from "$lib/stores/profile.svelte";
+    import {setSession, getSession} from "$lib/stores/profile.svelte";
 
     let externalId = $state('');
     let channel = $state('device');
@@ -16,6 +16,12 @@
     let error = $state('');
 
     onMount(() => {
+        const [token] = getSession();
+        if (token) {
+            goto('/chat');
+            return;
+        }
+
         const id = page.url.searchParams.get('id');
         if (id) {
             externalId = id;

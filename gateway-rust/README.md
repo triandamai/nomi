@@ -234,6 +234,7 @@ A dynamic plugin defined in the Nomi Dashboard:
 
 **JSON Schema:**
 ```json
+
 {
   "type": "object",
   "properties": {
@@ -245,6 +246,7 @@ A dynamic plugin defined in the Nomi Dashboard:
 
 **TypeScript Logic:**
 ```typescript
+
 export default async function run(args: NomiArgs) {
     const { symbol } = args.payload;
     const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}USDT`);
