@@ -217,6 +217,51 @@ pub trait NomiToolPlugin: Send + Sync {
 
 ---
 
+## ⚡ Dynamic Edge Functions (TypeScript Plugins)
+
+Beyond static Rust plugins, Nomi supports **Serverless TypeScript execution** via a high-performance Edge Engine. These functions are stored in the database and executed on-demand in an ephemeral **Bun** sandbox.
+
+### 1. Architectural Flow
+- **Execution**: When called, the `BunEdgeExecutor` generates a temporary `.ts` wrapper, injects the conversation context (`NomiArgs`), and spawns a Bun subprocess.
+- **Sandboxing**: The process is capped at 10 seconds and is explicitly terminated (`kill_on_drop`) to protect system memory.
+- **Secure RPC Bridge**: Edge functions can "call back" into the Rust Gateway to retrieve knowledge or perform system actions via an internal RPC bridge secured by a short-lived **Bridge Token**.
+
+### 2. Discovery & Semantic Routing
+Every Edge function is semantically indexed. If Nomi's initial toolset is insufficient, she can use the `discover_tools` meta-plugin to search the database for an Edge function that matches her current objective based on its name and description.
+
+### 3. Example: Crypto Price Tracker
+A dynamic plugin defined in the Nomi Dashboard:
+
+**JSON Schema:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "symbol": { "type": "string", "description": "The crypto ticker (e.g. BTC, ETH)" }
+  },
+  "required": ["symbol"]
+}
+```
+
+**TypeScript Logic:**
+```typescript
+export default async function run(args: NomiArgs) {
+    const { symbol } = args.payload;
+    const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}USDT`);
+    const data = await response.json();
+    
+    // You can also use built-in functions via the bridge
+    // const memories = await retrieve_knowledge(`What does the user think about ${symbol}?`);
+
+    return {
+        message: `Current ${symbol} price is $${parseFloat(data.price).toLocaleString()}`,
+        raw: data
+    };
+}
+```
+
+---
+
 ### Prerequisites
 - Rust 1.85+
 - Node.js & NPM

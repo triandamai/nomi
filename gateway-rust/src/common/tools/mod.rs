@@ -7,6 +7,7 @@ use crate::Arc;
 use crate::common::tools::plugin_trait::NomiToolPlugin;
 use crate::common::tools::plugins::analyze_media::AnalyzeMediaPlugin;
 use crate::common::tools::plugins::communication::CommunicationPlugin;
+use crate::common::tools::plugins::discover_tools::DiscoverToolsPlugin;
 use crate::common::tools::plugins::dice::DicePlugin;
 use crate::common::tools::plugins::evolve_bootstrap::EvolveBootstrapPlugin;
 use crate::common::tools::plugins::execute_sql_query::ExecuteSqlQueryPlugin;
@@ -65,6 +66,7 @@ impl ToolDispatcher {
     ) -> Self {
         let mut plugins: HashMap<&'static str, Arc<dyn NomiToolPlugin>> = HashMap::new();
         plugins.insert("roll_dice", Arc::new(DicePlugin));
+        plugins.insert("discover_tools", Arc::new(DiscoverToolsPlugin));
         plugins.insert("manage_health_data", Arc::new(HealthPlugin));
         plugins.insert("manage_finance", Arc::new(FinancePlugin));
         plugins.insert("manage_user", Arc::new(UserPlugin));
@@ -111,8 +113,20 @@ impl ToolDispatcher {
     pub async fn generate_tool_for_prompt(&self, intents: &[String]) -> Tool {
         let mut tools = Vec::new();
 
+        // 🌟 ALWAYS FORCE INJECT DISCOVER_TOOLS NATIVELY
+        if let Some(discover_plugin) = self.plugins.get("discover_tools") {
+            let mut schema = discover_plugin.schema();
+            Self::sanitize_schema_for_gemini(&mut schema);
+            if let Ok(func_decl) = serde_json::from_value::<gemini_rust::FunctionDeclaration>(schema) {
+                tools.push(func_decl);
+            }
+        }
+
         // 1. Static Plugable Tools
-        for plugin in self.plugins.values() {
+        for (name, plugin) in &self.plugins {
+            if *name == "discover_tools" {
+                continue;
+            }
             let plugin_intents = plugin.matching_intents();
             let is_matched = intents.iter().any(|i| plugin_intents.contains(&i.as_str()))
                 || intents.contains(&"FULL_REGISTRY".to_string());

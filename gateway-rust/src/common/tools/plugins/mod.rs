@@ -21,3 +21,4 @@ pub mod read_workspace_file;
 pub mod parse_to_json;
 pub mod sticker_generator;
 pub mod forecast;
+pub mod discover_tools;

@@ -5,7 +5,7 @@ use base64::Engine;
 use dotenvy::var;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tracing::info;
 
 pub struct AnalyzeMediaPlugin;
@@ -112,7 +112,7 @@ impl NomiToolPlugin for AnalyzeMediaPlugin {
                             },
                             gemini_rust::Part::InlineData {
                                 inline_data: gemini_rust::Blob {
-                                    mime_type,
+                                    mime_type: mime_type.clone(),
                                     data: base64_data,
                                 },
                                 media_resolution: None,
@@ -130,7 +130,17 @@ impl NomiToolPlugin for AnalyzeMediaPlugin {
                 }
             };
 
-            Ok(res.text())
+            let res_text = res.text();
+            let response = json!({
+                "conversational_insight": format!("I've analyzed the media file. Based on your prompt '{}', here is what I found: {}", params.prompt, res_text),
+                "raw_data": {
+                    "analysis_result": res_text,
+                    "media_type": mime_type,
+                    "prompt_used": params.prompt
+                }
+            });
+
+            Ok(serde_json::to_string(&response)?)
         }
         .boxed()
     }

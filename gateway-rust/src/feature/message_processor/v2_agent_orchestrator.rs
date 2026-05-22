@@ -634,6 +634,40 @@ impl V2AgentOrchestrator {
                     )
                     .await;
 
+                    // --- 🚨 START DISCOVERY INTERCEPTION HOOK 🚨 ---
+                    let mut discovered_intents = Vec::new();
+                    for (name, result) in &tool_results {
+                        if name == "discover_tools" && result.success {
+                            if let Some(start_idx) = result.content.find("[INTENT_INJECTION:") {
+                                if let Some(end_idx) = result.content[start_idx..].find(']') {
+                                    let intents_raw =
+                                        &result.content[start_idx + 18..start_idx + end_idx];
+                                    for split_intent in intents_raw.split(',') {
+                                        let trimmed = split_intent.trim().to_string();
+                                        if !trimmed.is_empty() {
+                                            discovered_intents.push(trimmed);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !discovered_intents.is_empty() {
+                        info!(
+                            "🔄 Orchestrator successfully captured missing intents: {:?}",
+                            discovered_intents
+                        );
+                        for found_intent in discovered_intents {
+                            if !intents.contains(&found_intent) {
+                                intents.push(found_intent);
+                            }
+                        }
+                        // Automatically re-load the system prompt definitions with the new domain rules included!
+                        system_prompt = build_system_prompt(&intents);
+                    }
+                    // --- 🚨 END DISCOVERY INTERCEPTION HOOK 🚨 ---
+
                     let mut unknown_tool_called = false;
                     for (_, res) in &tool_results {
                         if res.error.starts_with("Unknown tool") {
