@@ -1,4 +1,6 @@
-use crate::common::tools::{NomiToolPlugin, ToolDispatcher};
+use crate::common::tools::plugin_trait::NomiToolPlugin;
+use crate::common::tools::tools_model::ToolResult;
+use crate::common::tools::ToolDispatcher;
 use serde_json::{json, Value};
 use futures::future::BoxFuture;
 
@@ -41,25 +43,45 @@ impl NomiToolPlugin for WeatherFallbackPlugin {
         &'a self,
         _dispatcher: &'a ToolDispatcher,
         args: Value
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         Box::pin(async move {
             let location = args["location"].as_str().unwrap_or("Jakarta");
 
             // Fetch data from an active free weather API endpoint
             let api_key = match std::env::var("WEATHER_API_KEY") {
                 Ok(key) => key,
-                Err(_) => return Err(anyhow::anyhow!("WEATHER_API_KEY environment variable is not set")),
+                Err(_) => {
+                    return Ok(ToolResult {
+                        error: "WEATHER_API_KEY environment variable is not set".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
+                }
             };
 
             let url = format!("https://api.weatherapi.com/v1/current.json?key={}&q={}", api_key, location);
 
             let response = reqwest::get(&url).await?;
             if !response.status().is_success() {
-                return Err(anyhow::anyhow!("Weather endpoint responded with status error: {}", response.status()));
+                return Ok(ToolResult {
+                    error: format!("Weather endpoint responded with status error: {}", response.status()),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                });
             }
 
             let body_text = response.text().await?;
-            Ok(body_text)
+            Ok(ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: body_text,
+                follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
+            })
         })
     }
 }

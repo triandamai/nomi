@@ -7,7 +7,7 @@ pub(crate) async fn log_expense_transaction(
     user_id: Uuid,
     conversation_id: Option<Uuid>,
     data: &ExpenseData,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Uuid> {
     let mut tx = pool.begin().await?;
 
     // 1. Get or create category
@@ -87,5 +87,5 @@ pub(crate) async fn log_expense_transaction(
 
     tx.commit().await?;
 
-    Ok(())
+    Ok(record.id)
 }

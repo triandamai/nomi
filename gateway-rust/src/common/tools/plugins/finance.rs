@@ -93,12 +93,20 @@ impl NomiToolPlugin for FinancePlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let action = args["action"].as_str().unwrap_or_default();
             let user_id = match dispatcher.user_id {
                 Some(id) => id,
-                None => return Ok("User not authenticated".to_string()),
+                None => {
+                    return Ok(ToolResult {
+                        error: "User not authenticated".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
+                }
             };
 
             let user_message = args["user_message"].as_str().unwrap_or_default();
@@ -106,19 +114,22 @@ impl NomiToolPlugin for FinancePlugin {
             match action {
                 "get_summary" => {
                     let period = args["period"].as_str().unwrap_or("this_month");
-                    let result = self.handle_get_expense_summary(dispatcher, user_id, period, user_message).await;
-                    Ok(serde_json::to_string(&result)?)
+                    Ok(self.handle_get_expense_summary(dispatcher, user_id, period, user_message).await)
                 }
                 "get_details" => {
                     let date_str = args["date"].as_str().unwrap_or("today");
-                    let result = self.handle_get_transaction_details(dispatcher, user_id, date_str, user_message).await;
-                    Ok(serde_json::to_string(&result)?)
+                    Ok(self.handle_get_transaction_details(dispatcher, user_id, date_str, user_message).await)
                 }
                 "log_expense" => {
-                    let result = self.handle_log_expense(dispatcher, user_id, &args, user_message).await;
-                    Ok(serde_json::to_string(&result)?)
+                    Ok(self.handle_log_expense(dispatcher, user_id, &args, user_message).await)
                 }
-                _ => Ok(format!("Unknown action: {}", action)),
+                _ => Ok(ToolResult {
+                    error: format!("Unknown action: {}", action),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()
@@ -139,6 +150,7 @@ impl FinancePlugin {
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
             };
         }
 
@@ -169,7 +181,7 @@ impl FinancePlugin {
         )
         .await
         {
-            Ok(_) => {
+            Ok(tx_id) => {
                 if let Some(cid) = dispatcher.conversation_id {
                     // Mark the specific image_url as processed if provided, 
                     // otherwise fallback to marking the latest unprocessed media.
@@ -206,6 +218,7 @@ impl FinancePlugin {
                         content,
                         "manage_finance".to_string(),
                     ),
+                    ref_id: tx_id.to_string(),
                 }
             }
             Err(e) => ToolResult {
@@ -213,6 +226,7 @@ impl FinancePlugin {
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
             },
         }
     }
@@ -349,6 +363,7 @@ impl FinancePlugin {
                 success: true,
                 content: format!("Zero spending for {}! 💸✨", period),
                 follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
             };
         }
 
@@ -364,6 +379,7 @@ impl FinancePlugin {
             success: true,
             content: json_result.to_string(),
             follow_up_prompt: build_follow_up_prompt(user_message.to_string(), json_result.to_string(), "manage_finance".to_string()),
+            ref_id: "".to_string(),
         }
     }
 
@@ -465,6 +481,7 @@ impl FinancePlugin {
                 content_json,
                 "manage_finance".to_string(),
             ),
+            ref_id: "".to_string(),
         }
     }
 }

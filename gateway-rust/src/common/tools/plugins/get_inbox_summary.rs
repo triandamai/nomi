@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::GetInboxSummaryParameters;
+use crate::common::tools::tools_model::{ToolResult, GetInboxSummaryParameters};
 use crate::common::tools::ToolDispatcher;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
@@ -33,7 +33,7 @@ impl NomiToolPlugin for GetInboxSummaryPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: GetInboxSummaryParameters = serde_json::from_value(args)?;
             info!("Executing get_inbox_summary via plugin");
@@ -44,7 +44,13 @@ impl NomiToolPlugin for GetInboxSummaryPlugin {
             let admin_id = match dispatcher.user_id {
                 Some(id) => id,
                 None => {
-                    return Ok("User ID not found in context. Cannot verify identity.".to_string());
+                    return Ok(ToolResult {
+                        error: "User ID not found in context. Cannot verify identity.".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -99,17 +105,42 @@ impl NomiToolPlugin for GetInboxSummaryPlugin {
 
                     match get_data {
                         Ok(rows) => {
-                            if rows.is_empty() {
-                                Ok("No recent messages found.".to_string())
+                            let content = if rows.is_empty() {
+                                "No recent messages found.".to_string()
                             } else {
-                                Ok(serde_json::to_string_pretty(&rows).unwrap_or_default())
-                            }
+                                serde_json::to_string_pretty(&rows).unwrap_or_default()
+                            };
+                            Ok(ToolResult {
+                                error: "".to_string(),
+                                success: true,
+                                content,
+                                follow_up_prompt: "".to_string(),
+                                ref_id: "".to_string(),
+                            })
                         }
-                        Err(err) => Ok(format!("Database error fetching inbox: {}", err)),
+                        Err(err) => Ok(ToolResult {
+                            error: format!("Database error fetching inbox: {}", err),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                            ref_id: "".to_string(),
+                        }),
                     }
                 }
-                Ok(false) => Ok("Unauthorized: Only admins can use this tool.".to_string()),
-                Err(err) => Ok(format!("Failed to verify identity: {}", err)),
+                Ok(false) => Ok(ToolResult {
+                    error: "Unauthorized: Only admins can use this tool.".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
+                Err(err) => Ok(ToolResult {
+                    error: format!("Failed to verify identity: {}", err),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

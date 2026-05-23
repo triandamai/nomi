@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::ExecuteReadQueryParameters;
+use crate::common::tools::tools_model::{ToolResult, ExecuteReadQueryParameters};
 use crate::common::tools::ToolDispatcher;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
@@ -30,14 +30,20 @@ impl NomiToolPlugin for ExecuteSqlQueryPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: ExecuteReadQueryParameters = serde_json::from_value(args)?;
             info!(query = %params.query, "Executing execute_sql_query via plugin");
 
             let trimmed_query = params.query.trim().to_uppercase();
             if !trimmed_query.starts_with("SELECT") {
-                return Ok("Error: Invalid query format. Only SELECT queries are allowed.".to_string());
+                return Ok(ToolResult {
+                    error: "Error: Invalid query format. Only SELECT queries are allowed.".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                });
             }
 
             match sqlx::query(&params.query).fetch_all(&dispatcher.pool).await {
@@ -68,9 +74,21 @@ impl NomiToolPlugin for ExecuteSqlQueryPlugin {
                         json_rows.push(Value::Object(map));
                     }
 
-                    Ok(serde_json::to_string_pretty(&json_rows).unwrap_or_else(|_| "[]".to_string()))
+                    Ok(ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content: serde_json::to_string_pretty(&json_rows).unwrap_or_else(|_| "[]".to_string()),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    })
                 }
-                Err(e) => Ok(format!("SQL Error: {}", e)),
+                Err(e) => Ok(ToolResult {
+                    error: format!("SQL Error: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

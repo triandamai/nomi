@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::EvolveBootstrapParameters;
+use crate::common::tools::tools_model::{ToolResult, EvolveBootstrapParameters};
 use crate::common::tools::ToolDispatcher;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
@@ -31,13 +31,19 @@ impl NomiToolPlugin for EvolveBootstrapPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: EvolveBootstrapParameters = serde_json::from_value(args)?;
             let conversation_id = match dispatcher.conversation_id {
                 Some(id) => id,
                 None => {
-                    return Ok("No active conversation to evolve.".to_string());
+                    return Ok(ToolResult {
+                        error: "No active conversation to evolve.".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -121,10 +127,28 @@ impl NomiToolPlugin for EvolveBootstrapPlugin {
                         ))
                         .await;
 
-                    Ok(msg)
+                    Ok(ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content: msg,
+                        follow_up_prompt: "".to_string(),
+                        ref_id: version.to_string(),
+                    })
                 }
-                Ok(None) => Ok(format!("Error: Conversation ID {} not found.", conversation_id)),
-                Err(e) => Ok(format!("Database error evolving bootstrap: {}", e)),
+                Ok(None) => Ok(ToolResult {
+                    error: format!("Error: Conversation ID {} not found.", conversation_id),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
+                Err(e) => Ok(ToolResult {
+                    error: format!("Database error evolving bootstrap: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

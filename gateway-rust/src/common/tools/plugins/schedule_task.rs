@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::ScheduleTaskParameters;
+use crate::common::tools::tools_model::{ScheduleTaskParameters, ToolResult};
 use crate::common::tools::ToolDispatcher;
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
@@ -34,7 +34,7 @@ impl NomiToolPlugin for ScheduleTaskPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: ScheduleTaskParameters = serde_json::from_value(args)?;
             info!("Scheduling task via plugin: {:?}", params.task_type);
@@ -42,7 +42,13 @@ impl NomiToolPlugin for ScheduleTaskPlugin {
             let user_id = match dispatcher.user_id {
                 Some(id) => id,
                 None => {
-                    return Ok("User ID not found in context".to_string());
+                    return Ok(ToolResult {
+                        error: "User ID not found in context".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -53,15 +59,24 @@ impl NomiToolPlugin for ScheduleTaskPlugin {
                     match tz_wib.from_local_datetime(&naive).single() {
                         Some(dt) => dt.with_timezone(&Utc),
                         None => {
-                            return Ok("Ambiguous or invalid time for WIB timezone".to_string());
+                            return Ok(ToolResult {
+                                error: "Ambiguous or invalid time for WIB timezone".to_string(),
+                                success: false,
+                                content: "".to_string(),
+                                follow_up_prompt: "".to_string(),
+                                ref_id: "".to_string(),
+                            });
                         }
                     }
                 }
                 Err(e) => {
-                    return Ok(format!(
-                        "Invalid date format: {}. Please use 'YYYY-MM-DD HH:MM'.",
-                        e
-                    ));
+                    return Ok(ToolResult {
+                        error: format!("Invalid date format: {}. Please use 'YYYY-MM-DD HH:MM'.", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -105,15 +120,15 @@ impl NomiToolPlugin for ScheduleTaskPlugin {
             .await;
 
             match result {
-                Ok(_) => {
+                Ok(row) => {
                     // Get user name for personalized response
                     let display_name: String = sqlx::query_scalar(
-                        "SELECT COALESCE(display_name, 'Trian') FROM users WHERE id = $1",
+                        "SELECT COALESCE(display_name, 'Human') FROM users WHERE id = $1",
                     )
                     .bind(user_id)
                     .fetch_one(&dispatcher.pool)
                     .await
-                    .unwrap_or_else(|_| "Trian".to_string());
+                    .unwrap_or_else(|_| "Human".to_string());
 
                     let content = format!(
                         "Got it, {}! I've scheduled your {} for {}.",
@@ -122,9 +137,21 @@ impl NomiToolPlugin for ScheduleTaskPlugin {
                         due_at_wib.format("%H:%M WIB").to_string()
                     );
 
-                    Ok(content)
+                    Ok(ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content,
+                        follow_up_prompt: "".to_string(),
+                        ref_id: row.id.to_string(),
+                    })
                 }
-                Err(e) => Ok(format!("Failed to schedule task: {}", e)),
+                Err(e) => Ok(ToolResult {
+                    error: format!("Failed to schedule task: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

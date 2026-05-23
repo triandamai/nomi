@@ -1,4 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
+use crate::common::tools::tools_model::ToolResult;
 use crate::common::tools::ToolDispatcher;
 use anyhow::Result;
 use serde_json::{json, Value};
@@ -31,7 +32,7 @@ impl NomiToolPlugin for SrpSummaryPlugin {
         })
     }
 
-    fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value) -> BoxFuture<'a, Result<String>> {
+    fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value) -> BoxFuture<'a, Result<ToolResult>> {
         async move {
             let plugin_slug = args["plugin_slug"].as_str();
 
@@ -53,7 +54,13 @@ impl NomiToolPlugin for SrpSummaryPlugin {
             };
 
             if res.is_empty() {
-                return Ok("I haven't performed any autonomous reinforcement passes yet. My core logic is currently running on standard static definitions.".to_string());
+                return Ok(ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: "I haven't performed any autonomous reinforcement passes yet. My core logic is currently running on standard static definitions.".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                });
             }
 
             use sqlx::Row;
@@ -74,7 +81,13 @@ impl NomiToolPlugin for SrpSummaryPlugin {
 
             output.push_str("---\n*I am constantly refining these rules in the background to better align with your specific workflow. ✨*");
 
-            Ok(output)
+            Ok(ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: output,
+                follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
+            })
         }
         .boxed()
     }

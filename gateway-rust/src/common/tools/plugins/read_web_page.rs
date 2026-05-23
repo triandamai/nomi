@@ -1,5 +1,6 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
 use crate::common::tools::ToolDispatcher;
+use crate::common::tools::tools_model::ToolResult;
 use futures::future::{BoxFuture, FutureExt};
 use serde_json::{json, Value};
 use tracing::info;
@@ -40,7 +41,7 @@ impl NomiToolPlugin for ReadWebPagePlugin {
         &'a self,
         _dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let url = args["url"].as_str().unwrap_or_default();
             let _user_message = args["user_message"].as_str().unwrap_or_default();
@@ -54,7 +55,13 @@ impl NomiToolPlugin for ReadWebPagePlugin {
                 Ok(key) => key,
                 Err(_) => {
                     info!("JINA_API_KEY not found in environment");
-                    return Ok("Failed read web page: JINA_API_KEY not found".to_string());
+                    return Ok(ToolResult {
+                        error: "Failed read web page: JINA_API_KEY not found".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -72,20 +79,36 @@ impl NomiToolPlugin for ReadWebPagePlugin {
                     // Safety & Token Budget: Limit to roughly 1250 tokens (~5000 chars)
                     if content.len() > 5000 {
                         content = content.chars().take(5000).collect::<String>();
-                        content.push_str("
-
-[Content truncated for token budget...]");
+                        content.push_str("\n\n[Content truncated for token budget...]");
                     }
 
                     if content.trim().is_empty() {
-                        return Ok("I checked the link, but I couldn't find any readable text there! 🏔️".to_string());
+                        return Ok(ToolResult {
+                            error: "".to_string(),
+                            success: true,
+                            content: "I checked the link, but I couldn't find any readable text there! 🏔️".to_string(),
+                            follow_up_prompt: "".to_string(),
+                            ref_id: "".to_string(),
+                        });
                     }
 
-                    Ok(content)
+                    Ok(ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content,
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    })
                 }
                 Err(e) => {
                     info!("Error execute jina: {}", e);
-                    Ok(format!("Error reading web page: {}", e))
+                    Ok(ToolResult {
+                        error: format!("Error reading web page: {}", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    })
                 }
             }
         }

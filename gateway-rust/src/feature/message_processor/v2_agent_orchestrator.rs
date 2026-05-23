@@ -742,8 +742,22 @@ impl V2AgentOrchestrator {
                         system_prompt = build_system_prompt(&intents);
                     }
                     // --- 🚨 START METADATA INTERCEPTION HOOK 🚨 ---
-                    for (_, result) in &tool_results {
+                    for (name, result) in &tool_results {
                         if result.success {
+                            // 1. Capture ref_id into a list for global traceability
+                            if !result.ref_id.is_empty() {
+                                if let Some(acc_obj) = accumulated_metadata.as_object_mut() {
+                                    let refs = acc_obj.entry("tool_ref_ids").or_insert(json!([]));
+                                    if let Some(refs_arr) = refs.as_array_mut() {
+                                        refs_arr.push(json!({
+                                            "tool": name,
+                                            "ref_id": result.ref_id
+                                        }));
+                                    }
+                                }
+                            }
+
+                            // 2. Legacy string-based metadata capture [METADATA: ...]
                             if let Some(start_idx) = result.content.find("[METADATA:") {
                                 if let Some(end_idx) = result.content[start_idx..].find(']') {
                                     let meta_raw = &result.content[start_idx + 10..start_idx + end_idx];

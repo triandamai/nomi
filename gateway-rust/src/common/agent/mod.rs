@@ -31,7 +31,7 @@ pub async fn send_prompt(
             system_prompt,
             media,
         } => {
-            info!("\n ==== sending user prompt ===== \n");
+            info!("\n ==== START USER PROMPT ===== \n");
             let build_prompt = build_system_prompt(history, memories, system_prompt);
             // info!("system prompt\n ${}\n ========",build_prompt);
             let mut user_parts = vec![gemini_rust::Part::Text {
@@ -88,7 +88,7 @@ pub async fn send_prompt(
             tool_turns,
             media,
         } => {
-            info!("\n ==== sending tool prompt ===== \n");
+            info!("\n ==== START MULTI TOOL PROMPT ===== \n");
             let build_prompt = build_system_prompt(history, memories, system_prompt);
             // info!("system prompt\n ${}\n ========",build_prompt);
             let mut user_parts = vec![gemini_rust::Part::Text {
@@ -346,18 +346,17 @@ pub async fn execute_tools(
                 let now_wib = Utc::now().with_timezone(&tz);
                 let timestamp = format!("**WIB: {}**", now_wib.format("%Y-%m-%d %H:%M"));
 
-                let result = match plugin_res {
-                    Ok(content) => ToolResult {
-                        error: "".to_string(),
-                        success: true,
-                        content: format!("{} \n {}", timestamp, content),
-                        follow_up_prompt: "".to_string(),
+                let  result = match plugin_res {
+                    Ok(mut res) => {
+                        res.content = format!("{} \n {}", timestamp, res.content);
+                        res
                     },
                     Err(e) => ToolResult {
                         error: format!("Plugin Execution Error reason : {}", e),
                         success: false,
                         content: "".to_string(),
                         follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
                     },
                 };
 
@@ -389,7 +388,7 @@ pub async fn execute_tools(
                 info!("Executing dynamic edge plugin: {}", record.slug);
 
                 let executor = crate::common::tools::edge_runner::BunEdgeExecutor {
-                    slug: record.slug,
+                    slug: record.slug.clone(),
                     script_code: record.script_code,
                 };
 
@@ -405,12 +404,14 @@ pub async fn execute_tools(
                         success: true,
                         content: exec_res.result,
                         follow_up_prompt: "".to_string(),
+                        ref_id: record.slug.clone(),
                     },
                     Err(e) => ToolResult {
                         error: format!("Edge Execution Failed: {}", e),
                         success: false,
                         content: "".to_string(),
                         follow_up_prompt: "".to_string(),
+                        ref_id: record.slug.clone(),
                     },
                 };
 
@@ -449,6 +450,7 @@ pub async fn execute_tools(
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
             })
         }));
     }

@@ -1,5 +1,6 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
 use crate::common::tools::ToolDispatcher;
+use crate::common::tools::tools_model::ToolResult;
 use futures::future::{BoxFuture, FutureExt};
 use serde_json::{json, Value};
 use tracing::info;
@@ -40,7 +41,7 @@ impl NomiToolPlugin for WebSearchPlugin {
         &'a self,
         _dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let query = args["query"].as_str().unwrap_or_default();
             let _user_message = args["user_message"].as_str().unwrap_or_default();
@@ -51,7 +52,13 @@ impl NomiToolPlugin for WebSearchPlugin {
                 Ok(key) => key,
                 Err(_) => {
                     info!("TAVILY_API_KEY not found in environment");
-                    return Ok("Cannot reach website search: TAVILY_API_KEY not found".to_string());
+                    return Ok(ToolResult {
+                        error: "Cannot reach website search: TAVILY_API_KEY not found".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -75,9 +82,7 @@ impl NomiToolPlugin for WebSearchPlugin {
 
                     let mut output = String::new();
                     if let Some(answer) = val["answer"].as_str() {
-                        output.push_str(&format!("Summary: {}
-
-", answer));
+                        output.push_str(&format!("Summary: {}\n\n", answer));
                     }
 
                     if let Some(results) = results {
@@ -86,11 +91,7 @@ impl NomiToolPlugin for WebSearchPlugin {
                             let url = res["url"].as_str().unwrap_or("No URL");
                             let content = res["content"].as_str().unwrap_or("");
                             output.push_str(&format!(
-                                "{}. {} 
-URL: {} 
-Snippet: {}
-
-",
+                                "{}. {} \nURL: {} \nSnippet: {}\n\n",
                                 i + 1,
                                 title,
                                 url,
@@ -100,11 +101,23 @@ Snippet: {}
                     }
 
                     info!("get result from web search and returning to agent");
-                    Ok(output)
+                    Ok(ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content: output,
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    })
                 }
                 Err(e) => {
                     info!("Error execute tavily: {}", e);
-                    Ok(format!("Web search API error: {}", e))
+                    Ok(ToolResult {
+                        error: format!("Web search API error: {}", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    })
                 }
             }
         }

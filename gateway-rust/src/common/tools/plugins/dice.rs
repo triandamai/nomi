@@ -1,5 +1,6 @@
 use crate::common::tools::ToolDispatcher;
 use crate::common::tools::plugin_trait::NomiToolPlugin;
+use crate::common::tools::tools_model::ToolResult;
 use futures::future::{BoxFuture, FutureExt};
 use rand::RngExt;
 use serde_json::{Value, json};
@@ -43,7 +44,7 @@ impl NomiToolPlugin for DicePlugin {
         &'a self,
         _dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let count = args["count"].as_u64().unwrap_or(1) as usize;
             let sides = args["sides"].as_u64().unwrap_or(6);
@@ -52,7 +53,7 @@ impl NomiToolPlugin for DicePlugin {
             let rolls: Vec<u64> = (0..count).map(|_| rng.random_range(1..=sides)).collect();
             let total: u64 = rolls.iter().sum();
 
-            let result = if count == 1 {
+            let content = if count == 1 {
                 format!("🎲 Rolled a d{}: **{}**", sides, total)
             } else {
                 format!(
@@ -68,7 +69,13 @@ impl NomiToolPlugin for DicePlugin {
                 )
             };
 
-            Ok(result)
+            Ok(ToolResult {
+                error: "".to_string(),
+                success: true,
+                content,
+                follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
+            })
         }
         .boxed()
     }

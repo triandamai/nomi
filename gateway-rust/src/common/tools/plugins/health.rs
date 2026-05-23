@@ -1,5 +1,6 @@
 use crate::common::tools::ToolDispatcher;
 use crate::common::tools::plugin_trait::NomiToolPlugin;
+use crate::common::tools::tools_model::ToolResult;
 use futures::future::{BoxFuture, FutureExt};
 use serde_json::{Value, json};
 use chrono::NaiveDate;
@@ -46,11 +47,17 @@ impl NomiToolPlugin for HealthPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let user_id = match dispatcher.user_id {
                 Some(id) => id,
-                None => return Ok("Authentication required to access health metrics.".to_string()),
+                None => return Ok(ToolResult {
+                    error: "Authentication required to access health metrics.".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             };
 
             let start_date = args["start_date"]
@@ -77,7 +84,13 @@ impl NomiToolPlugin for HealthPlugin {
             .await?;
 
             if rows.is_empty() {
-                return Ok("No health metrics found for the specified period.".to_string());
+                return Ok(ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: "No health metrics found for the specified period.".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                });
             }
 
             let mut content = String::new();
@@ -85,16 +98,19 @@ impl NomiToolPlugin for HealthPlugin {
                 let log_date: NaiveDate = row.get("log_date");
                 let metrics: Value = row.get("metrics");
                 content.push_str(&format!(
-                    "Date: {}
-Metrics: {}
-
-",
+                    "Date: {}\nMetrics: {}\n\n",
                     log_date,
                     serde_json::to_string(&metrics).unwrap_or_default()
                 ));
             }
 
-            Ok(content)
+            Ok(ToolResult {
+                error: "".to_string(),
+                success: true,
+                content,
+                follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
+            })
         }
         .boxed()
     }

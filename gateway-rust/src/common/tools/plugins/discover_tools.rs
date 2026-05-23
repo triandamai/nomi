@@ -1,5 +1,6 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
 use crate::common::tools::ToolDispatcher;
+use crate::common::tools::tools_model::ToolResult;
 use crate::services::intent_classifier::IntentClassifierService;
 use serde_json::{json, Value};
 use futures::future::BoxFuture;
@@ -33,11 +34,17 @@ impl NomiToolPlugin for DiscoverToolsPlugin {
         &["SYSTEM_INTERNAL_DISCOVERY"]
     }
 
-    fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value) -> BoxFuture<'a, anyhow::Result<String>> {
+    fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         Box::pin(async move {
             let missing_desc = args["missing_capability_description"].as_str().unwrap_or("");
             if missing_desc.is_empty() {
-                return Ok("SYSTEM SIGNAL: Discovery search parameter was empty.".to_string());
+                return Ok(ToolResult {
+                    error: "SYSTEM SIGNAL: Discovery search parameter was empty.".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                });
             }
 
             // Reuse your production Intent Classifier Service to determine which domain Nomi needs
@@ -46,24 +53,42 @@ impl NomiToolPlugin for DiscoverToolsPlugin {
                 
                 // 🚨 THE CRITICAL PIVOT: If no existing tool matching the intent exists
                 if result.intents.is_empty() {
-                    return Ok(format!(
-                        "### CRITICAL SYSTEM CAPABILITY GAP DETECTED\n\
-                         No tool exists to fulfill: \"{}\".\n\n\
-                         ### REQUIRED ARCHITECTURAL DIRECTIVE\n\
-                         You are COMMANDED to expand your own brain. Use the `suggest_new_skill` tool IMMEDIATELY to architect a TypeScript blueprint for this missing domain.\n\
-                         Do not apologize to the user yet. First, submit the blueprint to the factory staging queue using `suggest_new_skill`.",
-                        missing_desc
-                    ));
+                    return Ok(ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content: format!(
+                            "### CRITICAL SYSTEM CAPABILITY GAP DETECTED\n\
+                             No tool exists to fulfill: \"{}\".\n\n\
+                             ### REQUIRED ARCHITECTURAL DIRECTIVE\n\
+                             You are COMMANDED to expand your own brain. Use the `suggest_new_skill` tool IMMEDIATELY to architect a TypeScript blueprint for this missing domain.\n\
+                             Do not apologize to the user yet. First, submit the blueprint to the factory staging queue using `suggest_new_skill`.",
+                            missing_desc
+                        ),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "CAPABILITY_GAP".to_string(),
+                    });
                 }
 
                 // Return a clean text token envelope that the orchestrator loop can intercept instantly
-                return Ok(format!(
-                    "SYSTEM SIGNAL: Registry scan successful. [INTENT_INJECTION: {}] Target schemas added. Proceed with objective.", 
-                    result.intents.join(", ")
-                ));
+                return Ok(ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: format!(
+                        "SYSTEM SIGNAL: Registry scan successful. [INTENT_INJECTION: {}] Target schemas added. Proceed with objective.", 
+                        result.intents.join(", ")
+                    ),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                });
             }
 
-            Ok("SYSTEM SIGNAL: Internal error checking the capability repository structure.".to_string())
+            Ok(ToolResult {
+                error: "SYSTEM SIGNAL: Internal error checking the capability repository structure.".to_string(),
+                success: false,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
+            })
         })
     }
 }

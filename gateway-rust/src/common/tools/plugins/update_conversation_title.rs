@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::UpdateConversationTitleParameters;
+use crate::common::tools::tools_model::{ToolResult, UpdateConversationTitleParameters};
 use crate::common::tools::ToolDispatcher;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
@@ -31,13 +31,19 @@ impl NomiToolPlugin for UpdateConversationTitlePlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: UpdateConversationTitleParameters = serde_json::from_value(args)?;
             let conversation_id = match dispatcher.conversation_id {
                 Some(id) => id,
                 None => {
-                    return Ok("No active conversation context found.".to_string());
+                    return Ok(ToolResult {
+                        error: "No active conversation context found.".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -51,12 +57,24 @@ impl NomiToolPlugin for UpdateConversationTitlePlugin {
 
             match result {
                 Ok(_) => {
-                    Ok(format!(
-                        "Successfully changed workspace topic heading to '{}'",
-                        params.new_title
-                    ))
+                    Ok(ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content: format!(
+                            "Successfully changed workspace topic heading to '{}'",
+                            params.new_title
+                        ),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: conversation_id.to_string(),
+                    })
                 }
-                Err(e) => Ok(format!("Database error updating conversation title: {}", e)),
+                Err(e) => Ok(ToolResult {
+                    error: format!("Database error updating conversation title: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

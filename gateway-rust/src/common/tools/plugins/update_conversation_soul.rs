@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::UpdateConversationSoulParameters;
+use crate::common::tools::tools_model::{ToolResult, UpdateConversationSoulParameters};
 use crate::common::tools::ToolDispatcher;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
@@ -32,7 +32,7 @@ impl NomiToolPlugin for UpdateConversationSoulPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: UpdateConversationSoulParameters = serde_json::from_value(args)?;
             info!(
@@ -42,7 +42,13 @@ impl NomiToolPlugin for UpdateConversationSoulPlugin {
             );
 
             let Some(conversation_id) = dispatcher.conversation_id else {
-                return Ok("Error: No active conversation context for soul update.".to_string());
+                return Ok(ToolResult {
+                    error: "No active conversation context for soul update.".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                });
             };
 
             let result: Result<Option<i32>, sqlx::Error> = async {
@@ -85,12 +91,30 @@ impl NomiToolPlugin for UpdateConversationSoulPlugin {
             .await;
 
             match result {
-                Ok(Some(version)) => Ok(format!(
-                    "Successfully updated personality/soul to version {}. Reason: {}",
-                    version, params.reason_for_change
-                )),
-                Ok(None) => Ok(format!("Error: Conversation ID {} not found.", conversation_id)),
-                Err(e) => Ok(format!("Database error updating conversation soul: {}", e)),
+                Ok(Some(version)) => Ok(ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: format!(
+                        "Successfully updated personality/soul to version {}. Reason: {}",
+                        version, params.reason_for_change
+                    ),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: version.to_string(),
+                }),
+                Ok(None) => Ok(ToolResult {
+                    error: format!("Error: Conversation ID {} not found.", conversation_id),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
+                Err(e) => Ok(ToolResult {
+                    error: format!("Database error updating conversation soul: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

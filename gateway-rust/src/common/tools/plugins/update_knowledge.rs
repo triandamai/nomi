@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::UpdateKnowledgeBaseParameters;
+use crate::common::tools::tools_model::{ToolResult, UpdateKnowledgeBaseParameters};
 use crate::common::tools::ToolDispatcher;
 use crate::prompts::PromptRegistry;
 use futures::future::{BoxFuture, FutureExt};
@@ -33,7 +33,7 @@ impl NomiToolPlugin for UpdateKnowledgeBasePlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: UpdateKnowledgeBaseParameters = serde_json::from_value(args)?;
             
@@ -160,7 +160,13 @@ impl NomiToolPlugin for UpdateKnowledgeBasePlugin {
 
                             if let Err(e) = tx.commit().await {
                                 error!("Failed to commit knowledge update: {}", e);
-                                return Ok("Error updating conversation memory.".to_string());
+                                return Ok(ToolResult {
+                                    error: "Error updating conversation memory.".to_string(),
+                                    success: false,
+                                    content: "".to_string(),
+                                    follow_up_prompt: "".to_string(),
+                                    ref_id: "".to_string(),
+                                });
                             }
 
                             // Post-commit tasks
@@ -202,18 +208,42 @@ impl NomiToolPlugin for UpdateKnowledgeBasePlugin {
                                 }
                             }
 
-                            Ok(format!(
-                                "Successfully saved to knowledge base: {}. Linked image cleared from pending queue.",
-                                params.category
-                            ))
+                            Ok(ToolResult {
+                                error: "".to_string(),
+                                success: true,
+                                content: format!(
+                                    "Successfully saved to knowledge base: {}. Linked image cleared from pending queue.",
+                                    params.category
+                                ),
+                                follow_up_prompt: "".to_string(),
+                                ref_id: "".to_string(),
+                            })
                         }
-                        Err(e) => Ok(format!("Error saving to knowledge base: {}", e)),
+                        Err(e) => Ok(ToolResult {
+                            error: format!("Error saving to knowledge base: {}", e),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                            ref_id: "".to_string(),
+                        }),
                     }
                 } else {
-                    Ok("Error generating embedding for knowledge base update.".to_string())
+                    Ok(ToolResult {
+                        error: "Error generating embedding for knowledge base update.".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    })
                 }
             } else {
-                Ok("Error generating embedding for knowledge base update.".to_string())
+                Ok(ToolResult {
+                    error: "Error generating embedding for knowledge base update.".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                })
             }
         }
         .boxed()

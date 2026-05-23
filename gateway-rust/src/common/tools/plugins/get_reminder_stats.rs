@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::GetReminderStatsParameters;
+use crate::common::tools::tools_model::{ToolResult, GetReminderStatsParameters};
 use crate::common::tools::ToolDispatcher;
 use chrono::{TimeZone, Utc};
 use chrono_tz::Tz;
@@ -34,7 +34,7 @@ impl NomiToolPlugin for GetReminderStatsPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: GetReminderStatsParameters = serde_json::from_value(args)?;
             info!("Executing get_reminder_stats via plugin");
@@ -42,7 +42,13 @@ impl NomiToolPlugin for GetReminderStatsPlugin {
             let user_id = match dispatcher.user_id {
                 Some(id) => id,
                 None => {
-                    return Ok("User ID not found in context".to_string());
+                    return Ok(ToolResult {
+                        error: "User ID not found in context".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -50,7 +56,13 @@ impl NomiToolPlugin for GetReminderStatsPlugin {
                 Some(ref s) => match chrono::DateTime::parse_from_rfc3339(s) {
                     Ok(dt) => Some(dt.with_timezone(&Utc)),
                     Err(e) => {
-                        return Ok(format!("Invalid start_after format: {}. Please use ISO 8601.", e));
+                        return Ok(ToolResult {
+                            error: format!("Invalid start_after format: {}. Please use ISO 8601.", e),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                            ref_id: "".to_string(),
+                        });
                     }
                 },
                 None => None,
@@ -60,7 +72,13 @@ impl NomiToolPlugin for GetReminderStatsPlugin {
                 Some(ref s) => match chrono::DateTime::parse_from_rfc3339(s) {
                     Ok(dt) => Some(dt.with_timezone(&Utc)),
                     Err(e) => {
-                        return Ok(format!("Invalid end_before format: {}. Please use ISO 8601.", e));
+                        return Ok(ToolResult {
+                            error: format!("Invalid end_before format: {}. Please use ISO 8601.", e),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                            ref_id: "".to_string(),
+                        });
                     }
                 },
                 None => None,
@@ -124,9 +142,21 @@ impl NomiToolPlugin for GetReminderStatsPlugin {
                         serde_json::to_string_pretty(&results).unwrap_or_default()
                     };
 
-                    Ok(content)
+                    Ok(ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content,
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    })
                 }
-                Err(e) => Ok(format!("Database error fetching reminders: {}", e)),
+                Err(e) => Ok(ToolResult {
+                    error: format!("Database error fetching reminders: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

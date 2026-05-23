@@ -357,7 +357,7 @@ pub async fn handle_execute_skill(
                 ).await;
             });
 
-            ApiResponse::ok(Value::String(result), "Skill executed successfully")
+            ApiResponse::ok(json!(result), "Skill executed successfully")
         },
         Err(e) => {
             error!("Skill execution failed: {}", e);

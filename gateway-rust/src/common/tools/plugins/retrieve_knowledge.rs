@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::RetrieveKnowledgeParameters;
+use crate::common::tools::tools_model::{ToolResult, RetrieveKnowledgeParameters};
 use crate::common::tools::ToolDispatcher;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
@@ -32,7 +32,7 @@ impl NomiToolPlugin for RetrieveKnowledgePlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: RetrieveKnowledgeParameters = serde_json::from_value(args)?;
             info!("Retrieving knowledge via plugin for query: {}", params.query);
@@ -65,15 +65,31 @@ impl NomiToolPlugin for RetrieveKnowledgePlugin {
 
                     match results {
                         Ok(memories) => {
-                            let content = memories.join("
----
-");
-                            Ok(content)
+                            let content = memories.join("\n---\n");
+                            Ok(ToolResult {
+                                error: "".to_string(),
+                                success: true,
+                                content,
+                                follow_up_prompt: "".to_string(),
+                                ref_id: "".to_string(),
+                            })
                         }
-                        Err(e) => Ok(format!("Error retrieving knowledge: {}", e)),
+                        Err(e) => Ok(ToolResult {
+                            error: format!("Error retrieving knowledge: {}", e),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                            ref_id: "".to_string(),
+                        }),
                     }
                 }
-                Err(e) => Ok(format!("Error generating embedding: {}", e)),
+                Err(e) => Ok(ToolResult {
+                    error: format!("Error generating embedding: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

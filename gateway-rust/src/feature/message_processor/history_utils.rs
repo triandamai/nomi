@@ -66,8 +66,8 @@ impl HighFidelityHistory {
         for (name, result) in tool_results {
             let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S");
             
-            // 🌟 SPECIALIZED TOOL TAGGING: Using <ToolResult> for system operations
-            output.push_str(&format!("- <ToolResult name=\"{}\" timestamp=\"{}\" id=\"LIVE_TURN_{}\">\n", name, timestamp, name));
+            // 🌟 SPECIALIZED TOOL TAGGING: Using <ToolResult> for system operations with ref_id traceability
+            output.push_str(&format!("- <ToolResult name=\"{}\" ref_id=\"{}\" timestamp=\"{}\" id=\"LIVE_TURN_{}\">\n", name, result.ref_id, timestamp, name));
             
             let status = if result.success { "SUCCESS" } else { "ERROR" };
             let content = if result.success { &result.content } else { &result.error };

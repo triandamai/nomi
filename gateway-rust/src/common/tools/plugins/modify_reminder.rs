@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::ModifyReminderParameters;
+use crate::common::tools::tools_model::{ToolResult, ModifyReminderParameters};
 use crate::common::tools::ToolDispatcher;
 use chrono::Utc;
 use futures::future::{BoxFuture, FutureExt};
@@ -34,7 +34,7 @@ impl NomiToolPlugin for ModifyReminderPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: ModifyReminderParameters = serde_json::from_value(args)?;
             info!(
@@ -45,7 +45,13 @@ impl NomiToolPlugin for ModifyReminderPlugin {
             let reminder_id = match Uuid::parse_str(&params.reminder_id) {
                 Ok(id) => id,
                 Err(e) => {
-                    return Ok(format!("Invalid reminder ID: {}", e));
+                    return Ok(ToolResult {
+                        error: format!("Invalid reminder ID: {}", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -71,14 +77,23 @@ impl NomiToolPlugin for ModifyReminderPlugin {
                         Some(ref s) => match chrono::DateTime::parse_from_rfc3339(s) {
                             Ok(dt) => dt.with_timezone(&Utc),
                             Err(e) => {
-                                return Ok(format!(
-                                    "Invalid snooze date format: {}. Please use ISO 8601.",
-                                    e
-                                ));
+                                return Ok(ToolResult {
+                                    error: format!("Invalid snooze date format: {}. Please use ISO 8601.", e),
+                                    success: false,
+                                    content: "".to_string(),
+                                    follow_up_prompt: "".to_string(),
+                                    ref_id: "".to_string(),
+                                });
                             }
                         },
                         None => {
-                            return Ok("Snooze action requires 'snooze_until' parameter.".to_string());
+                            return Ok(ToolResult {
+                                error: "Snooze action requires 'snooze_until' parameter.".to_string(),
+                                success: false,
+                                content: "".to_string(),
+                                follow_up_prompt: "".to_string(),
+                                ref_id: "".to_string(),
+                            });
                         }
                     };
 
@@ -91,13 +106,31 @@ impl NomiToolPlugin for ModifyReminderPlugin {
                     .await
                 }
                 _ => {
-                    return Ok(format!("Invalid action: {}", params.action));
+                    return Ok(ToolResult {
+                        error: format!("Invalid action: {}", params.action),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
             match result {
-                Ok(_) => Ok(format!("Reminder {} successfully.", params.action)),
-                Err(e) => Ok(format!("Failed to modify reminder: {}", e)),
+                Ok(_) => Ok(ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: format!("Reminder {} successfully.", params.action),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: reminder_id.to_string(),
+                }),
+                Err(e) => Ok(ToolResult {
+                    error: format!("Failed to modify reminder: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

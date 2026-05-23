@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::AnalyzeMediaParameters;
+use crate::common::tools::tools_model::{ToolResult, AnalyzeMediaParameters};
 use crate::common::tools::ToolDispatcher;
 use base64::Engine;
 use dotenvy::var;
@@ -34,13 +34,19 @@ impl NomiToolPlugin for AnalyzeMediaPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: AnalyzeMediaParameters = serde_json::from_value(args)?;
             let conversation_id = match dispatcher.conversation_id {
                 Some(id) => id,
                 None => {
-                    return Ok("Conversation ID not found in context".to_string());
+                    return Ok(ToolResult {
+                        error: "Conversation ID not found in context".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -56,10 +62,22 @@ impl NomiToolPlugin for AnalyzeMediaPlugin {
                 {
                     Ok(Some((url, _type))) => url,
                     Ok(None) => {
-                        return Ok("No recent image found to analyze. Please upload an image first!".to_string());
+                        return Ok(ToolResult {
+                            error: "No recent image found to analyze. Please upload an image first!".to_string(),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                            ref_id: "".to_string(),
+                        });
                     }
                     Err(e) => {
-                        return Ok(format!("Database error: {}", e));
+                        return Ok(ToolResult {
+                            error: format!("Database error: {}", e),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                            ref_id: "".to_string(),
+                        });
                     }
                 }
             };
@@ -74,7 +92,13 @@ impl NomiToolPlugin for AnalyzeMediaPlugin {
             };
 
             if image_url.starts_with("http") {
-                return Ok("Tool doesn't support url from outside app".to_string());
+                return Ok(ToolResult {
+                    error: "Tool doesn't support url from outside app".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                });
             }
             info!(
                 "Analyzing image: {} with prompt: {}",
@@ -88,7 +112,13 @@ impl NomiToolPlugin for AnalyzeMediaPlugin {
             {
                 Ok(d) => d,
                 Err(e) => {
-                    return Ok(format!("Storage error: {}", e));
+                    return Ok(ToolResult {
+                        error: format!("Storage error: {}", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -126,7 +156,13 @@ impl NomiToolPlugin for AnalyzeMediaPlugin {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    return Ok(format!("Gemini error: {}", e));
+                    return Ok(ToolResult {
+                        error: format!("Gemini error: {}", e),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -140,7 +176,13 @@ impl NomiToolPlugin for AnalyzeMediaPlugin {
                 }
             });
 
-            Ok(serde_json::to_string(&response)?)
+            Ok(ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: serde_json::to_string(&response)?,
+                follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
+            })
         }
         .boxed()
     }

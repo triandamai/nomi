@@ -1,5 +1,6 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
 use crate::common::tools::ToolDispatcher;
+use crate::common::tools::tools_model::ToolResult;
 use serde_json::{json, Value};
 use futures::future::{BoxFuture, FutureExt};
 use tracing::info;
@@ -38,7 +39,7 @@ impl NomiToolPlugin for StickerGeneratorPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let conversation_id = dispatcher.conversation_id
                 .ok_or_else(|| anyhow::anyhow!("No active conversation context"))?;
@@ -51,7 +52,15 @@ impl NomiToolPlugin for StickerGeneratorPlugin {
                 let latest = get_latest_unprocessed_media(&dispatcher.pool, conversation_id).await?;
                 match latest {
                     Some((url, media_type)) if media_type == "image" || media_type == "sticker" => url,
-                    _ => return Ok("No recent image found to convert into a sticker. Please upload an image first! 🖼️".to_string()),
+                    _ => {
+                        return Ok(ToolResult {
+                            error: "No recent image found to convert into a sticker. Please upload an image first! 🖼️".to_string(),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                            ref_id: "".to_string(),
+                        });
+                    }
                 }
             };
 
@@ -93,7 +102,13 @@ impl NomiToolPlugin for StickerGeneratorPlugin {
                 "message": "Sticker generated successfully! 🚀"
             });
 
-            Ok(success_payload.to_string())
+            Ok(ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: success_payload.to_string(),
+                follow_up_prompt: "".to_string(),
+                ref_id: sticker_uuid.to_string(),
+            })
         }.boxed()
     }
 }

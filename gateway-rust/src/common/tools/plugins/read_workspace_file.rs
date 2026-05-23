@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::ReadWorkSpaceParameters;
+use crate::common::tools::tools_model::{ToolResult, ReadWorkSpaceParameters};
 use crate::common::tools::ToolDispatcher;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
@@ -35,7 +35,7 @@ impl NomiToolPlugin for ReadWorkspaceFilePlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let params: ReadWorkSpaceParameters = serde_json::from_value(args)?;
             info!(path = %params.path, "Executing read_workspace_file via plugin");
@@ -43,14 +43,32 @@ impl NomiToolPlugin for ReadWorkspaceFilePlugin {
             let requested_path = PathBuf::from(&params.path);
 
             if requested_path.is_absolute() || params.path.contains("..") {
-                return Ok("Error: Access denied. Only relative paths within the workspace are allowed.".to_string());
+                return Ok(ToolResult {
+                    error: "Error: Access denied. Only relative paths within the workspace are allowed.".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                });
             }
 
             let full_path = dispatcher.workspace_root.join(requested_path);
 
             match fs::read_to_string(full_path) {
-                Ok(result) => Ok(result),
-                Err(error) => Ok(format!("Error reading file: {}", error)),
+                Ok(result) => Ok(ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: result,
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
+                Err(error) => Ok(ToolResult {
+                    error: format!("Error reading file: {}", error),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

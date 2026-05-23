@@ -49,6 +49,7 @@ pub struct ToolResult {
     pub success: bool,
     pub content: String,
     pub follow_up_prompt: String,
+    pub ref_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

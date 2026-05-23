@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::ParseToJsonParameters;
+use crate::common::tools::tools_model::{ToolResult, ParseToJsonParameters};
 use crate::common::tools::ToolDispatcher;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
@@ -32,10 +32,15 @@ impl NomiToolPlugin for ParseStringToJsonPlugin {
         &'a self,
         _dispatcher: &'a ToolDispatcher,
         _args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
-            // This tool is currently a placeholder in the legacy dispatcher
-            Ok("".to_string())
+            Ok(ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: "".to_string(),
+                follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
+            })
         }
         .boxed()
     }

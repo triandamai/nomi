@@ -63,26 +63,36 @@ impl NomiToolPlugin for UserPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let action = args["action"].as_str().unwrap_or_default();
             let user_id = match dispatcher.user_id {
                 Some(id) => id,
-                None => return Ok("User not authenticated".to_string()),
+                None => return Ok(ToolResult {
+                    error: "User not authenticated".to_string(),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             };
 
             let user_message = args["user_message"].as_str().unwrap_or_default();
 
             match action {
                 "search" => {
-                    let result = self.handle_search(dispatcher, &args, user_message).await;
-                    Ok(serde_json::to_string(&result)?)
+                    Ok(self.handle_search(dispatcher, &args, user_message).await)
                 }
                 "update" => {
-                    let result = self.handle_update(dispatcher, user_id, &args, user_message).await;
-                    Ok(serde_json::to_string(&result)?)
+                    Ok(self.handle_update(dispatcher, user_id, &args, user_message).await)
                 }
-                _ => Ok(format!("Unknown action: {}", action)),
+                _ => Ok(ToolResult {
+                    error: format!("Unknown action: {}", action),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()
@@ -172,6 +182,7 @@ impl UserPlugin {
                     success: false,
                     content: "".to_string(),
                     follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
                 };
             }
 
@@ -192,6 +203,7 @@ impl UserPlugin {
                             "No users found".to_string(),
                             "manage_user".to_string(),
                         ),
+                        ref_id: "".to_string(),
                     };
                 }
 
@@ -222,6 +234,7 @@ impl UserPlugin {
                         content,
                         "manage_user".to_string(),
                     ),
+                    ref_id: "".to_string(),
                 }
             }
             Err(e) => ToolResult {
@@ -229,6 +242,7 @@ impl UserPlugin {
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
             },
         }
     }
@@ -250,6 +264,7 @@ impl UserPlugin {
                     success: false,
                     content: "".to_string(),
                     follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
                 },
             }
         } else {
@@ -270,6 +285,7 @@ impl UserPlugin {
                     success: false,
                     content: "".to_string(),
                     follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
                 };
             }
         }
@@ -302,6 +318,7 @@ impl UserPlugin {
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
             };
         }
 
@@ -322,6 +339,7 @@ impl UserPlugin {
                         content,
                         "manage_user".to_string(),
                     ),
+                    ref_id: target_id.to_string(),
                 }
             }
             Err(e) => ToolResult {
@@ -329,6 +347,7 @@ impl UserPlugin {
                 success: false,
                 content: "".to_string(),
                 follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
             },
         }
     }

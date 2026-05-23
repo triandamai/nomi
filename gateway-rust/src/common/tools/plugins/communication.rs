@@ -44,7 +44,7 @@ impl NomiToolPlugin for CommunicationPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let target = args["target"].as_str().ok_or_else(|| anyhow::anyhow!("Missing target block"))?;
             let message_body = args["message_body"].as_str().ok_or_else(|| anyhow::anyhow!("Missing message_body block"))?;
@@ -69,7 +69,15 @@ impl NomiToolPlugin for CommunicationPlugin {
                         r.conversation_id.unwrap_or(uuid::Uuid::nil()),
                         r.user_id
                     ),
-                    None => return Err(anyhow::anyhow!("No active channel JID mapped to UUID: {}", parsed_uuid)),
+                    None => {
+                        return Ok(ToolResult {
+                            error: format!("No active channel JID mapped to UUID: {}", parsed_uuid),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: "".to_string(),
+                            ref_id: "".to_string(),
+                        });
+                    }
                 }
             } else {
                 // 🅱️/🅲 TARGET IS JID OR LID: Resolve channel info
@@ -147,7 +155,7 @@ impl NomiToolPlugin for CommunicationPlugin {
             ).await;
 
             let res_content = format!("Message successfully dispatched to target: {}", resolved_jid);
-            let result = ToolResult {
+            Ok(ToolResult {
                 error: "".to_string(),
                 success: true,
                 content: res_content.clone(),
@@ -155,9 +163,8 @@ impl NomiToolPlugin for CommunicationPlugin {
                     "The message has been sent to {}. Acknowledge this to the user and continue.",
                     target
                 ),
-            };
-
-            Ok(serde_json::to_string(&result)?)
+                ref_id: message_id.to_string(),
+            })
         }
             .boxed()
     }

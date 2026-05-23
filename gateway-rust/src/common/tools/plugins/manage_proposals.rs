@@ -1,4 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
+use crate::common::tools::tools_model::ToolResult;
 use crate::common::tools::ToolDispatcher;
 use anyhow::Result;
 use serde_json::{json, Value};
@@ -37,7 +38,7 @@ impl NomiToolPlugin for ManageSkillProposalsPlugin {
         })
     }
 
-    fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value) -> BoxFuture<'a, Result<String>> {
+    fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value) -> BoxFuture<'a, Result<ToolResult>> {
         async move {
             let action = args["action"].as_str().unwrap_or("list");
             let query = args["query"].as_str().unwrap_or("");
@@ -61,7 +62,13 @@ impl NomiToolPlugin for ManageSkillProposalsPlugin {
             };
 
             if res.is_empty() {
-                return Ok("No matching skill proposals found in the factory queue.".to_string());
+                return Ok(ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: "No matching skill proposals found in the factory queue.".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                });
             }
 
             use sqlx::Row;
@@ -78,7 +85,13 @@ impl NomiToolPlugin for ManageSkillProposalsPlugin {
                 ));
             }
 
-            Ok(output)
+            Ok(ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: output,
+                follow_up_prompt: "".to_string(),
+                ref_id: "".to_string(),
+            })
         }
         .boxed()
     }

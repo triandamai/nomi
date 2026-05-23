@@ -1,5 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
-use crate::common::tools::tools_model::GetLatestMediaContextParameters;
+use crate::common::tools::tools_model::{ToolResult, GetLatestMediaContextParameters};
 use crate::common::tools::ToolDispatcher;
 use futures::future::{BoxFuture, FutureExt};
 use gemini_rust::FunctionDeclaration;
@@ -31,12 +31,18 @@ impl NomiToolPlugin for GetLatestMediaContextPlugin {
         &'a self,
         dispatcher: &'a ToolDispatcher,
         _args: Value,
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<ToolResult>> {
         async move {
             let conversation_id = match dispatcher.conversation_id {
                 Some(id) => id,
                 None => {
-                    return Ok("No active conversation context".to_string());
+                    return Ok(ToolResult {
+                        error: "No active conversation context".to_string(),
+                        success: false,
+                        content: "".to_string(),
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    });
                 }
             };
 
@@ -48,22 +54,32 @@ impl NomiToolPlugin for GetLatestMediaContextPlugin {
             {
                 Ok(Some((_media_url, media_type))) => {
                     let content = format!(
-                        "I've retrieved the latest media from our 'Visual Buffer':
-
-
-                        - **Type:** {}
-
-                        - **Status:** Pending Analysis 🔍
-
-
-                        What would you like me to do with this? I can log it as an expense, turn it into a sticker, or analyze its content for you! ✨",
+                        "I've retrieved the latest media from our 'Visual Buffer':\n\n- **Type:** {}\n- **Status:** Pending Analysis 🔍\n\nWhat would you like me to do with this? I can log it as an expense, turn it into a sticker, or analyze its content for you! ✨",
                         media_type.to_uppercase(),
                     );
 
-                    Ok(content)
+                    Ok(ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content,
+                        follow_up_prompt: "".to_string(),
+                        ref_id: "".to_string(),
+                    })
                 }
-                Ok(None) => Ok("Our 'Visual Buffer' is currently empty. No silent media has been captured recently! 🏔️".to_string()),
-                Err(e) => Ok(format!("Database error retrieving media: {}", e)),
+                Ok(None) => Ok(ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: "Our 'Visual Buffer' is currently empty. No silent media has been captured recently! 🏔️".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
+                Err(e) => Ok(ToolResult {
+                    error: format!("Database error retrieving media: {}", e),
+                    success: false,
+                    content: "".to_string(),
+                    follow_up_prompt: "".to_string(),
+                    ref_id: "".to_string(),
+                }),
             }
         }
         .boxed()

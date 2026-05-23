@@ -1,4 +1,5 @@
 use crate::common::tools::plugin_trait::NomiToolPlugin;
+use crate::common::tools::tools_model::ToolResult;
 use crate::common::tools::ToolDispatcher;
 use anyhow::Result;
 use serde_json::json;
@@ -39,7 +40,7 @@ impl NomiToolPlugin for SuggestSkillPlugin {
         })
     }
 
-    fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value) -> BoxFuture<'a, Result<String>> {
+    fn execute<'a>(&'a self, dispatcher: &'a ToolDispatcher, args: Value) -> BoxFuture<'a, Result<ToolResult>> {
         async move {
             let slug = args["slug"].as_str().unwrap_or_default();
             let name = args["name"].as_str().unwrap_or_default();
@@ -76,7 +77,13 @@ impl NomiToolPlugin for SuggestSkillPlugin {
             .execute(&dispatcher.pool)
             .await?;
 
-            Ok(format!("Success: I have submitted a blueprint for the [{}] skill with {} intents to the Distributed Agent Factory. You can review and approve the build in the Factory Console. [METADATA: {{\"proposal_slug\": \"{}\"}}] ", name, intents.len(), slug))
+            Ok(ToolResult {
+                error: "".to_string(),
+                success: true,
+                content: format!("Success: I have submitted a blueprint for the [{}] skill with {} intents to the Distributed Agent Factory. You can review and approve the build in the Factory Console.", name, intents.len()),
+                follow_up_prompt: "".to_string(),
+                ref_id: slug.to_string(),
+            })
         }
         .boxed()
     }
