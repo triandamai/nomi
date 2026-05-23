@@ -8,7 +8,7 @@ pub struct ManageSkillProposalsPlugin;
 
 impl NomiToolPlugin for ManageSkillProposalsPlugin {
     fn matching_intents(&self) -> &[&str] {
-        &["GENERAL", "SYSTEM_INTERNAL_DISCOVERY"]
+        &["MANAGE_SKILL_PROPOSALS", "SYSTEM_INTERNAL_DISCOVERY"]
     }
 
     fn rules(&self) -> &str {

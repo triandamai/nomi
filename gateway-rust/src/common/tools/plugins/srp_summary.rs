@@ -8,7 +8,7 @@ pub struct SrpSummaryPlugin;
 
 impl NomiToolPlugin for SrpSummaryPlugin {
     fn matching_intents(&self) -> &[&str] {
-        &["GENERAL", "SYSTEM_INTERNAL_DISCOVERY"]
+        &["GET_SRP_SUMMARY", "SYSTEM_INTERNAL_DISCOVERY"]
     }
 
     fn rules(&self) -> &str {

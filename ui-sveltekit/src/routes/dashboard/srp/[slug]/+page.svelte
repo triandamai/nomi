@@ -14,7 +14,9 @@
     CheckCircle2,
     Info,
     ChevronRight,
-    Brackets
+    Brackets,
+    Menu,
+    X
   } from 'lucide-svelte';
 
   let { data } = $props();
@@ -34,41 +36,66 @@
   let enrichedDescription = $derived(srpStore.state.enriched_description);
   let additionalRules = $derived(srpStore.state.additional_rules);
   let learnedPhrases = $derived(srpStore.state.learned_phrases);
+  let isMobileNavOpen = $state(false);
 </script>
 
-<div class="flex flex-col h-screen bg-bg-main text-text-main overflow-hidden font-sans">
+<div class="flex flex-col h-screen bg-bg-main text-text-main overflow-hidden font-sans relative">
   <!-- Standard Header Alignment -->
-  <header class="h-16 flex-shrink-0 flex items-center justify-between px-6 border-b border-border-main bg-bg-main/80 backdrop-blur-md">
+  <header class="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-6 border-b border-border-main bg-bg-main/80 backdrop-blur-md z-30">
     <div class="flex items-center gap-3">
-      <div class="p-2 bg-accent-emerald/10 rounded-lg border border-accent-emerald/20">
-        <Brain class="w-5 h-5 text-accent-emerald" />
+      <button 
+        onclick={() => isMobileNavOpen = !isMobileNavOpen}
+        class="md:hidden p-2 hover:bg-border-main rounded-lg text-text-muted transition-colors"
+      >
+        <Menu class="w-5 h-5" />
+      </button>
+      <div class="p-1.5 md:p-2 bg-accent-emerald/10 rounded-lg border border-accent-emerald/20">
+        <Brain class="w-4 h-4 md:w-5 md:h-5 text-accent-emerald" />
       </div>
       <div>
-        <h1 class="text-lg font-semibold tracking-tight text-text-main">SRP Playground</h1>
-        <p class="text-xs text-text-muted">Autonomous tool reinforcement & alignment</p>
+        <h1 class="text-sm md:text-lg font-semibold tracking-tight text-text-main leading-none text-white">SRP Playground</h1>
+        <p class="text-[10px] md:text-xs text-text-muted mt-0.5 uppercase tracking-widest">Tool reinforcement</p>
       </div>
     </div>
 
-    <div class="flex items-center gap-2 bg-border-main px-3 py-1.5 rounded-full border border-accent-emerald/20 shadow-lg shadow-accent-emerald/5">
-      <div class="w-2 h-2 bg-accent-emerald rounded-full animate-pulse"></div>
-      <span class="text-[10px] font-mono font-bold text-accent-emerald uppercase tracking-widest">Adaptive Core Active</span>
+    <div class="flex items-center gap-2 bg-border-main px-2 md:px-3 py-1 md:py-1.5 rounded-full border border-accent-emerald/20 shadow-lg shadow-accent-emerald/5">
+      <div class="w-1.5 h-1.5 md:w-2 md:h-2 bg-accent-emerald rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></div>
+      <span class="text-[8px] md:text-[10px] font-mono font-bold text-accent-emerald uppercase tracking-widest text-center italic text-white">Live Core</span>
     </div>
   </header>
 
   <!-- Main Content Grid -->
-  <div class="flex-1 overflow-hidden flex flex-col md:flex-row">
+  <div class="flex-1 overflow-hidden flex flex-col md:flex-row relative">
     
+    <!-- Mobile Navigation Overlay -->
+    {#if isMobileNavOpen}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div 
+            class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-200"
+            onclick={() => isMobileNavOpen = false}
+        ></div>
+    {/if}
+
     <!-- Sidebar: Plugin Selection -->
-    <aside class="w-full md:w-64 border-r border-border-main bg-bg-main/50 flex flex-col">
-      <div class="p-4 border-b border-border-main">
-        <div class="flex items-center gap-2 text-[10px] font-bold text-text-muted uppercase tracking-wider mb-3">
+    <aside class="
+        fixed inset-y-0 left-0 w-64 bg-[#111b21] border-r border-border-main z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 flex flex-col
+        {isMobileNavOpen ? 'translate-x-0 shadow-2xl shadow-black/50' : '-translate-x-full'}
+    ">
+      <div class="p-4 border-b border-border-main flex items-center justify-between md:block">
+        <div class="flex items-center gap-2 text-[10px] font-bold text-text-muted uppercase tracking-wider md:mb-3">
           <History class="w-3.5 h-3.5" />
           Core Static Tools
         </div>
-        <div class="flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-200px)] custom-scrollbar">
+        <button onclick={() => isMobileNavOpen = false} class="md:hidden p-2 text-text-muted">
+            <X class="w-4 h-4" />
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-2 flex flex-col gap-1 custom-scrollbar">
           {#each srpStore.availablePlugins as slug}
             <a 
               href="/dashboard/srp/{slug}" 
+              onclick={() => isMobileNavOpen = false}
               class="group flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all {pluginSlug === slug ? 'bg-accent-emerald/10 text-accent-emerald border border-accent-emerald/30' : 'text-text-muted hover:bg-border-main hover:text-text-main border border-transparent'}"
             >
               <div class="flex items-center gap-2 truncate">
@@ -84,12 +111,11 @@
               <Loader2 class="w-5 h-5 text-text-muted animate-spin" />
             </div>
           {/each}
-        </div>
       </div>
     </aside>
 
     <!-- Center Stage -->
-    <main class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-bg-main">
+    <main class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar bg-bg-main">
       
       <!-- Top Section: Enriched Description -->
       <section class="bg-border-main/20 border border-border-main rounded-xl overflow-hidden shadow-xl backdrop-blur-sm">
@@ -98,9 +124,9 @@
             <Sparkles class="w-4 h-4 text-accent-emerald" />
             Optimized Instruction Manual
           </div>
-          <div class="text-[10px] font-mono text-text-muted italic">Auto-generated via user alignment passes</div>
+          <div class="hidden sm:block text-[10px] font-mono text-text-muted italic">Auto-generated via user alignment passes</div>
         </div>
-        <div class="p-5">
+        <div class="p-4 md:p-5">
           {#if srpStore.isLoading}
             <div class="space-y-3">
               <div class="h-4 bg-border-main rounded w-3/4 animate-pulse"></div>
@@ -127,12 +153,12 @@
               <ShieldCheck class="w-4 h-4 text-primary-blue" />
               Self-Generated Guardrails
             </div>
-            <span class="text-[10px] font-mono text-text-muted">{additionalRules.length}/5 Capacity</span>
+            <span class="text-[10px] font-mono text-text-muted">{additionalRules.length}/10 Capacity</span>
           </div>
-          <div class="p-5 flex flex-col gap-3 min-h-[200px]">
+          <div class="p-4 md:p-5 flex flex-col gap-3 min-h-[150px] md:min-h-[200px]">
             {#each additionalRules as rule}
-              <div class="flex items-start gap-3 p-3 bg-bg-main/80 border border-border-main rounded-lg border-l-2 border-l-primary-blue">
-                <CheckCircle2 class="w-4 h-4 text-primary-blue mt-0.5" />
+              <div class="flex items-start gap-3 p-3 bg-bg-main/80 border border-border-main rounded-lg border-l-2 border-l-primary-blue shadow-sm">
+                <CheckCircle2 class="w-4 h-4 text-primary-blue mt-0.5 flex-shrink-0" />
                 <span class="text-xs font-mono text-text-main">{rule}</span>
               </div>
             {:else}
@@ -151,11 +177,11 @@
               <Zap class="w-4 h-4 text-amber-500" />
               Semantic Vocabulary
             </div>
-            <span class="text-[10px] font-mono text-text-muted">{learnedPhrases.length}/10 Capacity</span>
+            <span class="text-[10px] font-mono text-text-muted">{learnedPhrases.length}/25 Capacity</span>
           </div>
-          <div class="p-5 flex flex-wrap gap-2 content-start min-h-[200px]">
+          <div class="p-4 md:p-5 flex flex-wrap gap-2 content-start min-h-[150px] md:min-h-[200px]">
             {#each learnedPhrases as phrase}
-              <span class="text-[10px] font-mono bg-amber-500/5 text-amber-500 px-2.5 py-1.5 rounded border border-amber-500/20 hover:border-amber-500/40 transition-colors">
+              <span class="text-[10px] font-mono bg-amber-500/5 text-amber-500 px-2.5 py-1.5 rounded border border-amber-500/20 hover:border-amber-500/40 transition-colors shadow-sm">
                 {phrase}
               </span>
             {:else}
@@ -176,14 +202,14 @@
             Reinforcement Simulator
           </div>
         </div>
-        <div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
           <div class="space-y-4">
             <div class="space-y-2">
               <label for="simulationInput" class="text-[10px] font-bold text-text-muted uppercase tracking-widest">Test Phrasing Shorthand</label>
               <textarea 
                 id="simulationInput" 
                 bind:value={srpStore.simulationInput} 
-                class="w-full h-32 bg-bg-main/80 text-sm text-text-main p-4 rounded-xl border border-border-main focus:outline-none focus:border-accent-emerald/50 focus:ring-1 focus:ring-accent-emerald/20 transition-all resize-none font-mono placeholder:text-text-muted/40" 
+                class="w-full h-32 bg-bg-main/80 text-sm text-text-main p-4 rounded-xl border border-border-main focus:outline-none focus:border-accent-emerald/50 focus:ring-1 focus:ring-accent-emerald/20 transition-all resize-none font-mono placeholder:text-text-muted/40 shadow-inner" 
                 placeholder="e.g., 'Nom log pengeluaran 50rb buat bakso...'"
               ></textarea>
             </div>
@@ -191,7 +217,7 @@
             <button 
               onclick={() => srpStore.runSimulation()} 
               disabled={srpStore.isSimulating || !srpStore.simulationInput} 
-              class="w-full py-3 bg-accent-emerald hover:bg-accent-emerald/80 disabled:bg-border-main disabled:text-text-muted text-bg-main font-bold rounded-xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent-emerald/10"
+              class="w-full py-3.5 bg-accent-emerald hover:bg-accent-emerald/80 disabled:bg-border-main disabled:text-text-muted text-bg-main font-black rounded-xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 shadow-lg shadow-accent-emerald/10 active:scale-[0.98]"
             >
               {#if srpStore.isSimulating}
                 <Loader2 class="w-4 h-4 animate-spin" />
@@ -205,12 +231,18 @@
 
           <div class="space-y-2">
             <div class="text-[10px] font-bold text-text-muted uppercase tracking-widest">Alignment Outcome Trace</div>
-            <div class="w-full h-[180px] bg-bg-main/80 p-4 rounded-xl border border-border-main overflow-y-auto text-xs font-mono text-text-muted custom-scrollbar whitespace-pre-wrap leading-relaxed">
+            <div class="w-full h-[180px] bg-bg-main/80 p-4 rounded-xl border border-border-main overflow-y-auto text-xs font-mono text-text-muted custom-scrollbar whitespace-pre-wrap leading-relaxed shadow-inner">
               {#if srpStore.simulationOutput}
-                <div class="text-accent-emerald mb-2 font-bold">>>> REINFORCEMENT LOG:</div>
+                <div class="text-accent-emerald mb-2 font-bold flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 bg-accent-emerald rounded-full"></span>
+                    REINFORCEMENT LOG:
+                </div>
                 {srpStore.simulationOutput}
               {:else}
-                <span class="text-text-muted/40 italic">// Trace results will populate following simulation pass...</span>
+                <span class="text-text-muted/40 italic flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 bg-text-muted/20 rounded-full"></span>
+                    // Trace results will populate following simulation pass...
+                </span>
               {/if}
             </div>
           </div>

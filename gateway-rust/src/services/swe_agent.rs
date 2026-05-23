@@ -24,6 +24,23 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
         let emit_factory_event = |step: &str, log_msg: &str, active_code: &str| {
             let current_slug = slug.clone();
             info!("[DAF-TELEMETRY] [{}]: {}", current_slug, log_msg);
+            
+            // 🌟 PERSISTENT CENTRALIZED LOGGING
+            let pool_log = pool.clone();
+            let msg_log = log_msg.to_string();
+            let step_log = step.to_string();
+            let slug_log = current_slug.clone();
+            tokio::spawn(async move {
+                let _ = sqlx::query(
+                    "INSERT INTO system_logs (log_type, target_slug, event_step, message) \
+                     VALUES ('swe_build', $1, $2, $3)"
+                )
+                .bind(slug_log)
+                .bind(step_log)
+                .bind(msg_log)
+                .execute(&pool_log).await;
+            });
+
             let payload = json!({ 
                 "slug": current_slug, 
                 "step": step, 
@@ -85,6 +102,39 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
             .with_system_prompt(swe_system_prompt.to_string())
             .with_temperature(0.0)
             .execute().await?;
+
+            // 🌟 TOKEN TRACKING & PERSISTENT LOGGING
+            let usage = response.usage_metadata.as_ref();
+            let p_tokens = usage.and_then(|u| u.prompt_token_count).unwrap_or(0) as i32;
+            let c_tokens = usage.and_then(|u| u.candidates_token_count).unwrap_or(0) as i32;
+            let t_tokens = usage.and_then(|u| u.total_token_count).unwrap_or(0) as i32;
+
+            let log_msg = format!("[SYNTHESIS PASS {}]: Generated {} tokens.", attempt, t_tokens);
+            let pool_clone = pool.clone();
+            let slug_clone = slug.clone();
+            tokio::spawn(async move {
+                let _ = sqlx::query(
+                    "INSERT INTO system_logs (log_type, target_slug, event_step, message, prompt_tokens, completion_tokens, total_tokens) \
+                     VALUES ('swe_build', $1, 'thinking', $2, $3, $4, $5)"
+                )
+                .bind(slug_clone)
+                .bind(log_msg)
+                .bind(p_tokens)
+                .bind(c_tokens)
+                .bind(t_tokens)
+                .execute(&pool_clone).await;
+
+                // Trigger global token telemetry log (System Account)
+                let _ = crate::services::ambient_soul::AmbientSoulService::log_token_transaction(
+                    &pool_clone,
+                    None, None, None,
+                    &"swe_agent_build".to_string(),
+                    "system",
+                    p_tokens as i64,
+                    c_tokens as i64,
+                    t_tokens as i64
+                ).await;
+            });
 
             let code = response.text().trim().replace("```typescript", "").replace("```", "").trim().to_string();
             emit_factory_event("sandboxing", &format!("[SANDBOX]: Injecting code into sandbox run {}...", attempt), &code);

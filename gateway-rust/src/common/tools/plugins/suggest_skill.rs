@@ -9,7 +9,7 @@ pub struct SuggestSkillPlugin;
 
 impl NomiToolPlugin for SuggestSkillPlugin {
     fn matching_intents(&self) -> &[&str] {
-        &["GENERAL"] // Triggered via conversation when Nomi detects a capability gap
+        &["SUGGEST_NEW_SKILL", "GENERAL"] // Explicit intent for direct triggering
     }
 
     fn rules(&self) -> &str {
@@ -76,7 +76,7 @@ impl NomiToolPlugin for SuggestSkillPlugin {
             .execute(&dispatcher.pool)
             .await?;
 
-            Ok(format!("Success: I have submitted a blueprint for the [{}] skill with {} intents to the Distributed Agent Factory.", name, intents.len()))
+            Ok(format!("Success: I have submitted a blueprint for the [{}] skill with {} intents to the Distributed Agent Factory. You can review and approve the build in the Factory Console.", name, intents.len()))
         }
         .boxed()
     }
