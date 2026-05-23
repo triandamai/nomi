@@ -9,7 +9,7 @@ use axum::extract::Extension;
 // 1. GET /api/srp/proposals
 pub async fn get_proposals(State(state): State<AppState>) -> ApiResponse<Vec<Value>> {
     let res = sqlx::query(
-        "SELECT slug, name, description, schema_json, how_it_works, compiled_code, status, intents FROM plugin_creation_suggestions ORDER BY created_at DESC"
+        "SELECT slug, name, description, schema_json, how_it_works, compiled_code, status, intents, error_logs FROM plugin_creation_suggestions ORDER BY created_at DESC"
     )
     .fetch_all(&state.pool).await;
 
@@ -25,7 +25,8 @@ pub async fn get_proposals(State(state): State<AppState>) -> ApiResponse<Vec<Val
                     "how_it_works": r.get::<String, _>("how_it_works"),
                     "compiled_code": r.get::<String, _>("compiled_code"),
                     "status": r.get::<String, _>("status"),
-                    "intents": r.get::<Vec<String>, _>("intents")
+                    "intents": r.get::<Vec<String>, _>("intents"),
+                    "error_logs": r.get::<Option<String>, _>("error_logs")
                 })
             }).collect();
             ApiResponse::ok(list, "Proposals retrieved successfully")

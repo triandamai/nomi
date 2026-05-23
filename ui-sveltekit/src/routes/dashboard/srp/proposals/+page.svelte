@@ -101,11 +101,27 @@
   function selectProposal(item: any) {
     selectedProposal = item;
     isMobileNavOpen = false;
-    liveLogs = [{
-        time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        log: `[MONITOR]: Attaching telemetry listener for [${item.slug}]...`,
-        step: "monitor"
-    }];
+    
+    // Initialize logs with historical data if available
+    let historyLogs: {time: string, log: string, step: string}[] = [];
+    if (item.error_logs) {
+        historyLogs = item.error_logs.split('\n')
+            .filter((line: string) => line.trim().length > 0)
+            .map((line: string) => ({
+                time: "PAST",
+                log: line,
+                step: "history"
+            }));
+    }
+
+    liveLogs = [
+        ...historyLogs,
+        {
+            time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            log: `[MONITOR]: Attaching telemetry listener for [${item.slug}]...`,
+            step: "monitor"
+        }
+    ];
     currentStep = item.status;
     activeCodeOutput = item.compiled_code || "";
 
