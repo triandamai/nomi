@@ -1,10 +1,9 @@
 use crate::AppState;
 use crate::common::api_response::ApiResponse;
-use axum::{
-    extract::{Path, State},
-};
+use axum::extract::{Path, State};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use tracing::{error, info};
 
 use crate::services::intent_classifier::IntentClassifierService;
@@ -45,7 +44,7 @@ pub async fn handle_get_edge_functions(
     Extension(claims): Extension<Claims>,
 ) -> ApiResponse<Vec<EdgeFunction>> {
     let user_id = uuid::Uuid::parse_str(&claims.sub).unwrap_or_default();
-    
+
     // Admins see all, users see only theirs
     let query = if claims.role == "admin" {
         "SELECT ef.id, ef.user_id, ef.slug, ef.name, ef.description, ef.schema_json, ef.rules_text, ef.script_code, ef.intents, ef.version, ef.created_at, u.display_name \
@@ -90,16 +89,22 @@ pub async fn handle_create_edge_function(
     // 1. Check Limits for non-admins
     if claims.role != "admin" {
         #[derive(FromRow)]
-        struct CountRow { count: Option<i64> }
+        struct CountRow {
+            count: Option<i64>,
+        }
 
-        let count_res = sqlx::query_as::<_, CountRow>("SELECT COUNT(*) as count FROM edge_functions WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_one(&state.pool)
-            .await;
-        
+        let count_res = sqlx::query_as::<_, CountRow>(
+            "SELECT COUNT(*) as count FROM edge_functions WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_one(&state.pool)
+        .await;
+
         if let Ok(res) = count_res {
             if res.count.unwrap_or(0) >= 10 {
-                return ApiResponse::failed("Plugin limit reached. Non-admin users are restricted to 10 dynamic plugins.");
+                return ApiResponse::failed(
+                    "Plugin limit reached. Non-admin users are restricted to 10 dynamic plugins.",
+                );
             }
         }
     }
@@ -146,7 +151,9 @@ pub async fn handle_create_edge_function(
                 &state.gemini_api_key,
                 &payload,
                 f.id,
-            ).await {
+            )
+            .await
+            {
                 error!("Failed to sync plugin intents: {}", e);
                 let _ = tx.rollback().await;
                 return ApiResponse::failed("Failed to synchronize plugin capabilities");
@@ -158,7 +165,7 @@ pub async fn handle_create_edge_function(
             }
 
             ApiResponse::ok(f, "Edge function created")
-        },
+        }
         Err(e) => {
             error!("Failed to create edge function: {}", e);
             let _ = tx.rollback().await;
@@ -182,19 +189,22 @@ pub async fn handle_update_edge_function(
 
     // Check ownership unless admin
     #[derive(FromRow)]
-    struct UserRow { user_id: Option<uuid::Uuid> }
+    struct UserRow {
+        user_id: Option<uuid::Uuid>,
+    }
 
-    let existing = sqlx::query_as::<_, UserRow>("SELECT user_id FROM edge_functions WHERE slug = $1")
-        .bind(&slug)
-        .fetch_optional(&mut *tx)
-        .await;
-    
+    let existing =
+        sqlx::query_as::<_, UserRow>("SELECT user_id FROM edge_functions WHERE slug = $1")
+            .bind(&slug)
+            .fetch_optional(&mut *tx)
+            .await;
+
     match existing {
         Ok(Some(record)) => {
             if claims.role != "admin" && record.user_id != Some(user_id) {
                 return ApiResponse::failed("Unauthorized: You do not own this plugin.");
             }
-        },
+        }
         Ok(None) => return ApiResponse::failed("Edge function not found"),
         Err(e) => return ApiResponse::failed(&format!("Database error: {}", e)),
     }
@@ -236,7 +246,9 @@ pub async fn handle_update_edge_function(
                 &state.gemini_api_key,
                 &payload,
                 f.id,
-            ).await {
+            )
+            .await
+            {
                 error!("Failed to sync plugin intents during update: {}", e);
                 let _ = tx.rollback().await;
                 return ApiResponse::failed("Failed to synchronize plugin capabilities");
@@ -248,7 +260,7 @@ pub async fn handle_update_edge_function(
             }
 
             ApiResponse::ok(f, "Edge function updated")
-        },
+        }
         Err(e) => {
             error!("Failed to update edge function: {}", e);
             let _ = tx.rollback().await;
@@ -271,12 +283,16 @@ pub async fn handle_delete_edge_function(
 
     // Check ownership unless admin
     #[derive(FromRow)]
-    struct IdUserRow { id: uuid::Uuid, user_id: Option<uuid::Uuid> }
+    struct IdUserRow {
+        id: uuid::Uuid,
+        user_id: Option<uuid::Uuid>,
+    }
 
-    let existing = sqlx::query_as::<_, IdUserRow>("SELECT id, user_id FROM edge_functions WHERE slug = $1")
-        .bind(&slug)
-        .fetch_optional(&mut *tx)
-        .await;
+    let existing =
+        sqlx::query_as::<_, IdUserRow>("SELECT id, user_id FROM edge_functions WHERE slug = $1")
+            .bind(&slug)
+            .fetch_optional(&mut *tx)
+            .await;
 
     match existing {
         Ok(Some(record)) => {
@@ -296,14 +312,14 @@ pub async fn handle_delete_edge_function(
                         return ApiResponse::failed("Database commit error");
                     }
                     ApiResponse::ok((), "Edge function deleted")
-                },
+                }
                 Err(e) => {
                     error!("Failed to delete edge function: {}", e);
                     let _ = tx.rollback().await;
                     ApiResponse::failed("Database error")
                 }
             }
-        },
+        }
         Ok(None) => ApiResponse::failed("Edge function not found"),
         Err(e) => {
             error!("Database lookup error: {}", e);
@@ -325,7 +341,7 @@ pub async fn handle_execute_edge_function(
     axum::Json(payload): axum::Json<ExecuteEdgeFunctionRequest>,
 ) -> ApiResponse<serde_json::Value> {
     let user_id = claims.sub.clone();
-    
+
     let executor = crate::common::tools::edge_runner::BunEdgeExecutor {
         slug: "playground".to_string(),
         script_code: payload.script_code,
@@ -350,14 +366,28 @@ pub async fn handle_execute_edge_function(
         "title": "Playground Workspace"
     });
 
-    match executor.run(payload.args, incoming, workspace, bridge_token, api_base_url).await {
+    let env: HashMap<String, String> = HashMap::new();
+    match executor
+        .run(
+            api_base_url,
+            bridge_token,
+            payload.args,
+            incoming,
+            workspace,
+            env,
+        )
+        .await
+    {
         Ok(exec_result) => {
             // Return both result and logs to the frontend
-            ApiResponse::ok(serde_json::json!({
-                "result": exec_result.result,
-                "logs": exec_result.logs
-            }), "Execution successful")
-        },
+            ApiResponse::ok(
+                serde_json::json!({
+                    "result": exec_result.result,
+                    "logs": exec_result.logs
+                }),
+                "Execution successful",
+            )
+        }
         Err(e) => {
             error!("Edge function execution failed: {}", e);
             ApiResponse::failed(&format!("{}", e))
@@ -375,7 +405,10 @@ pub async fn handle_internal_retrieve_knowledge(
     State(_state): State<AppState>,
     axum::Json(payload): axum::Json<RetrieveKnowledgeRequest>,
 ) -> axum::Json<serde_json::Value> {
-    info!("Internal RPC: Retrieve Knowledge for query: {}", payload.query);
+    info!(
+        "Internal RPC: Retrieve Knowledge for query: {}",
+        payload.query
+    );
     axum::Json(serde_json::json!({
         "results": []
     }))

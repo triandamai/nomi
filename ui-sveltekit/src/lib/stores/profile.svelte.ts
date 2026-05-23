@@ -40,6 +40,8 @@ export function removeSession(){
 function createProfileStore() {
     let currentUser = $state<Profile | null>(null);
     let modelInfo = $state<ModelInfo | null>(null);
+    let userChannels = $state<any[]>([]);
+    let userConversations = $state<any[]>([]);
     let loading = $state(false);
 
     async function fetchProfile() {
@@ -66,6 +68,31 @@ function createProfileStore() {
         }
     }
 
+    async function updateProfile(displayName: string) {
+        try {
+            await chatApi.updateProfile(displayName);
+            if (currentUser) {
+                currentUser.display_name = displayName;
+            }
+        } catch (e) {
+            console.error('Failed to update profile', e);
+            throw e;
+        }
+    }
+
+    async function fetchUserConnections() {
+        try {
+            const [channels, conversations] = await Promise.all([
+                chatApi.getChannels(),
+                chatApi.getConversations()
+            ]);
+            userChannels = channels.data;
+            userConversations = conversations.data;
+        } catch (e) {
+            console.error('Failed to fetch user connections', e);
+        }
+    }
+
     async function logout() {
         try {
             await chatApi.logout();
@@ -88,10 +115,18 @@ function createProfileStore() {
         get modelInfo() {
             return modelInfo;
         },
+        get userChannels() {
+            return userChannels;
+        },
+        get userConversations() {
+            return userConversations;
+        },
         get loading() {
             return loading;
         },
         fetchProfile,
+        updateProfile,
+        fetchUserConnections,
         logout,
         updateStatus(status: Profile['status']) {
             if (currentUser) {

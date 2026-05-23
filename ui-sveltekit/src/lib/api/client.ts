@@ -208,6 +208,12 @@ export const chatApi = {
             method: 'GET'
         });
     },
+    updateProfile: (displayName: string) => {
+        return apiFetch<any>('/auth/profile', {
+            method: 'PUT',
+            body: JSON.stringify({ display_name: displayName })
+        });
+    },
     exploreStorage: (prefix?: string) => {
         const url = new URL(`${BASE_URL}/v1/admin/storage/explore`);
         if (prefix) url.searchParams.append('prefix', prefix);
@@ -441,6 +447,11 @@ export const chatApi = {
     },
     getProposals: () => {
         return apiFetch<any[]>('/srp/proposals');
+    },
+    getProposalLogs: (slug: string) => {
+        return apiFetch<any>(`/srp/proposals/${slug}/logs`, {
+            method: 'GET'
+        });
     },
     updateProposal: (slug: string, payload: any) => {
         return apiFetch<any>(`/srp/proposals/${slug}`, {

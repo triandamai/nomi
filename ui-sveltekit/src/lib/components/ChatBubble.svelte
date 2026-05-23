@@ -275,7 +275,7 @@
             </div>
         {/if}
 
-        {#if parsedMetadata?.proposal_slug && !parsedMetadata?.tool_ref_ids?.some(r => r.tool === 'suggest_new_skill')}
+        {#if parsedMetadata?.proposal_slug && !parsedMetadata?.tool_ref_ids?.some((r:any) => r.tool === 'suggest_new_skill')}
             <div class="mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <PluginProposalCard ref_id={parsedMetadata.proposal_slug} />
             </div>

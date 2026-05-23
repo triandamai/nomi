@@ -13,6 +13,7 @@ use gemini_rust::{
     Content, FunctionCall, FunctionCallingMode, GenerationResponse, Message, Role, Tool,
     UsageMetadata,
 };
+use std::collections::HashMap;
 use tokio_stream::StreamExt;
 use tracing::{error, info};
 
@@ -61,7 +62,9 @@ pub async fn send_prompt(
             let tool = if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
                 dispatcher.generate_tool_for_prompt(intents).await
             } else {
-                dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]).await
+                dispatcher
+                    .generate_tool_for_prompt(&["FULL_REGISTRY".to_string()])
+                    .await
             };
 
             let has_functions = match &tool {
@@ -159,7 +162,9 @@ pub async fn send_prompt(
             let tool = if !intents.contains(&"GENERAL".to_string()) || intents.len() > 1 {
                 dispatcher.generate_tool_for_prompt(intents).await
             } else {
-                dispatcher.generate_tool_for_prompt(&["FULL_REGISTRY".to_string()]).await
+                dispatcher
+                    .generate_tool_for_prompt(&["FULL_REGISTRY".to_string()])
+                    .await
             };
 
             let has_functions = match &tool {
@@ -393,10 +398,11 @@ pub async fn execute_tools(
                 };
 
                 // Secure Bridge Configuration
-                let bridge_token = "TODO_GENERATE_SECURE_JWT"; 
+                let bridge_token = "TODO_GENERATE_SECURE_JWT";
                 let api_base_url = "http://localhost:8000";
+                let env:HashMap<String, String> = HashMap::new();
 
-                let plugin_res = executor.run(args, incoming, workspace, bridge_token, api_base_url).await;
+                let plugin_res = executor.run(api_base_url,bridge_token,args, incoming, workspace,env).await;
 
                 let result = match plugin_res {
                     Ok(exec_res) => ToolResult {

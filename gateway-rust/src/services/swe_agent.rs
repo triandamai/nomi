@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use sqlx::PgPool;
 use serde_json::json;
 use crate::AppState;
@@ -8,14 +9,15 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
     async move {
         info!("[DAF]: Initiating autonomous build pass for tool handle: [{}]", slug);
         let suggestion_res = sqlx::query(
-            "SELECT name, description, schema_json, how_it_works FROM plugin_creation_suggestions WHERE slug = $1 LIMIT 1"
+            "SELECT id,name, description, schema_json, how_it_works FROM plugin_creation_suggestions WHERE slug = $1 LIMIT 1"
         )
-        .bind(&slug)
-        .fetch_one(&pool)
-        .await?;
+            .bind(&slug)
+            .fetch_one(&pool)
+            .await?;
 
         use sqlx::Row;
         let name: String = suggestion_res.get("name");
+        let id: String = suggestion_res.get("id");
         let description: String = suggestion_res.get("description");
         let schema_json: serde_json::Value = suggestion_res.get("schema_json");
         let how_it_works: String = suggestion_res.get("how_it_works");
@@ -24,21 +26,26 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
         let emit_factory_event = |step: &str, log_msg: &str, active_code: &str| {
             let current_slug = slug.clone();
             info!("[DAF-TELEMETRY] [{}]: {}", current_slug, log_msg);
-            
+
             // 🌟 PERSISTENT CENTRALIZED LOGGING
             let pool_log = pool.clone();
             let msg_log = log_msg.to_string();
             let step_log = step.to_string();
             let slug_log = current_slug.clone();
+            let id = id.clone();
             tokio::spawn(async move {
+                let meta = serde_json::json!({
+                    "ref_id": id
+                });
                 let _ = sqlx::query(
-                    "INSERT INTO system_logs (log_type, target_slug, event_step, message) \
-                     VALUES ('swe_build', $1, $2, $3)"
+                    "INSERT INTO system_logs (log_type, target_slug, event_step, message,metadata) \
+                     VALUES ('swe_build', $1, $2, $3,$4)"
                 )
-                .bind(slug_log)
-                .bind(step_log)
-                .bind(msg_log)
-                .execute(&pool_log).await;
+                    .bind(slug_log)
+                    .bind(step_log)
+                    .bind(msg_log)
+                    .bind(meta)
+                    .execute(&pool_log).await;
             });
 
             let payload = json!({ 
@@ -51,7 +58,7 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
             tokio::spawn(async move {
                 let event = crate::services::event_dispatcher::AppEvent::broadcast(
                     "evolution",
-                    payload
+                    payload,
                 );
                 let _ = crate::services::event_dispatcher::dispatch(&state_clone, event).await;
             });
@@ -82,7 +89,7 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
             "Synthesize a complete, production-grade TypeScript edge plugin file. Specifications:\n\
              Name: {}\nDescription: {}\nParameters Expected Schema: {}\nFunctional Roadmap: {}\n\
              Respond ONLY with the raw typescript execution code inside standard backtick fences, starting with the default export run function layout.",
-             name, description, schema_json, how_it_works
+            name, description, schema_json, how_it_works
         );
 
         let mut attempt = 0;
@@ -99,9 +106,9 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
                     role: Some(gemini_rust::Role::User),
                 },
             })
-            .with_system_prompt(swe_system_prompt.to_string())
-            .with_temperature(0.0)
-            .execute().await?;
+                .with_system_prompt(swe_system_prompt.to_string())
+                .with_temperature(0.0)
+                .execute().await?;
 
             // 🌟 TOKEN TRACKING & PERSISTENT LOGGING
             let usage = response.usage_metadata.as_ref();
@@ -117,12 +124,12 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
                     "INSERT INTO system_logs (log_type, target_slug, event_step, message, prompt_tokens, completion_tokens, total_tokens) \
                      VALUES ('swe_build', $1, 'thinking', $2, $3, $4, $5)"
                 )
-                .bind(slug_clone)
-                .bind(log_msg)
-                .bind(p_tokens)
-                .bind(c_tokens)
-                .bind(t_tokens)
-                .execute(&pool_clone).await;
+                    .bind(slug_clone)
+                    .bind(log_msg)
+                    .bind(p_tokens)
+                    .bind(c_tokens)
+                    .bind(t_tokens)
+                    .execute(&pool_clone).await;
 
                 // Trigger global token telemetry log (System Account)
                 let _ = crate::services::ambient_soul::AmbientSoulService::log_token_transaction(
@@ -132,12 +139,12 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
                     "system",
                     p_tokens as i64,
                     c_tokens as i64,
-                    t_tokens as i64
+                    t_tokens as i64,
                 ).await;
             });
 
             let code = response.text().trim().replace("```typescript", "").replace("```", "").trim().to_string();
-            
+
             // 🌟 AUTONOMOUS SANDBOX VALIDATION
             emit_factory_event("sandboxing", &format!("[SANDBOX]: Initiating runtime validation pass {}...", attempt), &code);
 
@@ -155,8 +162,8 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
                     role: Some(gemini_rust::Role::User),
                 },
             })
-            .with_temperature(0.0)
-            .execute().await?;
+                .with_temperature(0.0)
+                .execute().await?;
 
             let sample_args_raw = args_res.text().trim().replace("```json", "").replace("```", "").trim().to_string();
             let sample_args: serde_json::Value = serde_json::from_str(&sample_args_raw).unwrap_or(serde_json::json!({}));
@@ -184,7 +191,8 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
                 "title": "SWE Factory Sandbox"
             });
 
-            let test_res = executor.run(sample_args, incoming, workspace, bridge_token, api_base_url).await;
+            let env: HashMap<String, String> = HashMap::new();
+            let test_res = executor.run(api_base_url, bridge_token, sample_args, incoming, workspace, env).await;
 
             let (test_pass_success, test_pass_output) = match test_res {
                 Ok(res) => (true, format!("Execution Successful. Output: {}\nLogs: {}", res.result, res.logs)),
@@ -199,7 +207,7 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
                      Roadmap Objective: {}\n\
                      Sandbox Execution Result: {}\n\n\
                      Does this output logically fulfill the intended functionality? Answer with 'PASSED' or describe the logical failure in 1 sentence.",
-                     slug, how_it_works, test_pass_output
+                    slug, how_it_works, test_pass_output
                 );
 
                 let eval_res = state.gemini.generate_content().with_message(gemini_rust::Message {
@@ -209,27 +217,27 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
                         role: Some(gemini_rust::Role::User),
                     },
                 })
-                .with_temperature(0.0)
-                .execute().await?;
+                    .with_temperature(0.0)
+                    .execute().await?;
 
                 let evaluation = eval_res.text().trim().to_uppercase();
 
                 if evaluation.contains("PASSED") {
                     emit_factory_event("success", "[VALIDATION SUCCESS]: Code structures and logical output verified cleanly. Ready for production deployment.", &code);
-                    
+
                     let _ = sqlx::query(
                         "UPDATE plugin_creation_suggestions SET compiled_code = $1, status = 'ready', error_logs = NULL, updated_at = NOW() WHERE slug = $2"
                     )
-                    .bind(&code)
-                    .bind(&slug)
-                    .execute(&pool)
-                    .await?;
-                        
+                        .bind(&code)
+                        .bind(&slug)
+                        .execute(&pool)
+                        .await?;
+
                     check_and_trigger_next_queued_plugin(pool.clone(), state.clone()).await;
                     return Ok(());
                 } else {
                     emit_factory_event("healing", &format!("[LOGIC FAILURE]: Output did not align with roadmap. Discrepancy: {}", evaluation), &code);
-                    
+
                     // 🌟 PERSIST LOGIC ERROR FOR AUDIT
                     let error_msg = format!("[Logic Pass {} Failure]: {}", attempt, evaluation);
                     let _ = sqlx::query("UPDATE plugin_creation_suggestions SET error_logs = COALESCE(error_logs, '') || $1 || '\n', updated_at = NOW() WHERE slug = $2")
@@ -240,14 +248,14 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
                          Roadmap: {}\n\
                          Evaluation Feedback: {}\n\n\
                          Correct the implementation to strictly follow the roadmap roadmap and re-output code.",
-                         how_it_works, evaluation
+                        how_it_works, evaluation
                     );
                     continue;
                 }
             }
 
             emit_factory_event("healing", &format!("[SANDBOX TRACE ERROR]: Runtime check failed. Initiating self-correction mechanics...\n\n{}", test_pass_output), &code);
-            
+
             // 🌟 PERSIST RUNTIME ERROR FOR AUDIT
             let error_msg = format!("[Sandbox Pass {} Failure]: {}", attempt, test_pass_output);
             let _ = sqlx::query("UPDATE plugin_creation_suggestions SET error_logs = COALESCE(error_logs, '') || $1 || '\n', updated_at = NOW() WHERE slug = $2")
@@ -274,10 +282,10 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
         let _ = sqlx::query(
             "UPDATE plugin_creation_suggestions SET status = 'failed', updated_at = NOW() WHERE slug = $1"
         )
-        .bind(&slug)
-        .execute(&pool)
-        .await?;
-        
+            .bind(&slug)
+            .execute(&pool)
+            .await?;
+
         check_and_trigger_next_queued_plugin(pool, state).await;
         Ok(())
     }.boxed()
@@ -287,8 +295,8 @@ async fn check_and_trigger_next_queued_plugin(pool: PgPool, state: AppState) {
     let next_res = sqlx::query(
         "UPDATE plugin_creation_suggestions SET status = 'processing', updated_at = NOW() WHERE id = (SELECT id FROM plugin_creation_suggestions WHERE status = 'approved' ORDER BY updated_at ASC LIMIT 1) RETURNING slug"
     )
-    .fetch_optional(&pool)
-    .await;
+        .fetch_optional(&pool)
+        .await;
 
     if let Ok(Some(row)) = next_res {
         use sqlx::Row;

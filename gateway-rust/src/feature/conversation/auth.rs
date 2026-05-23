@@ -209,6 +209,42 @@ pub async fn handle_get_profile(
     }
 }
 
+#[derive(Deserialize)]
+pub struct UpdateProfileRequest {
+    pub display_name: String,
+}
+
+pub async fn handle_update_profile(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(payload): Json<UpdateProfileRequest>,
+) -> impl IntoResponse {
+    let user_id = match uuid::Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::failed("Invalid user ID"))),
+    };
+
+    if payload.display_name.trim().is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(ApiResponse::<()>::failed("Display name cannot be empty")));
+    }
+
+    let result = sqlx::query!(
+        "UPDATE users SET display_name = $1 WHERE id = $2",
+        payload.display_name,
+        user_id
+    )
+    .execute(&state.pool)
+    .await;
+
+    match result {
+        Ok(_) => (StatusCode::OK, Json(ApiResponse::ok((), "Profile updated successfully"))),
+        Err(e) => {
+            error!("Database error during profile update: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::<()>::failed("Database error")))
+        }
+    }
+}
+
 pub async fn handle_logout() -> impl IntoResponse {
     (
         StatusCode::OK,

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::common::api_response::ApiResponse;
 use crate::common::identity::auth_model::{AuthResponse, UserProfile};
 use crate::feature::conversation::model::{
@@ -221,7 +222,10 @@ pub async fn handle_get_skill_schemas(
             let mut schema = r.schema_json.clone();
             if let Some(obj) = schema.as_object_mut() {
                 obj.insert("name".to_string(), serde_json::Value::String(r.slug));
-                obj.insert("description".to_string(), serde_json::Value::String(r.description));
+                obj.insert(
+                    "description".to_string(),
+                    serde_json::Value::String(r.description),
+                );
             }
             schemas.push(schema);
         }
@@ -243,7 +247,7 @@ pub async fn handle_get_readme(
 ) -> ApiResponse<String> {
     // Try current directory first (Docker/Prod), then parent (Local Dev)
     let paths = ["./README.md", "../README.md"];
-    
+
     for path in paths {
         if let Ok(content) = std::fs::read_to_string(path) {
             return ApiResponse::ok(content, "README retrieved successfully");
@@ -260,7 +264,7 @@ pub async fn handle_get_skills_readme(
 ) -> ApiResponse<String> {
     // Try current directory first (Docker/Prod), then parent (Local Dev)
     let paths = ["./docs/SKILLS.md", "../docs/SKILLS.md"];
-    
+
     for path in paths {
         if let Ok(content) = std::fs::read_to_string(path) {
             return ApiResponse::ok(content, "Skills documentation retrieved successfully");
@@ -306,13 +310,25 @@ pub async fn handle_execute_skill(
             "title": "Skill Test Workspace"
         });
 
-        return match executor.run(payload.args, incoming, workspace, bridge_token, api_base_url).await {
-            Ok(exec_result) => {
-                ApiResponse::ok(serde_json::json!({
+        let env:HashMap<String, String> = HashMap::new();
+        return match executor
+            .run(
+                api_base_url,
+                bridge_token,
+                payload.args,
+                incoming,
+                workspace,
+                env
+            )
+            .await
+        {
+            Ok(exec_result) => ApiResponse::ok(
+                serde_json::json!({
                     "result": exec_result.result,
                     "logs": exec_result.logs
-                }), "Execution successful")
-            },
+                }),
+                "Execution successful",
+            ),
             Err(e) => {
                 error!("Edge execution failed: {}", e);
                 ApiResponse::failed(&format!("{}", e))
@@ -353,12 +369,15 @@ pub async fn handle_execute_skill(
                     u_id,
                     &log_type,
                     "system",
-                    0, 0, 0
-                ).await;
+                    0,
+                    0,
+                    0,
+                )
+                .await;
             });
 
             ApiResponse::ok(json!(result), "Skill executed successfully")
-        },
+        }
         Err(e) => {
             error!("Skill execution failed: {}", e);
             ApiResponse::failed(&format!("Skill execution error: {}", e))
@@ -1393,7 +1412,10 @@ pub async fn handle_test_srp(
     if let Some(plugin) = dispatcher.plugins.get(payload.slug.as_str()) {
         let schema = plugin.schema();
         let base_desc = schema["description"].as_str().unwrap_or_default();
-        let outcome = format!("Simulated alignment for tool [{}]: Phrasing '{}' was evaluated against base description '{}'. Reinforcement logic would suggest expanding vocabulary to include context-specific keywords.", payload.slug, payload.text, base_desc);
+        let outcome = format!(
+            "Simulated alignment for tool [{}]: Phrasing '{}' was evaluated against base description '{}'. Reinforcement logic would suggest expanding vocabulary to include context-specific keywords.",
+            payload.slug, payload.text, base_desc
+        );
         ApiResponse::ok(json!({"outcome": outcome}), "Simulation successful")
     } else {
         ApiResponse::not_found("Plugin not found")
@@ -1414,13 +1436,12 @@ pub async fn handle_get_available_plugins(
         state.clone(),
     );
     let mut slugs: Vec<String> = dispatcher.plugins.keys().map(|&k| k.to_string()).collect();
-    
+
     // 🌟 DYNAMIC DISCOVERY: Fetch slugs from edge_functions to include in the registry
-    if let Ok(dynamic_slugs) = sqlx::query_scalar!(
-        "SELECT slug FROM edge_functions"
-    )
-    .fetch_all(&state.pool)
-    .await {
+    if let Ok(dynamic_slugs) = sqlx::query_scalar!("SELECT slug FROM edge_functions")
+        .fetch_all(&state.pool)
+        .await
+    {
         for slug in dynamic_slugs {
             if !slugs.contains(&slug) {
                 slugs.push(slug);

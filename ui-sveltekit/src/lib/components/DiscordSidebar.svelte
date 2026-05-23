@@ -15,7 +15,8 @@
         RefreshCw,
         MessageSquare,
         LineChart,
-        DollarSign, Terminal, Activity, HeartPulse, Sparkles, ShieldAlert, BookOpen, Cpu, Brain, Factory
+        DollarSign, Terminal, Activity, HeartPulse, Sparkles, ShieldAlert, BookOpen, Cpu, Brain, Factory,
+        LayoutGrid
     } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import SoulTimeline from './SoulTimeline.svelte';
@@ -24,6 +25,7 @@
     import HealthHistoryPopUp from './HealthHistoryPopUp.svelte';
     import AdminConversationsPopUp from './AdminConversationsPopUp.svelte';
     import UserListPopUp from './UserListPopUp.svelte';
+    import ProfileSettingsPopUp from './ProfileSettingsPopUp.svelte';
     import RedisTestPopUp from './RedisTestPopUp.svelte';
     import AvailableToolsPopUp from './AvailableToolsPopUp.svelte';
     import GuardrailPatternsPopUp from './GuardrailPatternsPopUp.svelte';
@@ -210,6 +212,15 @@
         });
     }
 
+    function openProfileSettings() {
+        sidebarStore.showUserMenu = false;
+        popupStore.open({
+            title: 'User Profile & Identity',
+            width: 'max-w-3xl',
+            contentSnippet: profileSettingsSnippet
+        });
+    }
+
     function handleLogout() {
         sidebarStore.showUserMenu = false;
         profileStore.logout();
@@ -222,6 +233,15 @@
             width: 'max-w-md',
             contentSnippet: modelInfoContent,
             footerSnippet: remindersFooter
+        });
+    }
+
+    function handleShowUtility() {
+        sidebarStore.showUserMenu = false;
+        popupStore.open({
+            title: 'System Utilities',
+            width: 'max-w-2xl',
+            contentSnippet: utilityContent
         });
     }
 </script>
@@ -846,6 +866,17 @@
             </button>
         {/if}
 
+        <!-- Utility Button -->
+        <button
+                onclick={handleShowUtility}
+                class="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-slate-800 hover:bg-emerald-600 text-emerald-500 hover:text-white flex items-center justify-center transition-all group relative"
+        >
+            <LayoutGrid class="w-6 h-6"/>
+            <div class="absolute left-16 px-3 py-1 bg-slate-950 text-white text-xs font-bold rounded shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                System Utilities
+            </div>
+        </button>
+
         <!-- Current User -->
         <div class="relative w-full flex justify-center">
             <Avatar
@@ -868,7 +899,10 @@
                         </p>
                     </div>
 
-                    <button class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors">
+                    <button 
+                        onclick={openProfileSettings}
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
+                    >
                         <User size={14}/>
                         <span>Profile Settings</span>
                     </button>
@@ -887,132 +921,6 @@
                     </button>
 
                     <div class="h-px bg-slate-900 my-1"></div>
-
-                    <button
-                            onclick={handleShowReminders}
-                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                    >
-                        <Bell size={14}/>
-                        <span>Reminders</span>
-                    </button>
-                    <button
-                            onclick={openMoneyTracking}
-                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                    >
-                        <DollarSign size={14}/>
-                        <span>Money Tracking</span>
-                    </button>
-                    <button
-                            onclick={openHealthTracking}
-                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                    >
-                        <HeartPulse size={14}/>
-                        <span>Health & Vitality</span>
-                    </button>
-                    <button
-                            onclick={() => { sidebarStore.showUserMenu = false; goto('/docs'); }}
-                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                    >
-                        <BookOpen size={14}/>
-                        <span>System Blueprint</span>
-                    </button>
-                    <button
-                            onclick={handleShowTools}
-                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                    >
-                        <Sparkles size={14}/>
-                        <span>System Skills</span>
-                    </button>
-                    <button
-                            onclick={() => { sidebarStore.showUserMenu = false; goto('/plugins'); }}
-                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                    >
-                        <Cpu size={14}/>
-                        <span>Edge Plugins</span>
-                    </button>
-                    {#if profileStore.currentUser?.role === 'admin'}
-                        <button
-                                onclick={handleShowGuardrails}
-                                class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                        >
-                            <ShieldAlert size={14}/>
-                            <span>Guardrail Patterns</span>
-                        </button>
-                        <button
-                                onclick={() => { sidebarStore.showUserMenu = false; goto('/admin/storage'); }}
-                                class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                        >
-                            <Database size={14}/>
-                            <span>Storage</span>
-                        </button>
-                        <button
-                                onclick={openAdminMonitor}
-                                class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                        >
-                            <LineChart size={14}/>
-                            <span>Monitor Conversations</span>
-                        </button>
-                        <button
-                                onclick={openUserDirectory}
-                                class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                        >
-                            <User size={14}/>
-                            <span>User Directory</span>
-                        </button>
-                        <button
-                                onclick={openRedisTest}
-                                class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                        >
-                            <Terminal size={14}/>
-                            <span>Redis Pub/Sub Test</span>
-                        </button>
-                    {/if}
-                    <div class="h-px bg-slate-900 my-1"></div>
-                    {#if conversationStore.activeConversationId}
-                        <button
-                                onclick={openConnectionManager}
-                                class="w-full flex items-center gap-3 px-4 py-2 text-xs transition-colors {sidebarStore.isPaired ? 'text-blue-400 hover:text-blue-300 hover:bg-blue-900/10' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900'}"
-                        >
-                            <Link size={14}/>
-                            <span>Linked App</span>
-                        </button>
-
-                        <button
-                                onclick={openTimeline}
-                                class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                        >
-                            <Settings2 size={14}/>
-                            <span>Soul Timeline</span>
-                        </button>
-
-                        {#if profileStore.currentUser?.role === 'admin'}
-                            <button
-                                    onclick={openStockSignals}
-                                    class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                            >
-                                <LineChart size={14}/>
-                                <span>Stock Signals</span>
-                            </button>
-                        {/if}
-
-                        <div class="h-px bg-slate-900 my-1"></div>
-                    {/if}
-
-                    <button
-                            onclick={() => { sidebarStore.showUserMenu = false; goto('/dashboard/srp/proposals'); }}
-                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                    >
-                        <Factory size={14}/>
-                        <span>Factory Console</span>
-                    </button>
-
-                    <button
-                            onclick={() => { sidebarStore.showUserMenu = false; goto('/dashboard/srp'); }}
-                            class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
-                    >
-                        <Brain size={14}/>
-                        <span>Reinforcement Engine</span>
-                    </button>
 
                     <button
                             onclick={handleLogout}
@@ -1053,4 +961,112 @@
 
 {#snippet showGuardrailsContent()}
     <GuardrailPatternsPopUp />
+{/snippet}
+
+{#snippet profileSettingsSnippet()}
+    <ProfileSettingsPopUp />
+{/snippet}
+
+{#snippet utilityContent()}
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 py-4">
+        <button onclick={() => { popupStore.closeLast(); handleShowReminders(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-blue-500/20 text-slate-400 group-hover:text-blue-400 transition-colors">
+                <Bell size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Reminders</span>
+        </button>
+
+        <button onclick={() => { popupStore.closeLast(); openMoneyTracking(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-emerald-500/20 text-slate-400 group-hover:text-emerald-400 transition-colors">
+                <DollarSign size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Money Tracking</span>
+        </button>
+
+        <button onclick={() => { popupStore.closeLast(); openHealthTracking(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-rose-500/50 hover:bg-rose-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-rose-500/20 text-slate-400 group-hover:text-rose-400 transition-colors">
+                <HeartPulse size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Health & Vitality</span>
+        </button>
+
+        <button onclick={() => { popupStore.closeLast(); goto('/docs'); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-amber-500/20 text-slate-400 group-hover:text-amber-400 transition-colors">
+                <BookOpen size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">System Blueprint</span>
+        </button>
+
+        <button onclick={() => { popupStore.closeLast(); handleShowTools(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-blue-400/50 hover:bg-blue-400/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-blue-400/20 text-slate-400 group-hover:text-blue-300 transition-colors">
+                <Sparkles size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">System Skills</span>
+        </button>
+
+        <button onclick={() => { popupStore.closeLast(); goto('/plugins'); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-indigo-500/20 text-slate-400 group-hover:text-indigo-400 transition-colors">
+                <Cpu size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Edge Plugins</span>
+        </button>
+
+        {#if profileStore.currentUser?.role === 'admin'}
+            <button onclick={() => { popupStore.closeLast(); handleShowGuardrails(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-red-500/50 hover:bg-red-500/5 transition-all group">
+                <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-red-500/20 text-slate-400 group-hover:text-red-400 transition-colors">
+                    <ShieldAlert size={24} />
+                </div>
+                <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Guardrail Patterns</span>
+            </button>
+
+            <button onclick={() => { popupStore.closeLast(); openAdminMonitor(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group">
+                <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-blue-500/20 text-slate-400 group-hover:text-blue-400 transition-colors">
+                    <LineChart size={24} />
+                </div>
+                <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Monitor Conversations</span>
+            </button>
+
+            <button onclick={() => { popupStore.closeLast(); openUserDirectory(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-purple-500/50 hover:bg-purple-500/5 transition-all group">
+                <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-purple-500/20 text-slate-400 group-hover:text-purple-400 transition-colors">
+                    <User size={24} />
+                </div>
+                <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">User Directory</span>
+            </button>
+
+            <button onclick={() => { popupStore.closeLast(); openRedisTest(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-amber-600/50 hover:bg-amber-600/5 transition-all group">
+                <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-amber-600/20 text-slate-400 group-hover:text-amber-500 transition-colors">
+                    <Terminal size={24} />
+                </div>
+                <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Redis Pub/Sub</span>
+            </button>
+        {/if}
+
+        <button onclick={() => { popupStore.closeLast(); openConnectionManager(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-sky-500/50 hover:bg-sky-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-sky-500/20 text-slate-400 group-hover:text-sky-400 transition-colors">
+                <Link size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Linked App</span>
+        </button>
+
+        <button onclick={() => { popupStore.closeLast(); openTimeline(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-fuchsia-500/50 hover:bg-fuchsia-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-fuchsia-500/20 text-slate-400 group-hover:text-fuchsia-400 transition-colors">
+                <Settings2 size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Soul Timeline</span>
+        </button>
+
+        <button onclick={() => { popupStore.closeLast(); goto('/dashboard/srp/proposals'); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-emerald-400/50 hover:bg-emerald-400/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-emerald-400/20 text-slate-400 group-hover:text-emerald-300 transition-colors">
+                <Factory size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Factory Console</span>
+        </button>
+
+        <button onclick={() => { popupStore.closeLast(); goto('/dashboard/srp'); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-violet-500/50 hover:bg-violet-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-violet-500/20 text-slate-400 group-hover:text-violet-400 transition-colors">
+                <Brain size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Reinforcement Engine</span>
+        </button>
+    </div>
 {/snippet}

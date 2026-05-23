@@ -1,3 +1,5 @@
+use log::info;
+use std::collections::HashMap;
 use std::process::Stdio;
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
@@ -8,6 +10,7 @@ pub struct BunEdgeExecutor {
 }
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EdgeExecutionResult {
@@ -16,47 +19,13 @@ pub struct EdgeExecutionResult {
 }
 
 impl BunEdgeExecutor {
-    fn build_runtime_template(
-        &self,
-        incoming: &serde_json::Value,
-        payload: &serde_json::Value,
-        workspace: &serde_json::Value,
-        bridge_token: &str,
-        api_base_url: &str,
-    ) -> String {
+    fn build_runtime_template(&self, internal_code: &str) -> String {
         format!(
             r#"
-const NomiArgs = {{
-    incoming: {incoming},
-    payload: {payload},
-    workspace: {workspace}
-}};
-const BRIDGE_TOKEN = '{bridge_token}';
-const API_BASE_URL = '{api_base_url}';
-
-/** Built-in: Semantic Knowledge Retrieval */
-async function retrieve_knowledge(query, limit = 5) {{
-    try{{
-        const res = await fetch(`${{API_BASE_URL}}/api/internal/rpc/retrieve-knowledge`, {{
-            method: 'POST',
-            headers: {{
-                'Content-Type': 'application/json',
-                'X-Bridge-Token': BRIDGE_TOKEN
-            }},
-            body: JSON.stringify({{ query, limit }})
-        }});
-        if(res.status <= 200 && res.status >= 209){{
-           return {{results:[]}}
-        }}
-        return await res.json();
-    }}catch(e){{
-        return {{results:[]}}
-    }}
-}}
-
+/** Built-in: Internal Code */
+{internal_code}
 {script_code}
-
-// Nomi execution wrapper
+/** Nomi Execution Runner */
 (async () => {{
     try {{
         const result = await run(NomiArgs);
@@ -69,38 +38,88 @@ async function retrieve_knowledge(query, limit = 5) {{
     }}
 }})();
 "#,
-            incoming = incoming.to_string(),
-            payload = payload.to_string(),
-            workspace = workspace.to_string(),
-            bridge_token = bridge_token,
-            api_base_url = api_base_url,
+            internal_code = internal_code,
             script_code = self.script_code
         )
     }
 
-    pub async fn run(
+    async fn build_internal_code(
         &self,
+        bridge_token: &str,
+        api_base_url: &str,
         payload: serde_json::Value,
         incoming: serde_json::Value,
         workspace: serde_json::Value,
+        env: HashMap<String, String>,
+    ) -> anyhow::Result<String> {
+        let internal_code = tokio::fs::read_to_string("./docs/internal_rpc.ts").await;
+
+        if let Err(err) = internal_code {
+            info!("Failed to read internal code: {}", err);
+            return Err(anyhow::anyhow!("Internal Error: {}", err));
+        }
+
+        let internal_code = internal_code?;
+        let internal_code =
+            internal_code.replace("__BASE_URL__", format!("\"{}\"", api_base_url).as_str());
+        let internal_code =
+            internal_code.replace("__token__", format!("\"{}\"", bridge_token).as_str());
+        let internal_code = internal_code.replace("__incoming__", format!("{}", incoming).as_str());
+        let internal_code = internal_code.replace("__payload__", format!("{}", payload).as_str());
+        let internal_code =
+            internal_code.replace("__workspace__", format!("{}", workspace).as_str());
+        let internal_code = internal_code.replace("__env__", format!("{}", json!(env)).as_str());
+
+        Ok(format!(
+            r#"
+            const NomiArgs = {{
+                incoming: {incoming},
+                payload: {payload},
+                workspace: {workspace}
+            }};
+            
+            {internal_code}
+            "#,
+            internal_code = internal_code,
+            payload = payload,
+            incoming = incoming,
+            workspace = workspace,
+        ))
+    }
+
+    pub async fn run(
+        &self,
         bridge_token: &str,
         api_base_url: &str,
+        payload: serde_json::Value,
+        incoming: serde_json::Value,
+        workspace: serde_json::Value,
+        env: HashMap<String, String>,
     ) -> anyhow::Result<EdgeExecutionResult> {
         let result_marker_start = "___NOMI_RESULT_START___";
         let result_marker_end = "___NOMI_RESULT_END___";
-
-        let unified_script = self.build_runtime_template(
-            &incoming,
-            &payload,
-            &workspace,
-            bridge_token,
-            api_base_url,
-        );
 
         // Bun doesn't support -e reliably, so we write to a temp file
         let temp_dir = std::env::temp_dir();
         let file_name = format!("nomi_edge_{}_{}.ts", self.slug, uuid::Uuid::new_v4());
         let file_path = temp_dir.join(file_name);
+
+        let internal_code = self
+            .build_internal_code(
+                bridge_token,
+                api_base_url,
+                payload,
+                incoming,
+                workspace,
+                env,
+            )
+            .await;
+        if let Err(err) = &internal_code {
+            info!("Internal Error: {}", err);
+            return Err(anyhow::anyhow!("Internal Error: {}", err));
+        }
+        let internal_code = internal_code?;
+        let unified_script = self.build_runtime_template(internal_code.as_str());
 
         tokio::fs::write(&file_path, &unified_script).await?;
 
@@ -152,14 +171,10 @@ async function retrieve_knowledge(query, limit = 5) {{
                 }
             }
             Ok(Err(e)) => Err(anyhow::anyhow!("Subprocess execution failed: {}", e)),
-            Err(_) => {
-                Err(anyhow::anyhow!(
-                    "Execution timed out. Process killed to protect server memory limits."
-                ))
-            },
+            Err(_) => Err(anyhow::anyhow!(
+                "Execution timed out. Process killed to protect server memory limits."
+            )),
         };
-
-
 
         // Clean up temp file
         let _ = tokio::fs::remove_file(&file_path).await;

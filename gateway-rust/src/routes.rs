@@ -2,7 +2,7 @@ use crate::AppState;
 use crate::common::api_response::ApiResponse;
 use crate::common::identity::middleware::auth_middleware;
 use crate::feature::conversation::{
-    auth::{handle_get_profile, handle_logout, handle_request_otp, handle_verify_otp},
+    auth::{handle_get_profile, handle_update_profile, handle_logout, handle_request_otp, handle_verify_otp},
     handle_chat_stream, handle_create_conversation, handle_create_pairing, handle_pairing_handshake,
     handle_delete_conversation,
     handle_get_conversations, handle_get_file, handle_get_messages, handle_get_model_info,
@@ -96,7 +96,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/plugins", post(handle_create_edge_function))
         .route("/plugins/{slug}", put(handle_update_edge_function))
         .route("/plugins/{slug}", delete(handle_delete_edge_function))
-        .route("/user/profile", get(handle_get_profile))
+        .route("/auth/profile", get(handle_get_profile))
+        .route("/auth/profile", put(handle_update_profile))
+
         .route("/model/info", get(handle_get_model_info))
         .route("/auth/logout", post(handle_logout))
         .route("/chat/stream", post(handle_chat_stream))
@@ -113,6 +115,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/srp/test", post(handle_test_srp))
         .route("/srp/proposals", get(get_proposals))
         .route("/srp/proposals/{slug}", get(crate::feature::conversation::srp_factory::get_proposal))
+        .route("/srp/proposals/{slug}/logs", get(crate::feature::conversation::srp_factory::get_proposal_logs))
         .route("/srp/proposals/{slug}", put(update_proposal))
         .route("/srp/proposals/{slug}", delete(delete_proposal))
         .route("/srp/proposals/{slug}/approve", post(approve_proposal))
