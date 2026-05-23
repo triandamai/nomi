@@ -4,6 +4,9 @@
     import {mdIt, formatDate, setupMarkdownHelpers} from "$lib/utils";
     import {env} from '$env/dynamic/public';
     import {goto} from '$app/navigation';
+    import ReminderCard from './ReminderCard.svelte';
+    import FinanceCard from './FinanceCard.svelte';
+    import PluginProposalCard from './PluginProposalCard.svelte';
 
     let {
         content = '',
@@ -95,6 +98,19 @@
         }
     }
 
+
+    let parsedMetadata = $derived.by(() => {
+        if (!metadata) return {};
+        if (typeof metadata === 'string') {
+            try {
+                return JSON.parse(metadata);
+            } catch (e) {
+                console.error("ChatBubble: Failed to parse metadata string:", metadata);
+                return {};
+            }
+        }
+        return metadata;
+    });
 
     onMount(() => {
         init();
@@ -234,36 +250,34 @@
             </div>
         {/if}
 
-        {#if metadata?.proposal_slug}
-            <div class="mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div class="bg-border-main/20 border border-border-main rounded-2xl overflow-hidden shadow-2xl backdrop-blur-sm group/proposal hover:border-accent-emerald/40 transition-all duration-300">
-                    <div class="px-5 py-3 border-b border-border-main bg-border-main/40 flex items-center justify-between">
-                        <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-accent-emerald">
-                            <Factory class="w-3.5 h-3.5" />
-                            Autonomous Blueprint Proposed
-                        </div>
-                        <Sparkles class="w-3.5 h-3.5 text-accent-emerald animate-pulse" />
+        {#if parsedMetadata?.tool_ref_ids && Array.isArray(parsedMetadata.tool_ref_ids)}
+            <div class="flex flex-col gap-4 mb-6">
+                {#each parsedMetadata.tool_ref_ids as ref}
+                    <div class="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        {#if ref.tool?.toLowerCase().includes('reminder') || ref.tool?.toLowerCase().includes('schedule_task')}
+                            <ReminderCard ref_id={ref.ref_id} />
+                        {:else if ref.tool?.toLowerCase().includes('finance') || ref.tool?.toLowerCase().includes('expense') || ref.tool?.toLowerCase().includes('money') || ref.tool?.toLowerCase().includes('manage_finance')}
+                            <FinanceCard ref_id={ref.ref_id} />
+                        {:else if ref.tool?.toLowerCase().includes('skill') || ref.tool?.toLowerCase().includes('proposal') || ref.tool?.toLowerCase().includes('suggest')}
+                            <PluginProposalCard ref_id={ref.ref_id} />
+                        {:else}
+                            <!-- Technical Fallback for unrecognized tools -->
+                            <div class="p-3 bg-slate-900/40 border border-slate-800 rounded-xl flex items-center justify-between gap-3 text-[10px] text-slate-400 font-mono italic shadow-inner">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                                    <span>System Ref: <span class="text-white font-bold">{ref.tool}</span></span>
+                                </div>
+                                <span class="opacity-50 select-all cursor-help" title={ref.ref_id}>ID: {ref.ref_id?.slice(0, 12)}...</span>
+                            </div>
+                        {/if}
                     </div>
-                    <div class="p-5 flex flex-col gap-4">
-                        <div class="flex items-center gap-4">
-                            <div class="p-3 bg-bg-main rounded-xl border border-border-main group-hover/proposal:border-accent-emerald/20 transition-colors">
-                                <Cpu class="w-6 h-6 text-accent-emerald opacity-80" />
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Target Skill Handle</p>
-                                <h4 class="text-sm font-mono font-bold text-white truncate">{metadata.proposal_slug}</h4>
-                            </div>
-                        </div>
+                {/each}
+            </div>
+        {/if}
 
-                        <button 
-                            onclick={() => goto(`/dashboard/srp/proposals`)}
-                            class="w-full py-3 bg-accent-emerald hover:bg-accent-emerald/80 text-bg-main font-black rounded-xl text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent-emerald/10 active:scale-[0.98]"
-                        >
-                            <span>Open Factory Console</span>
-                            <ArrowRight class="w-3.5 h-3.5" />
-                        </button>
-                    </div>
-                </div>
+        {#if parsedMetadata?.proposal_slug && !parsedMetadata?.tool_ref_ids?.some(r => r.tool === 'suggest_new_skill')}
+            <div class="mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <PluginProposalCard ref_id={parsedMetadata.proposal_slug} />
             </div>
         {/if}
 

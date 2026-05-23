@@ -1095,7 +1095,7 @@ impl V2AgentOrchestrator {
         let mut total_prompt_tokens = 0;
         let mut total_answer_tokens = 0;
         let mut total_tokens = 0;
-        let accumulated_metadata = json!({});
+        let mut accumulated_metadata = json!({});
 
         while loop_count < max_loops {
             loop_count += 1;
@@ -1150,6 +1150,25 @@ impl V2AgentOrchestrator {
                     let current_calls: Vec<_> = tool_calls.into_iter().map(|c| c.clone()).collect();
                     let tool_results =
                         execute_tools(&dispatcher, current_calls.clone(), incoming_ctx.clone(), workspace_ctx.clone()).await;
+
+                    // --- 🚨 START METADATA INTERCEPTION HOOK 🚨 ---
+                    for (name, result) in &tool_results {
+                        if result.success {
+                            // 1. Capture ref_id into a list for global traceability
+                            if !result.ref_id.is_empty() {
+                                if let Some(acc_obj) = accumulated_metadata.as_object_mut() {
+                                    let refs = acc_obj.entry("tool_ref_ids").or_insert(json!([]));
+                                    if let Some(refs_arr) = refs.as_array_mut() {
+                                        refs_arr.push(json!({
+                                            "tool": name,
+                                            "ref_id": result.ref_id
+                                        }));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // --- 🚨 END METADATA INTERCEPTION HOOK 🚨 ---
 
                     tool_turns.push((current_calls, tool_results));
                 }

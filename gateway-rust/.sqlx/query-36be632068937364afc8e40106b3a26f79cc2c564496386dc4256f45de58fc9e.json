@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            r.id,\n            r.task_type as \"task_type!\",\n            r.payload as \"payload!\",\n            COALESCE(r.payload->>'message', r.content) as \"content!\",\n            (r.due_at AT TIME ZONE 'Asia/Jakarta') as due_at,\n            r.frequency,\n            r.status,\n            u.display_name as \"user_display_name\",\n            c.title as \"conversation_title\",\n            r.created_at\n        FROM reminders r\n        LEFT JOIN users u ON r.user_id = u.id\n        LEFT JOIN conversations c ON r.conversation_id = c.id\n        WHERE r.id = $1 AND r.user_id = $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "task_type!",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "payload!",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 3,
+        "name": "content!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "due_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 5,
+        "name": "frequency",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "user_display_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "conversation_title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      null,
+      null,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "36be632068937364afc8e40106b3a26f79cc2c564496386dc4256f45de58fc9e"
+}

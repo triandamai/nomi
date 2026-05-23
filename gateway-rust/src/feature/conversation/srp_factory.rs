@@ -35,6 +35,38 @@ pub async fn get_proposals(State(state): State<AppState>) -> ApiResponse<Vec<Val
     }
 }
 
+// 1.5 GET /api/srp/proposals/{slug}
+pub async fn get_proposal(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> ApiResponse<Value> {
+    let res = sqlx::query(
+        "SELECT slug, name, description, schema_json, how_it_works, compiled_code, status, intents, error_logs FROM plugin_creation_suggestions WHERE slug = $1"
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool).await;
+
+    match res {
+        Ok(Some(r)) => {
+            use sqlx::Row;
+            let val = json!({
+                "slug": r.get::<String, _>("slug"),
+                "name": r.get::<String, _>("name"),
+                "description": r.get::<String, _>("description"),
+                "schema_json": r.get::<serde_json::Value, _>("schema_json"),
+                "how_it_works": r.get::<String, _>("how_it_works"),
+                "compiled_code": r.get::<String, _>("compiled_code"),
+                "status": r.get::<String, _>("status"),
+                "intents": r.get::<Vec<String>, _>("intents"),
+                "error_logs": r.get::<Option<String>, _>("error_logs")
+            });
+            ApiResponse::ok(val, "Proposal retrieved successfully")
+        },
+        Ok(None) => ApiResponse::not_found("Proposal not found"),
+        Err(e) => ApiResponse::failed(&e.to_string())
+    }
+}
+
 // 2. PUT /api/srp/proposals/:slug
 pub async fn update_proposal(
     State(state): State<AppState>, 

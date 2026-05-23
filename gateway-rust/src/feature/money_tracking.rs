@@ -160,3 +160,50 @@ pub async fn handle_delete_money_history(
         Err(e) => Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response(),
     }
 }
+
+pub async fn handle_get_money_detail(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return Json(ApiResponse::create(401, None::<()>, "Invalid user ID in token")).into_response(),
+    };
+
+    let result = sqlx::query_as!(
+        MoneyHistoryItem,
+        r#"
+        SELECT 
+            mt.id, mt.merchant_name, mt.category, mt.description, mt.total_amount, mt.created_at as "created_at!",
+            u.display_name as user_display_name,
+            c.title as conversation_title,
+            COALESCE(
+                jsonb_agg(
+                    jsonb_build_object(
+                        'name', mti.name,
+                        'quantity', mti.quantity,
+                        'total_amount', mti.total_amount
+                    )
+                ) FILTER (WHERE mti.id IS NOT NULL),
+                '[]'::jsonb
+            ) as "items!"
+        FROM money_tracking mt
+        LEFT JOIN money_tracking_items mti ON mt.id = mti.money_tracking_id
+        LEFT JOIN users u ON mt.user_id = u.id
+        LEFT JOIN conversations c ON mt.conversation_id = c.id
+        WHERE mt.id = $1 AND mt.user_id = $2
+        GROUP BY mt.id, u.display_name, c.title
+        "#,
+        id,
+        user_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match result {
+        Ok(Some(item)) => Json(ApiResponse::ok(item, "Success")).into_response(),
+        Ok(None) => Json(ApiResponse::create(404, None::<()>, "Transaction not found")).into_response(),
+        Err(e) => Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response(),
+    }
+}

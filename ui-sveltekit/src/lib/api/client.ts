@@ -464,3 +464,20 @@ export const chatApi = {
         });
     }
 };
+
+export const api = {
+    get: <T>(endpoint: string) => apiFetch<T>(endpoint, { method: 'GET' }),
+    post: <T>(endpoint: string, body?: any) => apiFetch<T>(endpoint, { 
+        method: 'POST', 
+        body: body ? JSON.stringify(body) : undefined 
+    }),
+    patch: <T>(endpoint: string, body?: any) => apiFetch<T>(endpoint, { 
+        method: 'PATCH', 
+        body: body ? JSON.stringify(body) : undefined 
+    }),
+    put: <T>(endpoint: string, body?: any) => apiFetch<T>(endpoint, { 
+        method: 'PUT', 
+        body: body ? JSON.stringify(body) : undefined 
+    }),
+    delete: <T>(endpoint: string) => apiFetch<T>(endpoint, { method: 'DELETE' }),
+};

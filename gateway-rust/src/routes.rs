@@ -16,7 +16,7 @@ use crate::feature::conversation::{
     };
 
 use crate::feature::graph::{handle_get_graph, handle_search_graph};
-use crate::feature::reminder::handle_get_reminders;
+use crate::feature::reminder::{handle_get_reminders, handle_get_reminder_detail};
 use crate::feature::waitlist::handle_waitlist;
 use crate::feature::edge_functions::{
     handle_get_edge_functions, handle_create_edge_function, handle_delete_edge_function,
@@ -107,10 +107,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/skills/execute", post(handle_execute_skill))
         .route("/skills/readme", get(handle_get_skills_readme))
         .route("/reminders", get(handle_get_reminders))
+        .route("/reminders/{id}", get(handle_get_reminder_detail))
         .route("/readme", get(handle_get_readme))
         .route("/srp/available", get(handle_get_available_plugins))
         .route("/srp/test", post(handle_test_srp))
         .route("/srp/proposals", get(get_proposals))
+        .route("/srp/proposals/{slug}", get(crate::feature::conversation::srp_factory::get_proposal))
         .route("/srp/proposals/{slug}", put(update_proposal))
         .route("/srp/proposals/{slug}", delete(delete_proposal))
         .route("/srp/proposals/{slug}/approve", post(approve_proposal))
@@ -119,6 +121,10 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/money/history",
             get(crate::feature::money_tracking::handle_get_money_history),
+        )
+        .route(
+            "/money/history/{id}",
+            get(crate::feature::money_tracking::handle_get_money_detail),
         )
         .route(
             "/money/history/{id}",
@@ -158,6 +164,10 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/history",
             get(crate::feature::money_tracking::handle_get_money_history),
+        )
+        .route(
+            "/history/{id}",
+            get(crate::feature::money_tracking::handle_get_money_detail),
         )
         .route(
             "/history/{id}",
