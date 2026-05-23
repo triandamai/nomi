@@ -1,15 +1,20 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT script_code, slug FROM edge_functions WHERE slug = $1 LIMIT 1",
+  "query": "SELECT id, script_code, slug FROM edge_functions WHERE slug = $1 LIMIT 1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
         "name": "script_code",
         "type_info": "Text"
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
         "name": "slug",
         "type_info": "Varchar"
       }
@@ -21,8 +26,9 @@
     },
     "nullable": [
       false,
+      false,
       false
     ]
   },
-  "hash": "446bb1974addcb03d69d0489367933348c2b3ce98a783d9b1a8039b33dd7c07c"
+  "hash": "c715abd2886f0311e64016f770c2ae95db95848b59a89d9205f3ba331d7f27ad"
 }

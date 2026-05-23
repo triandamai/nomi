@@ -106,6 +106,29 @@ pub async fn process_v2_message(
         }
     }
 
+    let mut quoted_metadata = None;
+    if let Some(q) = &msg.quoted_message {
+        let mut q_with_name = json!(q);
+
+        // Attempt to look up the display name of the quoted sender from our database
+        let quoted_sender_name: Option<String> = sqlx::query_scalar!(
+            "SELECT u.display_name FROM users u JOIN channels c ON c.user_id = u.id WHERE c.external_id = $1 LIMIT 1",
+            q.sender_id
+        )
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None)
+        .flatten();
+
+        if let Some(name) = quoted_sender_name {
+            if let Some(obj) = q_with_name.as_object_mut() {
+                obj.insert("display_name".to_string(), json!(name));
+            }
+        }
+
+        quoted_metadata = Some(json!({ "quoted_message": q_with_name }));
+    }
+
     // 1. Immediate Save (Hydrated content for better history context)
     let save_user_message = save_message(
         &state.pool,
@@ -122,7 +145,7 @@ pub async fn process_v2_message(
         msg.audio_url.clone(),
         msg.doc_url.clone(),
         msg.sticker_url.clone(),
-        None,
+        quoted_metadata,
     )
     .await;
     if let Err(e) = save_user_message {

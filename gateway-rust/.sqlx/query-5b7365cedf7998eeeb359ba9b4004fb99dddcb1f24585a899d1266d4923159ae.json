@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id::text as \"id!\", COALESCE(display_name) as \"display_name!\", NULL as \"avatar_url\", role as \"role\"\n        FROM users\n        WHERE id = $1\n        ",
+  "query": "\n        SELECT id::text as \"id!\", COALESCE(display_name, name, 'User') as \"display_name!\", NULL as \"avatar_url\", role as \"role\"\n        FROM users\n        WHERE id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -36,5 +36,5 @@
       true
     ]
   },
-  "hash": "c62f8e0fbefb288c10897b2645fb2346707c215ad1ed3390ab80197b4fb2a9b7"
+  "hash": "5b7365cedf7998eeeb359ba9b4004fb99dddcb1f24585a899d1266d4923159ae"
 }

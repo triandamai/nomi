@@ -362,6 +362,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
                     name: channel.clone(),
                 },
             },
+            quoted_message: msg.quoted_message,
             v2: true,
         };
 

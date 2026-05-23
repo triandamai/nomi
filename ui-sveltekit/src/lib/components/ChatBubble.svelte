@@ -1,6 +1,19 @@
 <script lang="ts">
     import {onMount, tick} from 'svelte';
-    import {ChevronDown, ChevronRight, Cpu, ExternalLink, FileText, Play, Music, Eye, Factory, Sparkles, ArrowRight} from 'lucide-svelte';
+    import {
+        ChevronDown,
+        ChevronRight,
+        Cpu,
+        ExternalLink,
+        FileText,
+        Play,
+        Music,
+        Eye,
+        Factory,
+        Sparkles,
+        ArrowRight,
+        CornerUpLeft
+    } from 'lucide-svelte';
     import {mdIt, formatDate, setupMarkdownHelpers} from "$lib/utils";
     import {env} from '$env/dynamic/public';
     import {goto} from '$app/navigation';
@@ -149,6 +162,20 @@
     {/if}
 
     <div class="prose prose-invert max-w-none prose-sm text-slate-200">
+        {#if parsedMetadata?.quoted_message}
+            <div class="mb-3 animate-in fade-in slide-in-from-top-1 duration-300">
+                <div class="bg-slate-800/40 border-l-4 border-blue-500/50 rounded-r-xl p-3 flex flex-col gap-1 hover:bg-slate-800/60 transition-all cursor-default group/quote">
+                    <div class="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-blue-400/80">
+                        <CornerUpLeft class="w-3 h-3" />
+                        Replying to <span class="text-blue-300">{parsedMetadata.quoted_message.display_name || parsedMetadata.quoted_message.sender_id || 'Anonymous'}</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 line-clamp-2 leading-relaxed italic">
+                        {parsedMetadata.quoted_message.text}
+                    </p>
+                </div>
+            </div>
+        {/if}
+
         {#if image_url}
             <div class="mb-4 rounded-xl overflow-hidden border border-slate-800 bg-slate-900/50 group/image relative w-fit">
                 <img

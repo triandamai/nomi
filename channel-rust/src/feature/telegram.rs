@@ -196,6 +196,14 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
             });
             let original_meta = serde_json::json!(msg);
 
+            let quoted_message = msg.reply_to_message().and_then(|m| {
+                m.text().map(|text| crate::feature::QuotedMessage {
+                    message_id: m.id.to_string(),
+                    sender_id: m.from().map(|f| f.id.to_string()).unwrap_or_default(),
+                    text: text.to_string(),
+                })
+            });
+
             let inbound = InboundMessage {
                 message_id,
                 is_group,
@@ -210,6 +218,7 @@ pub async fn start_telegram_worker(bot: Bot, redis: RedisClient, storage_client:
                 audio_url,
                 doc_url,
                 sticker_url,
+                quoted_message,
                 metadata: Some(metadata),
                 original_meta: Some(original_meta),
             };

@@ -313,8 +313,8 @@ pub async fn handle_execute_skill(
         let env:HashMap<String, String> = HashMap::new();
         return match executor
             .run(
-                api_base_url,
                 bridge_token,
+                api_base_url,
                 payload.args,
                 incoming,
                 workspace,
@@ -1339,6 +1339,7 @@ pub async fn handle_chat_stream(
         source: MessageSource::Web {
             name: "web".to_string(),
         },
+        quoted_message: None,
         v2: true,
     };
 

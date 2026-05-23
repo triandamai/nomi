@@ -199,7 +199,7 @@ export const chatApi = {
         });
     },
     getProfile: () => {
-        return apiFetch<any>('/user/profile', {
+        return apiFetch<any>('/auth/profile', {
             method: 'GET'
         });
     },

@@ -8,13 +8,14 @@ use regex::Regex;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use serde_json::json;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 use uuid::Uuid;
 use wa_rs::Jid;
 use wa_rs::bot::Bot;
 use wa_rs::types::events::Event;
-use wa_rs::wa_rs_proto::whatsapp::Message;
+use wa_rs::wa_rs_proto::whatsapp::{ContextInfo, Message};
 use wa_rs::wa_rs_proto::whatsapp::message::{
     AudioMessage, DocumentMessage, ImageMessage, StickerMessage, VideoMessage,
 };
@@ -219,6 +220,7 @@ impl WhatsAppWorker {
                                     .and_then(|m| m.text.clone()))
                                 .unwrap_or("".to_string());
 
+
                             let mut text = original_text.clone();
 
                             // Task 1: The Mention Gate
@@ -274,6 +276,28 @@ impl WhatsAppWorker {
 
                             let original_meta = serde_json::json!(info);
 
+                            let quoted_message = msg
+                                .extended_text_message
+                                .as_ref()
+                                .and_then(|m| m.context_info.as_ref())
+                                .and_then(|c| {
+                                    if let Some(msg_id) = c.stanza_id.clone() {
+                                        let text = c.quoted_message.as_ref().and_then(|m| {
+                                            m.conversation.clone().or(m
+                                                .extended_text_message
+                                                .as_ref()
+                                                .and_then(|em| em.text.clone()))
+                                        });
+                                        Some(crate::feature::QuotedMessage {
+                                            message_id: msg_id,
+                                            sender_id: c.participant.clone().unwrap_or_default(),
+                                            text: text.unwrap_or_default(),
+                                        })
+                                    } else {
+                                        None
+                                    }
+                                });
+
                             let inbound = InboundMessage {
                                 is_group: !is_private,
                                 is_mentioned,
@@ -287,6 +311,7 @@ impl WhatsAppWorker {
                                 doc_url,
                                 audio_url,
                                 sticker_url,
+                                quoted_message,
                                 channel: "whatsapp".to_string(),
                                 metadata: Some(metadata),
                                 original_meta: Some(original_meta),

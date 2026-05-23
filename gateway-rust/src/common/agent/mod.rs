@@ -383,7 +383,7 @@ pub async fn execute_tools(
 
             // 2. Check Dynamic Edge Plugins
             let edge_fn = sqlx::query!(
-                "SELECT script_code, slug FROM edge_functions WHERE slug = $1 LIMIT 1",
+                "SELECT id, script_code, slug FROM edge_functions WHERE slug = $1 LIMIT 1",
                 call_name
             )
             .fetch_optional(&dispatcher.pool)
@@ -391,6 +391,22 @@ pub async fn execute_tools(
 
             if let Ok(Some(record)) = edge_fn {
                 info!("Executing dynamic edge plugin: {}", record.slug);
+
+                // Fetch Environment Variables for this plugin (Runtime Query for build safety)
+                let mut env: HashMap<String, String> = HashMap::new();
+                let env_res = sqlx::query("SELECT key, value FROM environment_edge_functions WHERE function_id = $1")
+                    .bind(record.id)
+                    .fetch_all(&dispatcher.pool)
+                    .await;
+
+                if let Ok(envs) = env_res {
+                    use sqlx::Row;
+                    for e in envs {
+                        let key: String = e.get("key");
+                        let value: String = e.get("value");
+                        env.insert(key, value);
+                    }
+                }
 
                 let executor = crate::common::tools::edge_runner::BunEdgeExecutor {
                     slug: record.slug.clone(),
@@ -400,9 +416,8 @@ pub async fn execute_tools(
                 // Secure Bridge Configuration
                 let bridge_token = "TODO_GENERATE_SECURE_JWT";
                 let api_base_url = "http://localhost:8000";
-                let env:HashMap<String, String> = HashMap::new();
 
-                let plugin_res = executor.run(api_base_url,bridge_token,args, incoming, workspace,env).await;
+                let plugin_res = executor.run(bridge_token, api_base_url, args, incoming, workspace, env).await;
 
                 let result = match plugin_res {
                     Ok(exec_res) => ToolResult {

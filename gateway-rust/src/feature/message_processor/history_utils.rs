@@ -26,6 +26,21 @@ impl HighFidelityHistory {
             history_text.push_str(&format!("- <MessageEntry timestamp=\"{}\" id=\"{}\">\n", timestamp, m.id));
             history_text.push_str(&format!("    [Actor]: {}\n", display));
             
+            // 🌟 HIGH-FIDELITY QUOTED CONTEXT: Standardized tagging for replies
+            if let Some(meta) = &m.metadata {
+                if let Some(quoted) = meta.get("quoted_message") {
+                    let q_id = quoted.get("message_id").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+                    let q_sender = quoted.get("display_name")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| quoted.get("sender_id").and_then(|v| v.as_str()))
+                        .unwrap_or("UNKNOWN");
+                    let q_text = quoted.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    
+                    history_text.push_str(&format!("    [SystemEvent: QUOTED_MESSAGE] id=\"{}\" actor=\"{}\"\n", q_id, q_sender));
+                    history_text.push_str(&format!("    [QuotedContent]: {}\n", q_text));
+                }
+            }
+
             // Content Body
             history_text.push_str(&format!("    [Content]: {}\n", m.content));
 

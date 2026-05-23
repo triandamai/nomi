@@ -192,7 +192,7 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
             });
 
             let env: HashMap<String, String> = HashMap::new();
-            let test_res = executor.run(api_base_url, bridge_token, sample_args, incoming, workspace, env).await;
+            let test_res = executor.run(bridge_token, api_base_url, sample_args, incoming, workspace, env).await;
 
             let (test_pass_success, test_pass_output) = match test_res {
                 Ok(res) => (true, format!("Execution Successful. Output: {}\nLogs: {}", res.result, res.logs)),
@@ -216,9 +216,7 @@ pub fn process_factory_build(pool: PgPool, state: AppState, slug: String) -> fut
                         parts: Some(vec![gemini_rust::Part::Text { text: evaluation_prompt, thought: None, thought_signature: None }]),
                         role: Some(gemini_rust::Role::User),
                     },
-                })
-                    .with_temperature(0.0)
-                    .execute().await?;
+                }).with_temperature(0.0).execute().await?;
 
                 let evaluation = eval_res.text().trim().to_uppercase();
 

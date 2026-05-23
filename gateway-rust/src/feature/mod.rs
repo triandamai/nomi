@@ -15,6 +15,13 @@ pub mod money_tracking;
 pub mod reminder;
 pub mod edge_functions;
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct QuotedMessage {
+    pub message_id: String,
+    pub sender_id: String,
+    pub text: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InboundMessage {
     pub is_group: bool,
@@ -30,6 +37,7 @@ pub struct InboundMessage {
     pub audio_url: Option<String>,
     pub doc_url: Option<String>,
     pub sticker_url: Option<String>,
+    pub quoted_message: Option<QuotedMessage>,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
     #[serde(default)]
@@ -106,6 +114,7 @@ pub struct UnifiedMessage {
     pub sticker_url: Option<String>,
     pub doc_url: Option<String>,
     pub source: MessageSource,
+    pub quoted_message: Option<QuotedMessage>,
     pub v2: bool,
 }
 

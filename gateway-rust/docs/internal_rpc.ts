@@ -1,4 +1,3 @@
-
 type Meta = {
     code: number,
     message: string
@@ -61,7 +60,7 @@ class NomiRpc {
     private incoming: any
     private workspace: any
     private payload: any
-    private env: Env= {};
+    private env: Env = {};
 
     private constructor(
         BASE_URL: string,
@@ -69,7 +68,7 @@ class NomiRpc {
         incoming: any,
         payload: any,
         workspace: any,
-        env:Env
+        env: Env
     ) {
         this.BASE_URL = BASE_URL
         this.token = token
@@ -85,7 +84,7 @@ class NomiRpc {
         incoming: any,
         payload: any,
         workspace: any,
-        env:Env
+        env: Env
     ) {
         return new NomiRpc(
             BASE_URL,
@@ -102,7 +101,7 @@ class NomiRpc {
         start_date: string | null | undefined,
         end_date: string | null | undefined
     ) {
-        const response = apiFetch(
+        return apiFetch(
             this.BASE_URL,
             this.token,
             "/api/internal/rpc/retrieve-knowledge",
@@ -112,15 +111,15 @@ class NomiRpc {
                     query: query_text,
                     start_date: start_date,
                     end_date: end_date,
+                    limit:10,
                     conversation_id: this.workspace.id
                 })
             }
         )
-        return response
     }
 
-    var(key:string):string|null{
-       return  this.env[key]
+    var(key: string): string | null {
+        return this.env[key]
     }
 }
 
@@ -134,6 +133,6 @@ const rpc: NomiRpc = NomiRpc.new(
     __env__
 )
 
-function get_env(key:string):string|null|undefined{
+function get_env(key: string): string | null | undefined {
     return rpc.var(key)
 }

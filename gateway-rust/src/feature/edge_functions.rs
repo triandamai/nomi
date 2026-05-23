@@ -369,8 +369,8 @@ pub async fn handle_execute_edge_function(
     let env: HashMap<String, String> = HashMap::new();
     match executor
         .run(
-            api_base_url,
             bridge_token,
+            api_base_url,
             payload.args,
             incoming,
             workspace,
