@@ -1,12 +1,12 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                users.display_name as display_name,\n                messages.created_at,\n                messages.role,\n                messages.content,\n                messages.image_url,\n                messages.video_url,\n                messages.audio_url,\n                messages.document_url,\n                messages.sticker_url,\n                messages.metadata\n            FROM messages LEFT JOIN users ON users.id = messages.user_id\n            WHERE conversation_id = $1\n            ORDER BY created_at\n        DESC LIMIT 15",
+  "query": "SELECT\n                messages.id,\n                messages.created_at,\n                messages.role,\n                messages.content,\n                users.display_name as display_name,\n                messages.image_url,\n                messages.video_url,\n                messages.audio_url,\n                messages.document_url,\n                messages.sticker_url,\n                messages.metadata\n            FROM messages LEFT JOIN users ON users.id = messages.user_id\n            WHERE conversation_id = $1\n            ORDER BY created_at\n        DESC LIMIT 15",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "display_name",
-        "type_info": "Text"
+        "name": "id",
+        "type_info": "Uuid"
       },
       {
         "ordinal": 1,
@@ -25,31 +25,36 @@
       },
       {
         "ordinal": 4,
+        "name": "display_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
         "name": "image_url",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "video_url",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "audio_url",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "document_url",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "sticker_url",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "metadata",
         "type_info": "Jsonb"
       }
@@ -60,10 +65,11 @@
       ]
     },
     "nullable": [
-      true,
+      false,
       true,
       false,
       false,
+      true,
       true,
       true,
       true,
@@ -72,5 +78,5 @@
       true
     ]
   },
-  "hash": "7789369843d57ed362aaf4f87b6a1b6aa18ef537e5e8b723932f7d93ab2966bf"
+  "hash": "e6a38e8cef4ebeb674663bd388da5d05d64cb023a888170f00698b3f8a33c911"
 }

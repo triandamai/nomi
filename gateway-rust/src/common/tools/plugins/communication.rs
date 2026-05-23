@@ -130,6 +130,7 @@ impl NomiToolPlugin for CommunicationPlugin {
                 sticker_url: None,
                 user_id: Some(sender_uuid),
                 created_at: chrono::Utc::now(),
+                metadata: None,
             };
 
             let members = user_uuid.map(|u| vec![u]).unwrap_or_default();

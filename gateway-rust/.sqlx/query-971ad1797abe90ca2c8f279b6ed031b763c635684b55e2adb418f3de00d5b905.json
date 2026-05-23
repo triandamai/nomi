@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO messages (conversation_id, role, content, thought, user_id, prompt_tokens, answer_tokens, total_tokens, image_url, video_url, audio_url, document_url, sticker_url)\n         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)\n         RETURNING id, created_at",
+  "query": "INSERT INTO messages (conversation_id, role, content, thought, user_id, prompt_tokens, answer_tokens, total_tokens, image_url, video_url, audio_url, document_url, sticker_url, metadata)\n         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)\n         RETURNING id, created_at, metadata",
   "describe": {
     "columns": [
       {
@@ -12,6 +12,11 @@
         "ordinal": 1,
         "name": "created_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "metadata",
+        "type_info": "Jsonb"
       }
     ],
     "parameters": {
@@ -28,13 +33,15 @@
         "Varchar",
         "Varchar",
         "Varchar",
-        "Varchar"
+        "Varchar",
+        "Jsonb"
       ]
     },
     "nullable": [
       false,
+      true,
       true
     ]
   },
-  "hash": "f498e521ea6cf9b3d9de3cab2a187f348a2dc592b1fb6693ef56f12d20a973dd"
+  "hash": "971ad1797abe90ca2c8f279b6ed031b763c635684b55e2adb418f3de00d5b905"
 }

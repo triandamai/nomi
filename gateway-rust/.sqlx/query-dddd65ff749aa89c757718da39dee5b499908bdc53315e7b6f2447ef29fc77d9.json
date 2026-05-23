@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT m.id,\n               m.conversation_id as \"conversation_id!\",\n               u.display_name,\n               m.role,\n               m.content,\n               m.thought,\n               m.user_id,\n               m.created_at as \"created_at!\",\n               m.total_tokens,\n               m.answer_tokens,\n               m.prompt_tokens,\n               m.image_url,\n               m.video_url,\n               m.audio_url,\n               m.document_url,\n               m.sticker_url\n        FROM messages as m\n        LEFT JOIN users AS u ON u.id = m.user_id\n        WHERE m.conversation_id = $1 AND m.created_at < $2\n        ORDER BY m.created_at DESC\n        LIMIT $3\n        ",
+  "query": "\n        SELECT m.id,\n               m.conversation_id as \"conversation_id!\",\n               u.display_name,\n               m.role,\n               m.content,\n               m.thought,\n               m.user_id,\n               m.created_at as \"created_at!\",\n               m.total_tokens,\n               m.answer_tokens,\n               m.prompt_tokens,\n               m.image_url,\n               m.video_url,\n               m.audio_url,\n               m.document_url,\n               m.sticker_url,\n               m.metadata\n        FROM messages as m\n        LEFT JOIN users AS u ON u.id = m.user_id\n        WHERE m.conversation_id = $1 AND m.created_at < $2\n        ORDER BY m.created_at DESC\n        LIMIT $3\n        ",
   "describe": {
     "columns": [
       {
@@ -82,6 +82,11 @@
         "ordinal": 15,
         "name": "sticker_url",
         "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
+        "name": "metadata",
+        "type_info": "Jsonb"
       }
     ],
     "parameters": {
@@ -107,8 +112,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "f06ecadd9d5ddbce23488bf74524d911866af675ceb9c5e0e625559f821cd2f0"
+  "hash": "dddd65ff749aa89c757718da39dee5b499908bdc53315e7b6f2447ef29fc77d9"
 }

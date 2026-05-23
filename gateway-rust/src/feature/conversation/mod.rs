@@ -719,7 +719,8 @@ pub async fn handle_get_messages(
                m.video_url,
                m.audio_url,
                m.document_url,
-               m.sticker_url
+               m.sticker_url,
+               m.metadata
         FROM messages as m
         LEFT JOIN users AS u ON u.id = m.user_id
         WHERE m.conversation_id = $1 AND m.created_at < $2

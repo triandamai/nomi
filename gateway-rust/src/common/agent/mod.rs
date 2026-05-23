@@ -465,7 +465,7 @@ pub fn build_system_prompt(history: String, memories: String, system_prompt: Str
 
     format!(
         "{}\n
-         {}\n
+         {}\n\
         ### DATA CONTEXT\n{}",
         base_prompt,
         PromptRegistry::default_rules_prompts(),
@@ -476,7 +476,7 @@ pub fn build_system_prompt(history: String, memories: String, system_prompt: Str
 pub fn build_context(history: String, memories: String) -> String {
     format!(
         "[] Current Time: {} \n\
-         [] Past Memories:\n {} \n,
+         [] Past Memories:\n{}\n\n\
          [] Recent History:\n{}\n",
         Utc::now().to_rfc3339(),
         memories,

@@ -1,8 +1,9 @@
 <script lang="ts">
     import {onMount, tick} from 'svelte';
-    import {ChevronDown, ChevronRight, Cpu, ExternalLink, FileText, Play, Music, Eye} from 'lucide-svelte';
+    import {ChevronDown, ChevronRight, Cpu, ExternalLink, FileText, Play, Music, Eye, Factory, Sparkles, ArrowRight} from 'lucide-svelte';
     import {mdIt, formatDate, setupMarkdownHelpers} from "$lib/utils";
     import {env} from '$env/dynamic/public';
+    import {goto} from '$app/navigation';
 
     let {
         content = '',
@@ -12,6 +13,7 @@
         audio_url = '',
         document_url = '',
         sticker_url = '',
+        metadata = {},
         onToggleThought = () => {}
     } = $props();
 
@@ -229,6 +231,39 @@
                         {mediaContext}
                     </div>
                 {/if}
+            </div>
+        {/if}
+
+        {#if metadata?.proposal_slug}
+            <div class="mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div class="bg-border-main/20 border border-border-main rounded-2xl overflow-hidden shadow-2xl backdrop-blur-sm group/proposal hover:border-accent-emerald/40 transition-all duration-300">
+                    <div class="px-5 py-3 border-b border-border-main bg-border-main/40 flex items-center justify-between">
+                        <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-accent-emerald">
+                            <Factory class="w-3.5 h-3.5" />
+                            Autonomous Blueprint Proposed
+                        </div>
+                        <Sparkles class="w-3.5 h-3.5 text-accent-emerald animate-pulse" />
+                    </div>
+                    <div class="p-5 flex flex-col gap-4">
+                        <div class="flex items-center gap-4">
+                            <div class="p-3 bg-bg-main rounded-xl border border-border-main group-hover/proposal:border-accent-emerald/20 transition-colors">
+                                <Cpu class="w-6 h-6 text-accent-emerald opacity-80" />
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Target Skill Handle</p>
+                                <h4 class="text-sm font-mono font-bold text-white truncate">{metadata.proposal_slug}</h4>
+                            </div>
+                        </div>
+
+                        <button 
+                            onclick={() => goto(`/dashboard/srp/proposals`)}
+                            class="w-full py-3 bg-accent-emerald hover:bg-accent-emerald/80 text-bg-main font-black rounded-xl text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent-emerald/10 active:scale-[0.98]"
+                        >
+                            <span>Open Factory Console</span>
+                            <ArrowRight class="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                </div>
             </div>
         {/if}
 

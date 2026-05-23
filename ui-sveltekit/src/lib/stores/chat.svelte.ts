@@ -17,6 +17,7 @@ export type Message = {
     user_id?: string;
     total_tokens: number;
     created_at?: string;
+    metadata?: Record<string, any>;
     toolCalls?: Array<{ tool: any, result?: string }>;
 };
 
@@ -59,6 +60,7 @@ function createChatStore() {
                     image_url: data.image_url,
                     user_id: data.user_id,
                     total_tokens: data.total_tokens,
+                    metadata: data.metadata,
                     created_at: data.created_at
                 } as Message)
             } else {
@@ -70,6 +72,7 @@ function createChatStore() {
                     image_url: data.image_url,
                     user_id: data.user_id,
                     total_tokens: data.total_tokens,
+                    metadata: data.metadata,
                     created_at: data.created_at
                 } as Message)
 

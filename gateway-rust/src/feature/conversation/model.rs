@@ -76,6 +76,7 @@ pub struct MessageItem {
     pub sticker_url: Option<String>,
     pub user_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
+    pub metadata: Option<Value>,
 }
 
 impl MessageItem {
@@ -94,6 +95,7 @@ impl MessageItem {
             "audio_url": self.audio_url.as_ref(),
             "document_url": self.document_url.as_ref(),
             "sticker_url": self.sticker_url.as_ref(),
+            "metadata": self.metadata.as_ref(),
             "created_at": self.created_at
         })
     }

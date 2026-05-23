@@ -316,6 +316,7 @@
                                 audio_url={msg.audio_url}
                                 document_url={msg.document_url}
                                 sticker_url={msg.sticker_url}
+                                metadata={msg.metadata}
                                 onToggleThought={(expanded: boolean) => handleToggleThought(expanded, index === chatStore.messages.length - 1)}
                         />
                     </div>

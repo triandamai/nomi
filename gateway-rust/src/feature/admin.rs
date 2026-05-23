@@ -597,6 +597,7 @@ pub async fn handle_outbound_redis(
         sticker_url: None,
         user_id: None,
         created_at: Default::default(),
+        metadata: None,
     };
     let _ = send_message_to_subscriber(
         &state,

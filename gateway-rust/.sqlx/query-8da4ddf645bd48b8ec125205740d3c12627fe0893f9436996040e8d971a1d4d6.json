@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE conversations SET cumulative_tokens = COALESCE(cumulative_tokens, 0) + $1, metadata = COALESCE(metadata, '{}'::jsonb) || $2 WHERE id = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8da4ddf645bd48b8ec125205740d3c12627fe0893f9436996040e8d971a1d4d6"
+}

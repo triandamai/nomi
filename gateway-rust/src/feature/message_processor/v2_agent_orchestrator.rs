@@ -123,12 +123,14 @@ impl V2AgentOrchestrator {
             true,
         );
 
-        let history = sqlx::query!(
+        let history = sqlx::query_as!(
+            crate::common::repository::message_repo::MessageItemWithDisplay,
             "SELECT
-                users.display_name as display_name,
+                messages.id,
                 messages.created_at,
                 messages.role,
                 messages.content,
+                users.display_name as display_name,
                 messages.image_url,
                 messages.video_url,
                 messages.audio_url,
@@ -144,57 +146,10 @@ impl V2AgentOrchestrator {
         .fetch_all(&state.pool)
         .await?;
 
-        let mut history_text = String::new();
-        for msg_h in history.into_iter().rev() {
-            let is_processed = if let Some(meta) = msg_h.metadata {
-                meta.get("is_processed")
-                    .and_then(|v| v.as_bool())
-                    .or_else(|| {
-                        meta.get("is_processed")
-                            .and_then(|v| v.as_str().map(|s| s == "true"))
-                    })
-                    .unwrap_or(false)
-            } else {
-                false
-            };
-
-            let image_url = match msg_h.image_url {
-                Some(path) => {
-                    let status = if is_processed {
-                        "[ALREADY PROCESSED]"
-                    } else {
-                        "[PENDING ACTION]"
-                    };
-                    format!(
-                        " - Image URL: {} {} \n",
-                        state.storage.get_full_url(&path),
-                        status
-                    )
-                }
-                _ => "".to_string(),
-            };
-
-            let role_label = match msg_h.role.as_str() {
-                "user" => match msg_h.display_name {
-                    None => "User".to_string(),
-                    Some(ref user) => user.clone(),
-                },
-                "assistant" => "Nomi".to_string(),
-                _ => "System".to_string(),
-            };
-
-            history_text.push_str(&format!(
-                "-[{}] {}: {}.{}\n",
-                msg_h
-                    .created_at
-                    .unwrap_or(Utc::now())
-                    .format("%Y-%m-%d %H:%M")
-                    .to_string(),
-                role_label,
-                msg_h.content,
-                image_url
-            ));
-        }
+        let mut history_text = crate::feature::message_processor::history_utils::HighFidelityHistory::format_messages(
+            history,
+            &state.storage,
+        );
 
         let dispatcher = ToolDispatcher::new(
             state.pool.clone(),
@@ -539,6 +494,7 @@ impl V2AgentOrchestrator {
         let mut total_prompt_tokens = 0;
         let mut total_answer_tokens = 0;
         let mut total_tokens = 0;
+        let mut accumulated_metadata = json!({});
         let mut has_retried = false;
 
         while loop_count < max_loops {
@@ -641,15 +597,13 @@ impl V2AgentOrchestrator {
                             info!(
                                 "Truncation detected (ends with ':'). Triggering self-correction."
                             );
-                            history_text.push_str(&format!(
-                                "-[{}] Nomi: {}.",
-                                Utc::now().format("%Y-%m-%d %H:%M").to_string(),
-                                chunk.content
-                            ));
-                            history_text.push_str(&format!(
-                                "-[{}] System: Continue your response starting from the code block.",
-                                Utc::now().format("%Y-%m-%d %H:%M").to_string()
-                            ));
+                            let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S");
+                            history_text.push_str(&format!("- <MessageEntry timestamp=\"{}\" id=\"CORRECTION_TRUNCATION\" type=\"ASSISTANT_RETRY\">\n", timestamp));
+                            history_text.push_str("    [Actor]: Nomi\n");
+                            history_text.push_str(&format!("    [Content]: {}\n", chunk.content));
+                            history_text.push_str("  </MessageEntry>\n\n");
+                            
+                            history_text.push_str(&format!("- <SystemContext trigger=\"SELF_CORRECTION\" reason=\"Truncation detected (ends with ':')\" directive=\"Continue your response starting from the code block.\" />\n"));
                             continue;
                         }
 
@@ -661,11 +615,11 @@ impl V2AgentOrchestrator {
 
                     // Append model's output to history_text to ensure context persists across the loop turns
                     if !turn_text.is_empty() {
-                        history_text.push_str(&format!(
-                            "-[{}] Nomi: {}.",
-                            Utc::now().format("%Y-%m-%d %H:%M").to_string(),
-                            turn_text
-                        ));
+                        let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S");
+                        history_text.push_str(&format!("- <MessageEntry timestamp=\"{}\" id=\"LIVE_TURN_NOMI\" type=\"ASSISTANT_THOUGHT\">\n", timestamp));
+                        history_text.push_str("    [Actor]: Nomi\n");
+                        history_text.push_str(&format!("    [Content]: {}\n", turn_text));
+                        history_text.push_str("  </MessageEntry>\n\n");
                     }
 
                     total_prompt_tokens += chunk.prompt_tokens;
@@ -690,10 +644,7 @@ impl V2AgentOrchestrator {
                                 "Synthesis Turn: Model tried to stop after tools without content. Forcing synthesis turn."
                             );
                             // Force history update to reflect tool results were seen
-                            history_text.push_str(&format!(
-                                "-[{}] System: Please synthesize the tool results into a final response for the user. Do not call the same tools again.",
-                                Utc::now().format("%Y-%m-%d %H:%M").to_string()
-                            ));
+                            history_text.push_str("- <SystemContext trigger=\"ORCHESTRATOR\" reason=\"Tool results detected with no final response\" directive=\"Please synthesize the tool results into a final response for the user. Do not call the same tools again.\" />\n");
                             continue;
                         }
 
@@ -790,7 +741,27 @@ impl V2AgentOrchestrator {
                         // Automatically re-load the system prompt definitions with the new domain rules included!
                         system_prompt = build_system_prompt(&intents);
                     }
-                    // --- 🚨 END DISCOVERY INTERCEPTION HOOK 🚨 ---
+                    // --- 🚨 START METADATA INTERCEPTION HOOK 🚨 ---
+                    for (_, result) in &tool_results {
+                        if result.success {
+                            if let Some(start_idx) = result.content.find("[METADATA:") {
+                                if let Some(end_idx) = result.content[start_idx..].find(']') {
+                                    let meta_raw = &result.content[start_idx + 10..start_idx + end_idx];
+                                    if let Ok(meta_json) = serde_json::from_str::<serde_json::Value>(meta_raw) {
+                                        // Merge new metadata into accumulated_metadata
+                                        if let Some(acc_obj) = accumulated_metadata.as_object_mut() {
+                                            if let Some(new_obj) = meta_json.as_object() {
+                                                for (k, v) in new_obj {
+                                                    acc_obj.insert(k.clone(), v.clone());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // --- 🚨 END METADATA INTERCEPTION HOOK 🚨 ---
 
                     let mut unknown_tool_called = false;
                     for (_, res) in &tool_results {
@@ -811,20 +782,11 @@ impl V2AgentOrchestrator {
                         continue;
                     }
 
-                    // Append Tool Responses to history_text to enforce memory management persistence
-                    for (name, result) in &tool_results {
-                        history_text.push_str(&format!(
-                            "-[{}] System (Tool {} Result): {}. [STATUS: {}]",
-                            Utc::now().format("%Y-%m-%d %H:%M").to_string(),
-                            name,
-                            if result.success {
-                                &result.content
-                            } else {
-                                &result.error
-                            },
-                            if result.success { "SUCCESS" } else { "ERROR" }
-                        ));
-                    }
+                    // 🌟 UNIFIED TELEMETRY FORMATTING: Using the centralized HighFidelityHistory utility
+                    let telemetry = crate::feature::message_processor::history_utils::HighFidelityHistory::format_tool_results(
+                        &tool_results
+                    );
+                    history_text.push_str(&telemetry);
 
                     tool_turns.push((current_calls, tool_results.clone()));
 
@@ -901,13 +863,15 @@ impl V2AgentOrchestrator {
                 None,
                 function_result.prompt_tokens + intent.input_tokens.to_i32().unwrap_or(0),
                 function_result.answer_tokens + intent.output_tokens.to_i32().unwrap_or(0),
-                function_result.total_tokens + intent.total_tokens.to_i32().unwrap_or(0),
+                total_tokens + intent.total_tokens.to_i32().unwrap_or(0),
                 None,
                 None,
                 None,
                 None,
                 None,
-            )
+                Some(accumulated_metadata.clone()),
+                )
+
             .await;
             if let Err(err) = save_message{
                 info!("Failed save message result {}",err);
@@ -1019,7 +983,7 @@ impl V2AgentOrchestrator {
             let tz: chrono_tz::Tz = timezone_str.parse().unwrap_or(chrono_tz::UTC);
             let now_local = Utc::now().with_timezone(&tz);
 
-            // Situation Awareness Injection
+            // 🌟 HIGH-FIDELITY SYSTEM CONTEXT: Standardized tagging for background triggers
             let (trigger_type, trigger_reason) = match &trigger {
                 ExecutionTrigger::UserRequested { reason } => ("USER_REQUESTED", reason),
                 ExecutionTrigger::ProactiveCheck { reason } => ("PROACTIVE_CHECK", reason),
@@ -1027,7 +991,7 @@ impl V2AgentOrchestrator {
             };
 
             combined.push_str(&format!(
-                "[INTERNAL CONTEXT: This turn was triggered by a SCHEDULED TASK. Trigger Type: {}. Reason: {}. Current Local Time: {}.]\n",
+                "- <SystemContext trigger=\"{}\" reason=\"{}\" timestamp=\"{}\" />\n",
                 trigger_type,
                 trigger_reason,
                 now_local.to_rfc3339()
@@ -1117,6 +1081,7 @@ impl V2AgentOrchestrator {
         let mut total_prompt_tokens = 0;
         let mut total_answer_tokens = 0;
         let mut total_tokens = 0;
+        let accumulated_metadata = json!({});
 
         while loop_count < max_loops {
             loop_count += 1;
@@ -1199,6 +1164,7 @@ impl V2AgentOrchestrator {
             None,
             None,
             None,
+            Some(accumulated_metadata.clone()),
         )
         .await;
 

@@ -122,6 +122,7 @@ pub async fn process_v2_message(
         msg.audio_url.clone(),
         msg.doc_url.clone(),
         msg.sticker_url.clone(),
+        None,
     )
     .await;
     if let Err(e) = save_user_message {

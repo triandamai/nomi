@@ -4,6 +4,21 @@ use sqlx::PgPool;
 use tracing::info;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MessageItemWithDisplay {
+    pub id: Uuid,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub role: String,
+    pub content: String,
+    pub display_name: Option<String>,
+    pub image_url: Option<String>,
+    pub video_url: Option<String>,
+    pub audio_url: Option<String>,
+    pub document_url: Option<String>,
+    pub sticker_url: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
 pub async fn mark_last_media_processed(
     pool: &sqlx::PgPool,
     conversation_id: Uuid,
@@ -85,6 +100,7 @@ pub async fn save_message(
     audio_url: Option<String>,
     document_url: Option<String>,
     sticker_url: Option<String>,
+    metadata: Option<serde_json::Value>,
 ) -> anyhow::Result<MessageItem> {
     info!(
         "Saving message to conversation:{:?} from user:{:?}",
@@ -93,9 +109,9 @@ pub async fn save_message(
     let mut tx = pool.begin().await?;
 
     let save_message = sqlx::query!(
-        "INSERT INTO messages (conversation_id, role, content, thought, user_id, prompt_tokens, answer_tokens, total_tokens, image_url, video_url, audio_url, document_url, sticker_url)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-         RETURNING id, created_at",
+        "INSERT INTO messages (conversation_id, role, content, thought, user_id, prompt_tokens, answer_tokens, total_tokens, image_url, video_url, audio_url, document_url, sticker_url, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         RETURNING id, created_at, metadata",
         conversation_id,
         role,
         content,
@@ -108,7 +124,8 @@ pub async fn save_message(
         video_url,
         audio_url,
         document_url,
-        sticker_url
+        sticker_url,
+        metadata
     )
         .fetch_one(&mut *tx)
         .await;
@@ -120,17 +137,19 @@ pub async fn save_message(
 
     let row = save_message?;
 
-    let meta = Some(json!({
+    let meta_update = json!({
         "last_image_url":image_url,
         "last_video_url":video_url,
         "last_audio_url":audio_url,
         "last_doc_url":document_url,
         "last_sticker_url":sticker_url
-    }));
+    });
+    
+    // 🌟 SRP EVOLUTION: Use JSONB merge (||) to prevent overwriting existing conversation metadata
     let save_convo = sqlx::query!(
-        "UPDATE conversations SET cumulative_tokens = COALESCE(cumulative_tokens, 0) + $1, metadata=$2 WHERE id = $3",
+        "UPDATE conversations SET cumulative_tokens = COALESCE(cumulative_tokens, 0) + $1, metadata = COALESCE(metadata, '{}'::jsonb) || $2 WHERE id = $3",
         total_tokens,
-        meta,
+        meta_update,
         conversation_id
     )
         .execute(&mut *tx)
@@ -187,6 +206,7 @@ pub async fn save_message(
                 document_url,
                 sticker_url,
                 user_id,
+                metadata: row.metadata,
                 created_at: row.created_at.unwrap_or_else(chrono::Utc::now),
             })
         }
