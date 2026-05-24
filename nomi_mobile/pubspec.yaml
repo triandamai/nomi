@@ -1,0 +1,52 @@
+name: nomi_mobile
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.9
+  dio: ^5.9.2
+  flutter_riverpod: ^3.3.1
+  flutter_secure_storage: ^10.3.0
+  json_annotation: ^4.12.0
+  flutter_markdown: ^0.7.7+1
+  lucide_icons_flutter: ^3.1.14+1
+  intl: ^0.20.2
+  uuid: ^4.5.3
+  path_provider: ^2.1.5
+  google_fonts: ^8.1.0
+  url_launcher: ^6.3.2
+  webview_flutter: ^4.13.1
+  flutter_background_service: ^5.1.0
+  cached_network_image: ^3.4.1
+  audioplayers: ^6.6.0
+  video_player: ^2.11.1
+  chewie: ^1.14.1
+  image_picker: ^1.2.2
+  mqtt_client: ^10.11.11
+  markdown: ^7.3.1
+  drift: ^2.31.0
+  sqlite3_flutter_libs: ^0.6.0+eol
+  path: ^1.9.1
+  shared_preferences: ^2.5.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  json_serializable: ^6.14.0
+  build_runner: ^2.5.4
+  drift_dev: ^2.33.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
