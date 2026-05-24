@@ -166,9 +166,12 @@ export const chatApi = {
         url.searchParams.append('limit', limit.toString());
         return apiFetch<any[]>(`/conversations/${conversationId}/messages` + url.search);
     },
-    getGraph: (conversationId?: string) => {
-        const url = conversationId ? `/graph?conversation_id=${conversationId}` : '/graph';
-        return apiFetch<any>(url);
+    getGraph: (conversationId?: string, month?: number, year?: number) => {
+        const url = new URL(`${BASE_URL}/graph`);
+        if (conversationId) url.searchParams.append('conversation_id', conversationId);
+        if (month) url.searchParams.append('month', month.toString());
+        if (year) url.searchParams.append('year', year.toString());
+        return apiFetch<any>(`/graph` + url.search);
     },
     searchGraph: (query: string) => {
         return apiFetch<any>(`/graph/search?q=${encodeURIComponent(query)}`);

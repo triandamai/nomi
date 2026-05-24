@@ -57,10 +57,12 @@
                                 .nodeId('id')
                                 .nodeLabel((node: any) => `${node.label || 'Unknown'} (${node.node_type || 'Entity'})${node.conversation_id && node.conversation_id !== 'global' ? ' [Current Soul]' : ' [Global]'}`)
                                 .nodeAutoColorBy('node_type')
+                                .d3VelocityDecay(0.3) // Faster stabilization for large graphs
                                 .nodeThreeObject((node: any) => {
                                     const nodeType = String(node.node_type || '').toLowerCase();
                                     const isSummary = nodeType === 'summary' || node.id === 'summary';
                                     const isLocal = node.conversation_id && node.conversation_id !== 'global';
+                                    const isImportant = isLocal || node.id === highlightedNodeId || isSummary;
 
                                     // Defensive size check
                                     let size = isSummary ? 12 : 5;
@@ -68,43 +70,36 @@
 
                                     let color = node.id === highlightedNodeId ? '#ffffff' : (node.color || '#94a3b8');
 
-                                    // Brighter color for local nodes
-                                    if (isLocal && node.id !== highlightedNodeId) {
-                                        // Make the color brighter/more saturated
-                                        const c = new THREE.Color(color);
-                                        c.offsetHSL(0, 0.2, 0.1);
-                                        color = `#${c.getHexString()}`;
-                                    }
-
                                     const material = new THREE.MeshPhongMaterial({
                                         color: color,
                                         transparent: true,
                                         opacity: 0.9,
                                         shininess: isLocal ? 100 : 30,
                                         emissive: isLocal ? color : 0x000000,
-                                        emissiveIntensity: isLocal ? 0.5 : 0
+                                        emissiveIntensity: isLocal ? 0.3 : 0
                                     });
 
-                                    const geometry = new THREE.SphereGeometry(size, 32, 32);
+                                    const geometry = new THREE.SphereGeometry(size, isSummary ? 32 : 16, isSummary ? 32 : 16);
                                     const mesh = new THREE.Mesh(geometry, material);
 
                                     node.__sphereMesh = mesh;
                                     node.__baseSize = size;
 
-                                    // Create a group to hold both the sphere and the permanent label
                                     const group = new THREE.Group();
                                     group.add(mesh);
 
-                                    // Add permanent label using SpriteText
-                                    const sprite = new (SpriteText as any)(node.label || 'Unknown');
-                                    sprite.color = node.id === highlightedNodeId ? '#ffffff' : (isLocal ? '#f8fafc' : '#94a3b8'); // slate-50 or slate-400
-                                    sprite.textHeight = isSummary ? 8 : 4;
-                                    sprite.position.y = size + (isSummary ? 10 : 6);
-                                    group.add(sprite);
+                                    // ⚡ OPTIMIZATION: Only add permanent labels for 'summary' or 'important' nodes
+                                    // Hidden nodes' labels show up on hover via .nodeLabel()
+                                    if (isImportant || ragStore.graphData.nodes.length < 30) {
+                                        const sprite = new (SpriteText as any)(node.label || 'Unknown');
+                                        sprite.color = node.id === highlightedNodeId ? '#ffffff' : (isLocal ? '#f8fafc' : '#94a3b8');
+                                        sprite.textHeight = isSummary ? 8 : 4;
+                                        sprite.position.y = size + (isSummary ? 10 : 6);
+                                        group.add(sprite);
+                                        node.__labelSprite = sprite;
+                                    }
 
                                     node.__threeObj = group;
-                                    node.__labelSprite = sprite;
-
                                     return group;
                                 })
                                 .linkDirectionalParticles(2)
@@ -140,6 +135,12 @@
                                 .width(graphContainer.clientWidth)
                                 .height(graphContainer.clientHeight);
 
+                            // 📱 MOBILE ADAPTATION: Adjust camera distance for smaller screens
+                            const isMobile = window.innerWidth < 768;
+                            if (isMobile) {
+                                graphInstance.cameraPosition({ z: ORBIT_DISTANCE * 1.5 });
+                            }
+
                             if (ragStore.graphData && ragStore.graphData.nodes.length > 0) {
                                 graphInstance.graphData(ragStore.graphData);
                             }
@@ -151,7 +152,13 @@
                             scene.add(dirLight);
 
                             window.addEventListener('resize', handleResize);
+                            
+                            // Use ResizeObserver for more reliable container-based resizing
+                            const resizeObserver = new ResizeObserver(() => handleResize());
+                            resizeObserver.observe(graphContainer);
+
                             graphContainer.addEventListener('mousedown', handleInteraction);
+                            graphContainer.addEventListener('touchstart', handleInteraction); // Mobile support
                             graphContainer.addEventListener('wheel', handleInteraction);
 
                             let time = 0;
@@ -165,14 +172,22 @@
                                     });
                                 }
 
+                                // ⚡ PERFORMANCE: Only loop through nodes if they are highlighted or we have few nodes
+                                // This significantly reduces O(N) overhead for large graphs
                                 if (ragStore.graphData?.nodes) {
-                                    ragStore.graphData.nodes.forEach((node: any) => {
+                                    const nodesCount = ragStore.graphData.nodes.length;
+                                    const updateFrequency = nodesCount > 100 ? 5 : 1; // Only update every 5th node for large graphs
+                                    
+                                    ragStore.graphData.nodes.forEach((node: any, idx: number) => {
+                                        if (nodesCount > 50 && idx % updateFrequency !== 0 && node.id !== highlightedNodeId) return;
+
                                         if (node.__threeObj && node.__baseSize) {
                                             const isLocal = node.conversation_id && node.conversation_id !== 'global';
                                             const offset = node.id ? node.id.charCodeAt(0) : 0;
 
-                                            // Stronger pulse for local nodes
-                                            const pulseIntensity = isLocal ? 0.1 : 0.05;
+                                            // Only pulse local or highlighted nodes
+                                            const isImportant = isLocal || node.id === highlightedNodeId;
+                                            const pulseIntensity = isImportant ? 0.1 : 0.02;
                                             const scale = 1 + Math.sin(time + offset) * pulseIntensity;
                                             node.__threeObj.scale.setScalar(scale);
 
@@ -188,7 +203,6 @@
                                                 node.__sphereMesh.material.color.copy(color);
 
                                                 if (isLocal) {
-                                                    // Local nodes glow
                                                     const emissiveIntensity = 0.4 + Math.sin(time * 2 + offset) * 0.2;
                                                     node.__sphereMesh.material.emissive.copy(color);
                                                     node.__sphereMesh.material.emissiveIntensity = emissiveIntensity;
@@ -196,10 +210,6 @@
                                                     node.__sphereMesh.material.emissive.setHex(node.id === highlightedNodeId ? 0x333333 : 0x000000);
                                                     node.__sphereMesh.material.emissiveIntensity = node.id === highlightedNodeId ? 0.5 : 0;
                                                 }
-                                            }
-
-                                            if (node.__labelSprite) {
-                                                node.__labelSprite.color = node.id === highlightedNodeId ? '#ffffff' : (isLocal ? '#f8fafc' : '#cbd5e1');
                                             }
                                         }
                                     });
@@ -210,7 +220,9 @@
 
                             cleanup = () => {
                                 window.removeEventListener('resize', handleResize);
+                                resizeObserver.disconnect();
                                 graphContainer.removeEventListener('mousedown', handleInteraction);
+                                graphContainer.removeEventListener('touchstart', handleInteraction);
                                 graphContainer.removeEventListener('wheel', handleInteraction);
                                 cancelAnimationFrame(animationFrameId);
                                 if (graphInstance) graphInstance._destructor();
@@ -381,57 +393,85 @@
 <main class="flex-1 flex flex-col relative overflow-hidden bg-slate-950">
     <div bind:this={graphContainer} class="w-full h-full cursor-grab active:cursor-grabbing"></div>
 
-    <!-- Floating Search Bar -->
-    <div class="absolute top-4 left-4 w-[calc(100%-2rem)] sm:w-80 z-30">
-        <div class="relative group">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                {#if ragStore.isSearching}
-                    <Loader2 class="h-4 w-4 text-zinc-500 animate-spin"/>
-                {:else}
-                    <Search class="h-4 w-4 text-zinc-500 group-focus-within:text-emerald-500 transition-colors"/>
+    <!-- Floating Top Bar (Search + Temporal Filter) -->
+    <div class="absolute top-4 left-4 right-4 flex flex-col sm:flex-row items-stretch sm:items-start gap-3 z-30 pointer-events-none">
+        <!-- Search Group -->
+        <div class="w-full sm:w-80 pointer-events-auto">
+            <div class="relative group">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    {#if ragStore.isSearching}
+                        <Loader2 class="h-4 w-4 text-zinc-500 animate-spin"/>
+                    {:else}
+                        <Search class="h-4 w-4 text-zinc-500 group-focus-within:text-emerald-500 transition-colors"/>
+                    {/if}
+                </div>
+                <input
+                        type="text"
+                        bind:value={searchQuery}
+                        oninput={handleSearch}
+                        onfocus={() => searchQuery.length > 1 && (showDropdown = true)}
+                        placeholder="Search entities..."
+                        class="block w-full pl-10 pr-10 py-2.5 bg-zinc-900/90 border border-zinc-800 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 text-zinc-100 placeholder-zinc-500 rounded-xl backdrop-blur-md shadow-2xl transition-all outline-none text-sm"
+                />
+                {#if searchQuery}
+                    <button
+                            onclick={clearSearch}
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
+                    >
+                        <X class="h-4 w-4"/>
+                    </button>
                 {/if}
             </div>
-            <input
-                    type="text"
-                    bind:value={searchQuery}
-                    oninput={handleSearch}
-                    onfocus={() => searchQuery.length > 1 && (showDropdown = true)}
-                    placeholder="Search entities..."
-                    class="block w-full pl-10 pr-10 py-2.5 bg-zinc-900/90 border border-zinc-800 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 text-zinc-100 placeholder-zinc-500 rounded-xl backdrop-blur-md shadow-2xl transition-all outline-none text-sm"
-            />
-            {#if searchQuery}
-                <button
-                        onclick={clearSearch}
-                        class="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
-                >
-                    <X class="h-4 w-4"/>
-                </button>
+
+            {#if showDropdown && ragStore.searchResults.length > 0}
+                <div class="absolute mt-2 w-full bg-zinc-900/95 border border-zinc-800 rounded-xl shadow-2xl backdrop-blur-md overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div class="max-h-64 overflow-y-auto p-1">
+                        {#each ragStore.searchResults as result}
+                            <button
+                                    onclick={() => selectResult(result)}
+                                    class="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-emerald-500/10 text-left rounded-lg transition-colors group"
+                            >
+                                <div class="w-2 h-2 rounded-full"
+                                     style="background-color: {result.color || '#94a3b8'}"></div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-zinc-100 truncate">{result.label}</p>
+                                    <p class="text-[10px] text-zinc-500 uppercase tracking-wider">{result.node_type}</p>
+                                </div>
+                            </button>
+                        {/each}
+                    </div>
+                </div>
+            {:else if showDropdown && searchQuery.length > 1 && !ragStore.isSearching}
+                <div class="absolute mt-2 w-full bg-zinc-900/95 border border-zinc-800 rounded-xl p-4 shadow-2xl backdrop-blur-md text-center">
+                    <p class="text-xs text-zinc-500">No results found for "{searchQuery}"</p>
+                </div>
             {/if}
         </div>
 
-        {#if showDropdown && ragStore.searchResults.length > 0}
-            <div class="absolute mt-2 w-full bg-zinc-900/95 border border-zinc-800 rounded-xl shadow-2xl backdrop-blur-md overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                <div class="max-h-64 overflow-y-auto p-1">
-                    {#each ragStore.searchResults as result}
-                        <button
-                                onclick={() => selectResult(result)}
-                                class="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-emerald-500/10 text-left rounded-lg transition-colors group"
-                        >
-                            <div class="w-2 h-2 rounded-full"
-                                 style="background-color: {result.color || '#94a3b8'}"></div>
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-zinc-100 truncate">{result.label}</p>
-                                <p class="text-[10px] text-zinc-500 uppercase tracking-wider">{result.node_type}</p>
-                            </div>
-                        </button>
-                    {/each}
-                </div>
-            </div>
-        {:else if showDropdown && searchQuery.length > 1 && !ragStore.isSearching}
-            <div class="absolute mt-2 w-full bg-zinc-900/95 border border-zinc-800 rounded-xl p-4 shadow-2xl backdrop-blur-md text-center">
-                <p class="text-xs text-zinc-500">No results found for "{searchQuery}"</p>
-            </div>
-        {/if}
+        <!-- Temporal Filter Group -->
+        <div class="flex items-center gap-2 bg-zinc-900/90 border border-zinc-800 p-1.5 rounded-xl backdrop-blur-md shadow-2xl pointer-events-auto w-fit self-center sm:self-auto">
+            <select 
+                bind:value={ragStore.selectedMonth} 
+                onchange={() => ragStore.fetchGraph(conversationStore.activeConversationId)}
+                class="bg-transparent text-[10px] font-black uppercase tracking-widest text-zinc-400 outline-none px-2 py-1 cursor-pointer hover:text-emerald-400 transition-colors"
+            >
+                <option value={0} class="bg-zinc-900">All Months</option>
+                {#each Array.from({length: 12}, (_, i) => i + 1) as m}
+                    <option value={m} class="bg-zinc-900">{new Date(2000, m - 1).toLocaleString('default', { month: 'long' })}</option>
+                {/each}
+            </select>
+            <div class="w-px h-3 bg-zinc-800"></div>
+            <select 
+                bind:value={ragStore.selectedYear} 
+                onchange={() => ragStore.fetchGraph(conversationStore.activeConversationId)}
+                class="bg-transparent text-[10px] font-black uppercase tracking-widest text-zinc-400 outline-none px-2 py-1 cursor-pointer hover:text-emerald-400 transition-colors"
+            >
+                <option value={0} class="bg-zinc-900">All Years</option>
+                {#each Array.from({length: 5}, (_, i) => new Date().getFullYear() - i) as y}
+                    <option value={y} class="bg-zinc-900">{y}</option>
+                {/each}
+            </select>
+        </div>
     </div>
 
     <!-- Controls -->

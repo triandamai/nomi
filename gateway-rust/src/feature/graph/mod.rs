@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tracing::error;
 use uuid::Uuid;
+use chrono::Utc;
 
 pub mod search;
 pub use search::handle_search_graph;
@@ -31,9 +32,12 @@ pub struct GraphData {
     pub links: Vec<GraphEdge>,
 }
 
+
 #[derive(Debug, Deserialize)]
 pub struct GraphQuery {
     pub conversation_id: Option<Uuid>,
+    pub month: Option<u32>,
+    pub year: Option<i32>,
 }
 
 pub async fn handle_get_graph(
@@ -42,6 +46,12 @@ pub async fn handle_get_graph(
 ) -> ApiResponse<GraphData> {
     let conv_id_str = query.conversation_id.map(|id| id.to_string());
     
+    // Determine Temporal Window (0 means all-time)
+    let month = query.month.unwrap_or(0) as i32;
+    let year = query.year.unwrap_or(0);
+
+    // 🧠 TEMPORAL PRUNING: Fetch knowledge nodes with optional monthly filter
+    // Increased LIMIT to 300 to ensure we find enough unique nodes across history
     let rows = sqlx::query!(
         r#"
         SELECT metadata->'graph' as graph, metadata->>'type' as entry_type, metadata->>'conversation_id' as conversation_id
@@ -54,8 +64,14 @@ pub async fn handle_get_graph(
             OR metadata->>'conversation_id' IS NULL 
             OR metadata->>'conversation_id' = 'global'
         )
+        AND ($2 = 0 OR CAST(EXTRACT(MONTH FROM created_at) AS INTEGER) = $2)
+        AND ($3 = 0 OR CAST(EXTRACT(YEAR FROM created_at) AS INTEGER) = $3)
+        ORDER BY created_at DESC
+        LIMIT 300
         "#,
-        conv_id_str
+        conv_id_str,
+        month,
+        year
     )
     .fetch_all(&state.pool)
     .await;
@@ -107,14 +123,18 @@ pub async fn handle_get_graph(
                                 }
                             }
                             
-                            // Deduplicate by ID, keep the first one or merge labels if needed
-                            all_nodes.entry(node.id.clone()).or_insert(node);
+                            // Deduplicate by ID
+                            if all_nodes.len() < 250 { // Safety Cap: Max 250 unique nodes
+                                all_nodes.entry(node.id.clone()).or_insert(node);
+                            }
                         }
                         for link in graph.links {
                             let mut link = link;
                             link.source = link.source.trim().to_lowercase().replace(' ', "_");
                             link.target = link.target.trim().to_lowercase().replace(' ', "_");
-                            all_links.insert(link);
+                            if all_links.len() < 500 { // Safety Cap: Max 500 links
+                                all_links.insert(link);
+                            }
                         }
                     }
                 }

@@ -28,6 +28,9 @@ function createRagStore() {
     let searchResults = $state<Node[]>([]);
     let isSearching = $state(false);
 
+    let selectedMonth = $state(0); // 0 means All Time
+    let selectedYear = $state(0);
+
     return {
         get graphData() {
             return graphData
@@ -44,11 +47,21 @@ function createRagStore() {
         get isSearching() {
             return isSearching
         },
+        get selectedMonth() { return selectedMonth; },
+        set selectedMonth(val: number) { selectedMonth = val; },
+        get selectedYear() { return selectedYear; },
+        set selectedYear(val: number) { selectedYear = val; },
+
         async fetchGraph(conversationId?: string) {
             loading = true;
             error = null;
             try {
-                const result = await chatApi.getGraph(conversationId);
+                // Pass 0 or undefined to backend to trigger 'All Time' logic
+                const result = await chatApi.getGraph(
+                    conversationId, 
+                    selectedMonth || undefined, 
+                    selectedYear || undefined
+                );
                 if (result.data) {
                     graphData = result.data;
                 } else {
