@@ -598,6 +598,8 @@ pub async fn handle_outbound_redis(
         user_id: None,
         created_at: Default::default(),
         metadata: None,
+        reply_to_id: None,
+        replied_message: None,
     };
     let _ = send_message_to_subscriber(
         &state,

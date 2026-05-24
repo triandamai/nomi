@@ -18,6 +18,13 @@ export type Message = {
     total_tokens: number;
     created_at?: string;
     metadata?: Record<string, any>;
+    reply_to_id?: string;
+    replied_message?: {
+        id: string;
+        role: string;
+        content: string;
+        display_name: string | null;
+    };
     toolCalls?: Array<{ tool: any, result?: string }>;
 };
 
@@ -28,6 +35,7 @@ function createChatStore() {
     let conversationId = $state<string | undefined>(undefined);
     let nextCursor = $state<string | null>(null);
     let hasMore = $state(true);
+    let replyingToMessage = $state<Message | null>(null);
     
     // Scoped state maps
     let thoughts = $state<Record<string, string>>({});
@@ -61,6 +69,8 @@ function createChatStore() {
                     user_id: data.user_id,
                     total_tokens: data.total_tokens,
                     metadata: data.metadata,
+                    reply_to_id: data.reply_to_id,
+                    replied_message: data.replied_message,
                     created_at: data.created_at
                 } as Message)
             } else {
@@ -73,6 +83,8 @@ function createChatStore() {
                     user_id: data.user_id,
                     total_tokens: data.total_tokens,
                     metadata: data.metadata,
+                    reply_to_id: data.reply_to_id,
+                    replied_message: data.replied_message,
                     created_at: data.created_at
                 } as Message)
 
@@ -172,6 +184,12 @@ function createChatStore() {
             const cid = conversationStore.activeConversationId;
             return cid ? (isTyping[cid] || false) : false;
         },
+        get replyingToMessage() {
+            return replyingToMessage;
+        },
+        set replyingToMessage(val: Message | null) {
+            replyingToMessage = val;
+        },
 
         async fetchMessages(loadMore = false) {
             const id = getPersistConversationId()
@@ -230,8 +248,10 @@ function createChatStore() {
             loading = true;
             error = null;
 
+            const reply_to_id = replyingToMessage?.id;
+            replyingToMessage = null; // Clear after sending
 
-            const response:any = await chatApi.streamChat(content, conversationId, media).then((res:any)=>res.json()).catch(err => {
+            const response:any = await chatApi.streamChat(content, conversationId, { ...media, reply_to_id }).then((res:any)=>res.json()).catch(err => {
                 error = err instanceof Error ? err.message : 'Failed to send message';
             }).finally(() => {
                 loading = false;

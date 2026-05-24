@@ -17,6 +17,7 @@ pub struct MessageItemWithDisplay {
     pub document_url: Option<String>,
     pub sticker_url: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    pub replied_message: Option<crate::feature::conversation::model::RepliedMessage>,
 }
 
 pub async fn mark_last_media_processed(
@@ -101,41 +102,49 @@ pub async fn save_message(
     document_url: Option<String>,
     sticker_url: Option<String>,
     metadata: Option<serde_json::Value>,
+    reply_to_id: Option<Uuid>,
 ) -> anyhow::Result<MessageItem> {
     info!(
-        "Saving message to conversation:{:?} from user:{:?}",
-        conversation_id, user_id
+        "Saving message to conversation:{:?} from user:{:?} reply_to:{:?}",
+        conversation_id, user_id, reply_to_id
     );
     let mut tx = pool.begin().await?;
 
-    let save_message = sqlx::query!(
-        "INSERT INTO messages (conversation_id, role, content, thought, user_id, prompt_tokens, answer_tokens, total_tokens, image_url, video_url, audio_url, document_url, sticker_url, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         RETURNING id, created_at, metadata",
-        conversation_id,
-        role,
-        content,
-        thought,
-        user_id,
-        prompt_tokens,
-        answer_tokens,
-        total_tokens,
-        image_url,
-        video_url,
-        audio_url,
-        document_url,
-        sticker_url,
-        metadata
+    let res = sqlx::query(
+        "INSERT INTO messages (conversation_id, role, content, thought, user_id, prompt_tokens, answer_tokens, total_tokens, image_url, video_url, audio_url, document_url, sticker_url, metadata, reply_to_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         RETURNING id, created_at, metadata, reply_to_id",
     )
-        .fetch_one(&mut *tx)
-        .await;
-    if let Err(err) = save_message {
+    .bind(conversation_id)
+    .bind(role)
+    .bind(content)
+    .bind(thought)
+    .bind(user_id)
+    .bind(prompt_tokens)
+    .bind(answer_tokens)
+    .bind(total_tokens)
+    .bind(image_url.clone())
+    .bind(video_url.clone())
+    .bind(audio_url.clone())
+    .bind(document_url.clone())
+    .bind(sticker_url.clone())
+    .bind(metadata.clone())
+    .bind(reply_to_id)
+    .fetch_one(&mut *tx)
+    .await;
+
+    if let Err(err) = res {
         info!("Saving message failed: {}", err);
         let _ = tx.rollback().await;
         return Err(anyhow::anyhow!(err));
     };
 
-    let row = save_message?;
+    let row = res?;
+    use sqlx::Row;
+    let row_id: Uuid = row.get("id");
+    let row_created_at: chrono::DateTime<chrono::Utc> = row.get("created_at");
+    let row_metadata: Option<serde_json::Value> = row.get("metadata");
+    let row_reply_to_id: Option<Uuid> = row.get("reply_to_id");
 
     let meta_update = json!({
         "last_image_url":image_url,
@@ -168,7 +177,7 @@ pub async fn save_message(
             // Parallel background telemetry logging (Moved AFTER commit to prevent FK violations and orphaned logs)
             let pool_clone = pool.clone();
             let conv_id = conversation_id.clone();
-            let msg_id = row.id.clone();
+            let msg_id = row_id.clone();
             let u_id = user_id.clone();
             let role_clone = role.to_string();
             let i_tokens = prompt_tokens as i64;
@@ -191,7 +200,7 @@ pub async fn save_message(
             });
 
             Ok(MessageItem {
-                id: row.id,
+                id: row_id,
                 conversation_id,
                 display_name: None,
                 role: role.to_string(),
@@ -206,8 +215,10 @@ pub async fn save_message(
                 document_url,
                 sticker_url,
                 user_id,
-                metadata: row.metadata,
-                created_at: row.created_at.unwrap_or_else(chrono::Utc::now),
+                metadata: row_metadata,
+                reply_to_id: row_reply_to_id,
+                replied_message: None, // Will be populated on fetch
+                created_at: row_created_at,
             })
         }
         Err(err) => {

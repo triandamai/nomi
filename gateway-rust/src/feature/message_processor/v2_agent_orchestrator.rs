@@ -123,8 +123,7 @@ impl V2AgentOrchestrator {
             true,
         );
 
-        let history = sqlx::query_as!(
-            crate::common::repository::message_repo::MessageItemWithDisplay,
+        let rows = sqlx::query(
             "SELECT
                 messages.id,
                 messages.created_at,
@@ -136,15 +135,47 @@ impl V2AgentOrchestrator {
                 messages.audio_url,
                 messages.document_url,
                 messages.sticker_url,
-                messages.metadata
-            FROM messages LEFT JOIN users ON users.id = messages.user_id
-            WHERE conversation_id = $1
+                messages.metadata,
+                CASE WHEN messages.reply_to_id IS NOT NULL THEN
+                 jsonb_build_object(
+                   'id', rm.id,
+                   'role', rm.role,
+                   'content', rm.content,
+                   'display_name', ru.display_name
+                 )
+                ELSE NULL END as replied_message
+            FROM messages 
+            LEFT JOIN users ON users.id = messages.user_id
+            LEFT JOIN messages AS rm ON rm.id = messages.reply_to_id
+            LEFT JOIN users AS ru ON ru.id = rm.user_id
+            WHERE messages.conversation_id = $1
             ORDER BY created_at
         DESC LIMIT 15",
-            conversation_id
         )
+        .bind(conversation_id)
         .fetch_all(&state.pool)
         .await?;
+
+        use sqlx::Row;
+        let history: Vec<crate::common::repository::message_repo::MessageItemWithDisplay> = rows.into_iter().map(|r| {
+            let replied: Option<serde_json::Value> = r.get("replied_message");
+            let replied_message = replied.and_then(|v| serde_json::from_value(v).ok());
+
+            crate::common::repository::message_repo::MessageItemWithDisplay {
+                id: r.get("id"),
+                created_at: r.get("created_at"),
+                role: r.get("role"),
+                content: r.get("content"),
+                display_name: r.get("display_name"),
+                image_url: r.get("image_url"),
+                video_url: r.get("video_url"),
+                audio_url: r.get("audio_url"),
+                document_url: r.get("document_url"),
+                sticker_url: r.get("sticker_url"),
+                metadata: r.get("metadata"),
+                replied_message,
+            }
+        }).collect();
 
         let mut history_text = crate::feature::message_processor::history_utils::HighFidelityHistory::format_messages(
             history,
@@ -884,8 +915,8 @@ impl V2AgentOrchestrator {
                 None,
                 None,
                 Some(accumulated_metadata.clone()),
+                None,
                 )
-
             .await;
             if let Err(err) = save_message{
                 info!("Failed save message result {}",err);
@@ -1198,6 +1229,7 @@ impl V2AgentOrchestrator {
             None,
             None,
             Some(accumulated_metadata.clone()),
+            None,
         )
         .await;
 

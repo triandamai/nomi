@@ -27,7 +27,16 @@ impl HighFidelityHistory {
             history_text.push_str(&format!("    [Actor]: {}\n", display));
             
             // 🌟 HIGH-FIDELITY QUOTED CONTEXT: Standardized tagging for replies
-            if let Some(meta) = &m.metadata {
+            // Prioritize native joined replied_message, fallback to metadata.quoted_message
+            if let Some(replied) = &m.replied_message {
+                let q_id = replied.id.to_string();
+                let q_sender = replied.display_name.as_ref()
+                    .unwrap_or(&replied.role);
+                let q_text = &replied.content;
+                
+                history_text.push_str(&format!("    [SystemEvent: QUOTED_MESSAGE] id=\"{}\" actor=\"{}\"\n", q_id, q_sender));
+                history_text.push_str(&format!("    [QuotedContent]: {}\n", q_text));
+            } else if let Some(meta) = &m.metadata {
                 if let Some(quoted) = meta.get("quoted_message") {
                     let q_id = quoted.get("message_id").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
                     let q_sender = quoted.get("display_name")

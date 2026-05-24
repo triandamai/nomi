@@ -115,6 +115,7 @@ pub struct UnifiedMessage {
     pub doc_url: Option<String>,
     pub source: MessageSource,
     pub quoted_message: Option<QuotedMessage>,
+    pub reply_to_id: Option<Uuid>,
     pub v2: bool,
 }
 

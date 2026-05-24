@@ -11,6 +11,7 @@ pub struct ChatRequest {
     pub audio_url: Option<String>,
     pub video_url: Option<String>,
     pub doc_url: Option<String>,
+    pub reply_to_id: Option<Uuid>,
 }
 
 #[derive(Deserialize)]
@@ -59,6 +60,14 @@ pub struct SoulHistoryResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RepliedMessage {
+    pub id: Uuid,
+    pub role: String,
+    pub content: String,
+    pub display_name: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MessageItem {
     pub id: Uuid,
     pub conversation_id: Uuid,
@@ -77,6 +86,8 @@ pub struct MessageItem {
     pub user_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub metadata: Option<Value>,
+    pub reply_to_id: Option<Uuid>,
+    pub replied_message: Option<RepliedMessage>,
 }
 
 impl MessageItem {
@@ -96,6 +107,8 @@ impl MessageItem {
             "document_url": self.document_url.as_ref(),
             "sticker_url": self.sticker_url.as_ref(),
             "metadata": self.metadata.as_ref(),
+            "reply_to_id": self.reply_to_id,
+            "replied_message": self.replied_message,
             "created_at": self.created_at
         })
     }

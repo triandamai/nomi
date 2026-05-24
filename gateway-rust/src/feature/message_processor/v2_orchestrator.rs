@@ -146,8 +146,10 @@ pub async fn process_v2_message(
         msg.doc_url.clone(),
         msg.sticker_url.clone(),
         quoted_metadata,
+        msg.reply_to_id,
     )
     .await;
+
     if let Err(e) = save_user_message {
         info!("Saving message failed :{}", e);
         return Err(anyhow!("Failed to save message {}", e));

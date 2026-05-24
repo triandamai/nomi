@@ -170,6 +170,7 @@ async fn handle_reminder_task(state: &AppState, task: &TaskData) -> anyhow::Resu
                 None,
                 None,
                 None,
+                None,
             )
             .await
             {

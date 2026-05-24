@@ -113,10 +113,15 @@ impl NomiToolPlugin for CommunicationPlugin {
                 let content = message_body.to_string();
 
                 tokio::spawn(async move {
-                    let _ = sqlx::query!(
-                        "INSERT INTO messages (id, conversation_id, user_id, role, content) VALUES ($1, $2, $3, $4, $5)",
-                        msg_id, conv_id, sender_uuid, "assistant", content
-                    ).execute(&pool).await;
+                    let _ = sqlx::query(
+                        "INSERT INTO messages (id, conversation_id, user_id, role, content, reply_to_id) VALUES ($1, $2, $3, $4, $5, NULL)"
+                    )
+                    .bind(msg_id)
+                    .bind(conv_id)
+                    .bind(sender_uuid)
+                    .bind("assistant")
+                    .bind(content)
+                    .execute(&pool).await;
                 });
             }
 
@@ -139,6 +144,8 @@ impl NomiToolPlugin for CommunicationPlugin {
                 user_id: Some(sender_uuid),
                 created_at: chrono::Utc::now(),
                 metadata: None,
+                reply_to_id: None,
+                replied_message: None,
             };
 
             let members = user_uuid.map(|u| vec![u]).unwrap_or_default();

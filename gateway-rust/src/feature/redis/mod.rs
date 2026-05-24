@@ -363,6 +363,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
                 },
             },
             quoted_message: msg.quoted_message,
+            reply_to_id: None,
             v2: true,
         };
 
@@ -414,6 +415,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
                             initiative.tokens.input_tokens as i32,
                             initiative.tokens.output_tokens as i32,
                             initiative.tokens.total_tokens as i32,
+                            None,
                             None,
                             None,
                             None,

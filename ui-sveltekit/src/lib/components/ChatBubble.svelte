@@ -30,6 +30,7 @@
         document_url = '',
         sticker_url = '',
         metadata = {},
+        replied_message = null,
         onToggleThought = () => {}
     } = $props();
 
@@ -162,15 +163,16 @@
     {/if}
 
     <div class="prose prose-invert max-w-none prose-sm text-slate-200">
-        {#if parsedMetadata?.quoted_message}
+        {#if replied_message || parsedMetadata?.quoted_message}
+            {@const q = replied_message || parsedMetadata.quoted_message}
             <div class="mb-3 animate-in fade-in slide-in-from-top-1 duration-300">
                 <div class="bg-slate-800/40 border-l-4 border-blue-500/50 rounded-r-xl p-3 flex flex-col gap-1 hover:bg-slate-800/60 transition-all cursor-default group/quote">
                     <div class="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-blue-400/80">
                         <CornerUpLeft class="w-3 h-3" />
-                        Replying to <span class="text-blue-300">{parsedMetadata.quoted_message.display_name || parsedMetadata.quoted_message.sender_id || 'Anonymous'}</span>
+                        Replying to <span class="text-blue-300">{q.display_name || q.sender_id || q.role || 'Anonymous'}</span>
                     </div>
                     <p class="text-[11px] text-slate-400 line-clamp-2 leading-relaxed italic">
-                        {parsedMetadata.quoted_message.text}
+                        {q.text || q.content}
                     </p>
                 </div>
             </div>

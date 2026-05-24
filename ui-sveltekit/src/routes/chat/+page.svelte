@@ -12,7 +12,8 @@
         FileAudio,
         FileText,
         Loader2,
-        Wrench
+        Wrench,
+        Reply
     } from 'lucide-svelte';
     import {chatStore, type Message} from '$lib/stores/chat.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
@@ -308,17 +309,32 @@
                             </div>
                         {/if}
 
-                        <ChatBubble
-                                content={msg.content}
-                                thought={msg.thought}
-                                image_url={msg.image_url}
-                                video_url={msg.video_url}
-                                audio_url={msg.audio_url}
-                                document_url={msg.document_url}
-                                sticker_url={msg.sticker_url}
-                                metadata={msg.metadata}
-                                onToggleThought={(expanded: boolean) => handleToggleThought(expanded, index === chatStore.messages.length - 1)}
-                        />
+                        <div class="relative group/bubble flex flex-col">
+                            <ChatBubble
+                                    content={msg.content}
+                                    thought={msg.thought}
+                                    image_url={msg.image_url}
+                                    video_url={msg.video_url}
+                                    audio_url={msg.audio_url}
+                                    document_url={msg.document_url}
+                                    sticker_url={msg.sticker_url}
+                                    metadata={msg.metadata}
+                                    replied_message={msg.replied_message}
+                                    onToggleThought={(expanded: boolean) => handleToggleThought(expanded, index === chatStore.messages.length - 1)}
+                            />
+
+                            <!-- Message Actions: Standardized Bottom Row for Reachability -->
+                            <div class="flex items-center gap-2 mt-2 opacity-0 group-hover/bubble:opacity-100 transition-opacity">
+                                <button
+                                    onclick={() => { chatStore.replyingToMessage = msg; }}
+                                    class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/40 hover:bg-slate-800/60 border border-slate-800 rounded-full text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-blue-400 hover:border-blue-500/30 transition-all shadow-lg backdrop-blur-sm"
+                                    title="Reply to message"
+                                >
+                                    <Reply class="w-3 h-3" />
+                                    <span>Reply</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             {/each}
@@ -392,6 +408,32 @@
     <div class="max-w-4xl mx-auto pointer-events-auto">
         <div class="relative transition-all duration-500 rounded-2xl {chatStore.isTyping ? 'ring-2 ring-blue-500/20 shadow-[0_0_30px_-5px_rgba(59,130,246,0.3)]' : ''}">
             <div class="relative bg-[#0f172a]/80 border border-slate-800 rounded-2xl p-1 shadow-2xl focus-within:border-slate-700 transition-colors backdrop-blur-xl">
+
+                {#if chatStore.replyingToMessage}
+                    <div class="px-4 md:px-5 pt-4 pb-2">
+                        <div class="flex items-center justify-between p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="p-2 bg-blue-500/10 rounded-lg">
+                                    <Reply class="w-3.5 h-3.5 text-blue-400" />
+                                </div>
+                                <div class="min-w-0">
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-blue-400/80 mb-0.5">
+                                        Replying to <span class="text-blue-300">{chatStore.replyingToMessage.display_name || chatStore.replyingToMessage.role || 'Human'}</span>
+                                    </p>
+                                    <p class="text-[11px] text-slate-400 truncate italic">
+                                        {chatStore.replyingToMessage.content}
+                                    </p>
+                                </div>
+                            </div>
+                            <button 
+                                onclick={() => { chatStore.replyingToMessage = null; }}
+                                class="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-white transition-colors"
+                            >
+                                <X class="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                {/if}
 
                 {#if selectedFile}
                     <div class="px-4 md:px-5 pt-4">

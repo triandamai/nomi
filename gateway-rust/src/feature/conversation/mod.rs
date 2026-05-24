@@ -720,17 +720,16 @@ pub async fn handle_get_messages(
     //     "Fetching messages"
     // );
 
-    let messages_result = sqlx::query_as!(
-        MessageItem,
+    let rows = sqlx::query(
         r#"
         SELECT m.id,
-               m.conversation_id as "conversation_id!",
+               m.conversation_id as conversation_id,
                u.display_name,
                m.role,
                m.content,
                m.thought,
                m.user_id,
-               m.created_at as "created_at!",
+               m.created_at as created_at,
                m.total_tokens,
                m.answer_tokens,
                m.prompt_tokens,
@@ -739,22 +738,61 @@ pub async fn handle_get_messages(
                m.audio_url,
                m.document_url,
                m.sticker_url,
-               m.metadata
+               m.metadata,
+               m.reply_to_id,
+               CASE WHEN m.reply_to_id IS NOT NULL THEN
+                 jsonb_build_object(
+                   'id', rm.id,
+                   'role', rm.role,
+                   'content', rm.content,
+                   'display_name', ru.display_name
+                 )
+               ELSE NULL END as replied_message
         FROM messages as m
         LEFT JOIN users AS u ON u.id = m.user_id
+        LEFT JOIN messages AS rm ON rm.id = m.reply_to_id
+        LEFT JOIN users AS ru ON ru.id = rm.user_id
         WHERE m.conversation_id = $1 AND m.created_at < $2
         ORDER BY m.created_at DESC
         LIMIT $3
         "#,
-        conversation_id,
-        cursor,
-        limit
     )
+    .bind(conversation_id)
+    .bind(cursor)
+    .bind(limit)
     .fetch_all(&state.pool)
     .await;
 
-    match messages_result {
-        Ok(messages) => {
+    match rows {
+        Ok(rows) => {
+            use sqlx::Row;
+            let messages: Vec<MessageItem> = rows.into_iter().map(|r| {
+                let replied: Option<serde_json::Value> = r.get("replied_message");
+                let replied_message = replied.and_then(|v| serde_json::from_value(v).ok());
+                
+                MessageItem {
+                    id: r.get("id"),
+                    conversation_id: r.get("conversation_id"),
+                    display_name: r.get("display_name"),
+                    role: r.get("role"),
+                    content: r.get("content"),
+                    thought: r.get("thought"),
+                    user_id: r.get("user_id"),
+                    created_at: r.get("created_at"),
+                    total_tokens: r.get("total_tokens"),
+                    answer_tokens: r.get("answer_tokens"),
+                    prompt_tokens: r.get("prompt_tokens"),
+                    image_url: r.get("image_url"),
+                    video_url: r.get("video_url"),
+                    audio_url: r.get("audio_url"),
+                    document_url: r.get("document_url"),
+                    sticker_url: r.get("sticker_url"),
+                    metadata: r.get("metadata"),
+                    reply_to_id: r.get("reply_to_id"),
+                    replied_message,
+                }
+            }).collect();
+
             let next_cursor = messages.last().map(|m| m.created_at);
             ApiResponse::ok(
                 MessageListResponse {
@@ -1340,6 +1378,7 @@ pub async fn handle_chat_stream(
             name: "web".to_string(),
         },
         quoted_message: None,
+        reply_to_id: payload.reply_to_id,
         v2: true,
     };
 
