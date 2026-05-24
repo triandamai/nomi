@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT metadata->'graph' as graph, metadata->>'type' as entry_type, metadata->>'conversation_id' as conversation_id\n        FROM knowledge_base\n        WHERE (metadata->>'type' = 'summary' OR metadata->>'type' = 'memory')\n        AND metadata->'graph' IS NOT NULL\n        AND (\n            $1::text IS NULL \n            OR metadata->>'conversation_id' = $1 \n            OR metadata->>'conversation_id' IS NULL \n            OR metadata->>'conversation_id' = 'global'\n        )\n        AND ($2 = 0 OR CAST(EXTRACT(MONTH FROM created_at) AS INTEGER) = $2)\n        AND ($3 = 0 OR CAST(EXTRACT(YEAR FROM created_at) AS INTEGER) = $3)\n        ORDER BY created_at DESC\n        LIMIT 300\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "graph",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 1,
+        "name": "entry_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "conversation_id",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "68b79b7e6555febbf01065ca71604d5be0522c1714b2482310a340dfe3683958"
+}

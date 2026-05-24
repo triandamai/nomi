@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tracing::error;
 use uuid::Uuid;
-use chrono::Utc;
 
 pub mod search;
 pub use search::handle_search_graph;
