@@ -1,105 +1,59 @@
-# AGENTS.md
+# Nomi: Operational Guide for Agents
 
 ## Project Overview
+Nomi is an autonomous agentic workspace built for high-performance, multimodal orchestration across Web, Mobile, Telegram, and WhatsApp.
 
-Open Agent is an agentic workspace built with:
+- **Backend**: Rust, Axum, Tokio, SQLx, PostgreSQL, pgvector.
+- **Frontend**: SvelteKit, Svelte 5, TypeScript, Tailwind CSS.
+- **Mobile/Desktop**: Flutter (nomi_mobile) for iOS, Android, macOS, and Windows.
+- **Realtime**: MQTT (Mosquitto) for streaming thoughts and state synchronization.
+- **Data**: pgvector (halfvec 3072) for high-fidelity RAG and graph memories.
 
-- Backend: Rust, Axum, Tokio, SQLx, PostgreSQL, pgvector
-- Frontend: SvelteKit, Svelte 5, TypeScript, Tailwind CSS, Lucide icons
-- Realtime: Server-Sent Events (SSE) for streamed thoughts, tool events, and answers
-- Data: PostgreSQL migrations live in `gateway-rust/migrations`
+## Repository Layout (Gateway Rust)
+- `gateway-rust/src/routes.rs`: Top-level API routing and middleware.
+- `gateway-rust/src/common/repository/`: Centralized data access layer (Source of Truth).
+  - `conversation_repo.rs`: Redis-cached conversation and DEB threshold management.
+  - `message_repo.rs`: Durable message persistence and telemetry logging.
+  - `channel_repo.rs`: Identity and channel mapping (WhatsApp/Telegram).
+- `gateway-rust/src/services/`: Core logic services.
+  - `interaction_gate.rs`: Isolated pre-filtering for group chats (Momentum-aware).
+  - `intent_classifier.rs`: Two-step confidence-gated intent discovery.
+  - `guardrail.rs`: Multilingual prompt injection detection.
+  - `ambient_soul.rs`: Background memory extraction and proactive initiative.
+- `gateway-rust/src/feature/message_processor/`: The orchestrator brain.
+  - `v2_orchestrator.rs`: Main entry point for inbound signals.
+  - `v2_agent_orchestrator.rs`: The autonomous reasoning loop (Think-Act-Observe).
+  - `history_utils.rs`: High-fidelity history formatting with quoted context.
 
-When changing behavior, think through the full path: database schema, Rust models/handlers/services, SSE/API contracts, Svelte stores, and UI components.
+## Core Workflows
 
-## Repository Layout
-
-- `gateway-rust/`: Rust Axum API gateway
-- `gateway-rust/src/routes.rs`: top-level API routing
-- `gateway-rust/src/main.rs`: application startup and shared state setup
-- `gateway-rust/src/common/`: shared API response, SSE, agent, and tool helpers
-- `gateway-rust/src/feature/`: feature modules such as conversation, graph, realtime
-- `gateway-rust/src/rag/`: retrieval and memory-related code
-- `gateway-rust/migrations/`: SQLx/Postgres migrations
-- `ui-sveltekit/`: SvelteKit frontend
-- `ui-sveltekit/src/lib/api/`: frontend API client code
-- `ui-sveltekit/src/lib/stores/`: Svelte state stores
-- `ui-sveltekit/src/lib/components/`: reusable Svelte components
-- `ui-sveltekit/src/routes/`: SvelteKit routes and page-level styles
-- `docker-compose.yml`: local pgvector/Postgres service
-
-## Common Commands
-
-Backend:
-
-```sh
-cd gateway-rust
-cargo fmt
-cargo check
-cargo test
-cargo run
-```
-
-Frontend:
-
-```sh
-cd ui-sveltekit
-npm run check
-npm run build
-npm run dev
-```
-
-Database:
-
-```sh
-docker compose up -d db
-cd gateway-rust
-sqlx migrate run
-```
-
-Use `gateway-rust/.env.example` as the local backend environment template.
+1. **Context Hydration**: MediaAttachments (Image/Audio) are intercepted by the `MediaInterpreterService` and transcribed into text context before classification.
+2. **Intent Classification**: Confirmed confidence-based classification using DEB thresholds. Short-circuits to "CHITCHAT" if below boundary.
+3. **Dynamic Execution Boundaries (DEB)**: Behavior is tuned per-conversation. Always load `gateway_thresholds` from the `conversation_repo`.
+4. **Agentic Reasoning**: Multi-turn autonomous loop using tools to fulfill user directives.
+5. **Memory Consolidation**: Passive extraction of user facts into the RAG memory store (pgvector).
 
 ## Coding Guidelines
 
-Rust:
+### Rust
+- **Type Safety**: Use the repository layer instead of raw `sqlx` queries in handlers.
+- **Caching**: Benefit from the `ConversationCache` in Redis for soul and bootstrap prompts.
+- **Consistency**: Maintain the `UnifiedMessage` and `MessageSource` abstractions for cross-platform support.
+- **WhatsApp**: clean LIDs/JIDs (remove `:xx`) for `external_id`; use phone-based IDs for `external_chat_id`.
 
-- Prefer explicit types at API and database boundaries.
-- Use `anyhow` for application-level error propagation unless a typed error is required.
-- Keep Axum handlers small; put feature logic in the relevant `feature` or `rag` module.
-- Keep SQLx query types aligned with migrations and Rust response models.
-- Preserve async correctness; avoid blocking operations inside Tokio request handlers.
-- Run `cargo fmt` after Rust edits.
+### Svelte 5
+- **Reactivity**: Use `$state` and `$derived` for clear UI state flow.
+- **MQTT**: State synchronization is managed in `src/lib/stores/chat.svelte.ts`.
+- **Components**: Follow the "Artifacts" design pattern (Side panels for detailed info).
 
-SvelteKit:
+### Database
+- All schema changes must include a SQL migration in `gateway-rust/migrations`.
+- Use JSONB for flexible configuration (like `gateway_thresholds` and `metadata`).
 
-- Use Svelte 5 patterns already present in the repo.
-- Keep shared state in `src/lib/stores` and API calls in `src/lib/api`.
-- Prefer small, focused components in `src/lib/components`.
-- Use Tailwind utilities consistently with the existing UI.
-- Run `npm run check` after TypeScript or Svelte edits.
+## Agentic Mandate
+- **Context First**: You MUST read the root `README.md` and `gateway-rust/README.md` to orient yourself with the latest diagrams and workflow descriptions before modifying core logic.
+- **Architecture First**: Understand the flow from Redis/MQTT through the Rust Services to the Postgres Schema.
+- **Memory is Permanent**: Every interaction should ideally contribute to the long-term context of the user.
+- **Verification**: Always run `cd gateway-rust && cargo check` after backend changes and `cd nomi_mobile && dart run build_runner build` for model/serializer updates.
 
-SSE and API contracts:
-
-- Treat streamed events as public contracts between `gateway-rust` and `ui-sveltekit`.
-- When changing SSE payloads, update Rust emitters/models, frontend parsing, and UI rendering together.
-- Avoid large unstructured text blobs where typed events would be clearer.
-
-Database and RAG:
-
-- Any schema change requires a new migration in `gateway-rust/migrations`.
-- For memory/RAG features, consider chunking, embedding storage, retrieval filters, and graph/memory relationships together.
-- Keep pgvector usage explicit and document assumptions about embedding dimensions or providers in code or migrations.
-
-## Agent Workflow
-
-- Inspect existing patterns before editing.
-- Do not overwrite unrelated user changes.
-- Prefer minimal, focused diffs that preserve existing architecture.
-- Update tests or checks when behavior changes.
-- If a change touches both backend and frontend, verify both sides when possible.
-- Never commit changes unless the user explicitly asks.
-
-## Local Notes
-
-- The project name in prior instructions is Open Agent.
-- The product direction uses an artifacts-style UI where generated code and previews can appear in a side panel.
-- Existing GEMINI.md contains persona-oriented guidance; this AGENTS.md is the operational source for coding-agent behavior.
+**Principle**: Transition from a static assistant to a self-expanding Agentic Operating System.

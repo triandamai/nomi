@@ -79,6 +79,7 @@ pub struct AdminConversationItem {
     pub title: Option<String>,
     pub cumulative_tokens: Option<i32>,
     pub max_token_usage: Option<i32>,
+    pub gateway_thresholds: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -150,6 +151,7 @@ pub struct UpdateUserRequest {
 pub struct UpdateConversationRequest {
     pub max_token_usage: Option<i32>,
     pub title: Option<String>,
+    pub thresholds: Option<serde_json::Value>,
 }
 
 pub async fn handle_get_user_detail(
@@ -463,18 +465,21 @@ pub async fn handle_update_admin_conversation(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateConversationRequest>,
 ) -> impl IntoResponse {
-    let result = sqlx::query!(
+    let result = sqlx::query(
         r#"
         UPDATE conversations 
         SET 
             max_token_usage = COALESCE($1, max_token_usage),
-            title = COALESCE($2, title)
-        WHERE id = $3
+            title = COALESCE($2, title),
+            gateway_thresholds = COALESCE($3, gateway_thresholds),
+            updated_at = NOW()
+        WHERE id = $4
         "#,
-        req.max_token_usage,
-        req.title,
-        id
     )
+    .bind(req.max_token_usage)
+    .bind(req.title)
+    .bind(req.thresholds)
+    .bind(id)
     .execute(&state.pool)
     .await;
 

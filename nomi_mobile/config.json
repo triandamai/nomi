@@ -1,0 +1,8 @@
+{
+    "GATEWAY_BASE_URL": "http://localhost:8000/api",
+    "GATEWAY_FILE_URL": "http://localhost:8000/api/files",
+    "MQTT_HOST": "b1fec516.ala.eu-central-1.emqxsl.com",
+    "MQTT_PORT": 8883,
+    "MQTT_USERNAME": "nomi-client-app",
+    "MQTT_PASSWORD": "NomiPublicPass2026"
+}

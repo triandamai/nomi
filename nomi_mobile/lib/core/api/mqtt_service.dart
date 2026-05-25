@@ -94,7 +94,7 @@ class MqttService {
 
     try {
       debugPrint('[MQTT] 🛰️ Connecting to ${AppConfig.mqttHost}:${AppConfig.mqttPort} via Raw TCP...');
-      final status = await _client!.connect("nomi-client-app", "NomiPublicPass2026");
+      final status = await _client!.connect(AppConfig.mqttUsername, AppConfig.mqttPassword);
       
       // Auto-subscribe to technical topics
       if (status?.state == MqttConnectionState.connected) {

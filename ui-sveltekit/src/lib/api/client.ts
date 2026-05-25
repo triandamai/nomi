@@ -445,6 +445,12 @@ export const chatApi = {
             body: JSON.stringify({slug, text})
         });
     },
+    learnSrp: (slug: string, text: string) => {
+        return apiFetch<any>('/srp/learn', {
+            method: 'POST',
+            body: JSON.stringify({slug, text})
+        });
+    },
     getAvailablePlugins: () => {
         return apiFetch<string[]>('/srp/available');
     },

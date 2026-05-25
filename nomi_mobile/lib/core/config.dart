@@ -1,8 +1,28 @@
 class AppConfig {
-  static const String baseUrl = 'http://localhost:8000/api';
-  static const String fileUrl = 'http://localhost:8000/api/files';
-  static const String mqttHost = 'b1fec516.ala.eu-central-1.emqxsl.com';
-  static const int mqttPort = 8883;
+  static const String baseUrl = String.fromEnvironment(
+    'GATEWAY_BASE_URL',
+    defaultValue: 'http://localhost:8000/api',
+  );
+  static const String fileUrl = String.fromEnvironment(
+    'GATEWAY_FILE_URL',
+    defaultValue: 'http://localhost:8000/api/files',
+  );
+  static const String mqttHost = String.fromEnvironment(
+    'MQTT_HOST',
+    defaultValue: 'b1fec516.ala.eu-central-1.emqxsl.com',
+  );
+  static const int mqttPort = int.fromEnvironment(
+    'MQTT_PORT',
+    defaultValue: 8883,
+  );
+  static const String mqttUsername = String.fromEnvironment(
+    'MQTT_USERNAME',
+    defaultValue: 'nomi-client-app',
+  );
+  static const String mqttPassword = String.fromEnvironment(
+    'MQTT_PASSWORD',
+    defaultValue: 'NomiPublicPass2026',
+  );
 
   
   // Nomi Visual Palette

@@ -136,10 +136,10 @@ pub async fn update_conversation_thresholds(
     layer: &str,
     value: f64,
 ) -> anyhow::Result<Value> {
-    // 1. Update Postgres (JSONB Patch) - Using runtime query
+    // 1. Update Postgres (JSONB Patch) - Using robust COALESCE
     let row = sqlx::query(
         "UPDATE conversations 
-         SET gateway_thresholds = gateway_thresholds || jsonb_build_object($1::text, $2::float8), 
+         SET gateway_thresholds = COALESCE(gateway_thresholds, '{}'::jsonb) || jsonb_build_object($1::text, $2::float8), 
              updated_at = NOW() 
          WHERE id = $3 
          RETURNING gateway_thresholds"
@@ -152,18 +152,8 @@ pub async fn update_conversation_thresholds(
 
     let updated_thresholds: Value = row.get("gateway_thresholds");
 
-    // 2. Refresh Redis Cache
-    let cache_key = format!("nomi:conversation:{}", conversation_id);
-    if let Ok(Some(cached)) = redis.get(&cache_key).await {
-        if let Ok(mut info) = serde_json::from_str::<ConversationCache>(&cached) {
-            info.gateway_thresholds = updated_thresholds.clone();
-            if let Ok(serialized) = serde_json::to_string(&info) {
-                let _ = redis.set_ex(&cache_key, &serialized, 3600).await;
-            }
-        }
-    } else {
-        let _ = redis.del(&cache_key).await;
-    }
+    // 2. Invalidate Redis Cache (ensure a clean miss loads up-to-date Postgres values next turn)
+    invalidate_conversation_cache(redis, conversation_id).await;
 
     Ok(updated_thresholds)
 }

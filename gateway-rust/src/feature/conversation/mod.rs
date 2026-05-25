@@ -637,7 +637,7 @@ pub async fn handle_pairing_handshake(
     // Fetch Conversations
     let conv_rows = sqlx::query!(
         r#"
-        SELECT c.id, c.title, c.created_at, c.updated_at,c.max_token_usage, c.cumulative_tokens
+        SELECT c.id, c.title, c.created_at, c.updated_at, c.max_token_usage, c.cumulative_tokens, c.gateway_thresholds
         FROM conversations c
         INNER JOIN conversation_members cm ON c.id = cm.conversation_id
         WHERE cm.user_id = $1
@@ -657,6 +657,7 @@ pub async fn handle_pairing_handshake(
             cumulative_tokens: row.cumulative_tokens,
             max_token_usage: row.max_token_usage,
             name: row.title.unwrap_or_default(),
+            gateway_thresholds: Some(row.gateway_thresholds),
             created_at: row.created_at.unwrap_or_else(Utc::now),
             updated_at: row.updated_at.unwrap_or_else(Utc::now),
         })
@@ -893,7 +894,7 @@ pub async fn handle_get_conversations(
 
     let result = sqlx::query!(
         r#"
-        SELECT c.id, c.title, c.created_at,c.max_token_usage, c.updated_at,c.cumulative_tokens
+        SELECT c.id, c.title, c.created_at, c.max_token_usage, c.updated_at, c.cumulative_tokens, c.gateway_thresholds
         FROM conversations c
         INNER JOIN conversation_members cm ON c.id = cm.conversation_id
         WHERE cm.user_id = $1
@@ -913,6 +914,7 @@ pub async fn handle_get_conversations(
                     cumulative_tokens: row.cumulative_tokens,
                     max_token_usage: row.max_token_usage,
                     name: row.title.unwrap_or_default(),
+                    gateway_thresholds: Some(row.gateway_thresholds),
                     created_at: row.created_at.unwrap_or_else(Utc::now),
                     updated_at: row.updated_at.unwrap_or_else(Utc::now),
                 })
@@ -950,7 +952,7 @@ pub async fn handle_create_conversation(
         let conv_type = payload.conversation_type.unwrap_or_else(|| "private".to_string());
 
         let row = sqlx::query!(
-            "INSERT INTO conversations (id, title, soul_content, bootstrap_content, cumulative_tokens, conversation_type) VALUES ($1, $2, $3, $4, 0, $5) RETURNING id, title,max_token_usage, created_at, updated_at, cumulative_tokens",
+            "INSERT INTO conversations (id, title, soul_content, bootstrap_content, cumulative_tokens, conversation_type) VALUES ($1, $2, $3, $4, 0, $5) RETURNING id, title, max_token_usage, created_at, updated_at, cumulative_tokens, gateway_thresholds",
             id,
             title,
             payload.soul_content,
@@ -973,8 +975,9 @@ pub async fn handle_create_conversation(
         Ok(ConversationResponse {
             id: row.id,
             cumulative_tokens: row.cumulative_tokens,
-            max_token_usage:row.max_token_usage,
+            max_token_usage: row.max_token_usage,
             name: row.title.unwrap_or_default(),
+            gateway_thresholds: Some(row.gateway_thresholds),
             created_at: row.created_at.unwrap_or_else(Utc::now),
             updated_at: row.updated_at.unwrap_or_else(Utc::now),
         })
@@ -1029,7 +1032,7 @@ pub async fn handle_update_conversation(
     info!(conversation_id = %id, user_id = %user_id, "Updating conversation");
 
     let result = sqlx::query!(
-        "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at,max_token_usage,cumulative_tokens",
+        "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at, max_token_usage, cumulative_tokens, gateway_thresholds",
         payload.name,
         id
     )
@@ -1050,6 +1053,7 @@ pub async fn handle_update_conversation(
                 cumulative_tokens: row.cumulative_tokens,
                 max_token_usage: row.max_token_usage,
                 name: row.title.unwrap_or_default(),
+                gateway_thresholds: Some(row.gateway_thresholds),
                 created_at: row.created_at.unwrap_or_else(Utc::now),
                 updated_at: row.updated_at.unwrap_or_else(Utc::now),
             },
@@ -1446,6 +1450,85 @@ pub async fn handle_test_srp(
         ApiResponse::not_found("Plugin not found")
     }
 }
+
+pub async fn handle_learn_srp(
+    State(state): State<AppState>,
+    Json(payload): Json<SrpTestRequest>,
+) -> ApiResponse<Value> {
+    let dispatcher = crate::common::tools::ToolDispatcher::new(
+        state.pool.clone(),
+        std::path::PathBuf::from("."),
+        None,
+        None,
+        state.gemini.clone(),
+        state.gemini_api_key.clone(),
+        state.storage.clone(),
+        state.clone(),
+    );
+
+    let mut base_desc = String::new();
+    if let Some(plugin) = dispatcher.plugins.get(payload.slug.as_str()) {
+        base_desc = plugin.schema()["description"].as_str().unwrap_or_default().to_string();
+    } else {
+        // Look up dynamic edge function
+        match sqlx::query!(
+            "SELECT description FROM edge_functions WHERE slug = $1 LIMIT 1",
+            payload.slug
+        )
+        .fetch_optional(&state.pool)
+        .await {
+            Ok(Some(row)) => {
+                base_desc = row.description;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                return ApiResponse::failed(&format!("Database error: {}", e));
+            }
+        }
+    }
+
+    if base_desc.is_empty() {
+        return ApiResponse::not_found("Plugin not found");
+    }
+
+    match crate::services::static_reinforcement::reinforce_static_plugin_profile(
+        state.pool.clone(),
+        state.gemini.clone(),
+        payload.slug.clone(),
+        payload.text.clone(),
+        base_desc,
+    )
+    .await {
+        Ok(_) => {
+            // Retrieve newly updated state
+            let updated_res = sqlx::query(
+                "SELECT enriched_description, additional_rules, learned_phrases FROM static_plugin_reinforcements WHERE plugin_slug = $1"
+            )
+            .bind(&payload.slug)
+            .fetch_optional(&state.pool)
+            .await;
+
+            match updated_res {
+                Ok(Some(row)) => {
+                    use sqlx::Row;
+                    let data = json!({
+                        "slug": payload.slug,
+                        "enriched_description": row.get::<String, _>("enriched_description"),
+                        "additional_rules": row.get::<Vec<String>, _>("additional_rules"),
+                        "learned_phrases": row.get::<Vec<String>, _>("learned_phrases"),
+                    });
+                    ApiResponse::ok(data, "Reinforcement learned and stored successfully ✨")
+                }
+                _ => ApiResponse::ok(json!({}), "Reinforcement applied successfully ✨"),
+            }
+        }
+        Err(e) => {
+            error!("Direct SRP learn failed: {}", e);
+            ApiResponse::failed(&format!("Self-Reinforcement failed: {}", e))
+        }
+    }
+}
+
 
 pub async fn handle_get_available_plugins(
     State(state): State<AppState>,

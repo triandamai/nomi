@@ -199,7 +199,7 @@
         <div class="px-5 py-3 border-b border-border-main bg-border-main/40 flex items-center">
           <div class="flex items-center gap-2 text-xs font-bold text-text-main uppercase tracking-wider">
             <Terminal class="w-4 h-4 text-accent-emerald" />
-            Reinforcement Simulator
+            Reinforcement & Learning Simulator
           </div>
         </div>
         <div class="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
@@ -214,19 +214,37 @@
               ></textarea>
             </div>
 
-            <button 
-              onclick={() => srpStore.runSimulation()} 
-              disabled={srpStore.isSimulating || !srpStore.simulationInput} 
-              class="w-full py-3.5 bg-accent-emerald hover:bg-accent-emerald/80 disabled:bg-border-main disabled:text-text-muted text-bg-main font-black rounded-xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 shadow-lg shadow-accent-emerald/10 active:scale-[0.98]"
-            >
-              {#if srpStore.isSimulating}
-                <Loader2 class="w-4 h-4 animate-spin" />
-                Processing Alignment...
-              {:else}
-                <Play class="w-3.5 h-3.5 fill-current" />
-                Run Simulation Pass
-              {/if}
-            </button>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <!-- Simulation Button -->
+              <button 
+                onclick={() => srpStore.runSimulation()} 
+                disabled={srpStore.isSimulating || srpStore.isLearning || !srpStore.simulationInput} 
+                class="py-3.5 bg-bg-main/60 hover:bg-bg-main border border-border-main hover:border-text-muted disabled:bg-border-main disabled:text-text-muted text-text-main font-bold rounded-xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
+              >
+                {#if srpStore.isSimulating}
+                  <Loader2 class="w-3.5 h-3.5 animate-spin" />
+                  Simulating...
+                {:else}
+                  <Play class="w-3 h-3 fill-current text-text-muted" />
+                  Run Simulation
+                {/if}
+              </button>
+
+              <!-- Learn Button -->
+              <button 
+                onclick={() => srpStore.runDirectLearn()} 
+                disabled={srpStore.isSimulating || srpStore.isLearning || !srpStore.simulationInput} 
+                class="py-3.5 bg-gradient-to-r from-accent-emerald to-emerald-600 hover:from-accent-emerald/90 hover:to-emerald-600/90 text-bg-main font-black rounded-xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent-emerald/10 active:scale-[0.98] disabled:from-border-main disabled:to-border-main disabled:text-text-muted disabled:shadow-none"
+              >
+                {#if srpStore.isLearning}
+                  <Loader2 class="w-3.5 h-3.5 animate-spin" />
+                  Learning Phrasing...
+                {:else}
+                  <Brain class="w-3.5 h-3.5 text-bg-main" />
+                  Inject & Learn
+                {/if}
+              </button>
+            </div>
           </div>
 
           <div class="space-y-2">
@@ -234,7 +252,7 @@
             <div class="w-full h-[180px] bg-bg-main/80 p-4 rounded-xl border border-border-main overflow-y-auto text-xs font-mono text-text-muted custom-scrollbar whitespace-pre-wrap leading-relaxed shadow-inner">
               {#if srpStore.simulationOutput}
                 <div class="text-accent-emerald mb-2 font-bold flex items-center gap-2">
-                    <span class="w-1.5 h-1.5 bg-accent-emerald rounded-full"></span>
+                    <span class="w-1.5 h-1.5 bg-accent-emerald rounded-full animate-pulse"></span>
                     REINFORCEMENT LOG:
                 </div>
                 {srpStore.simulationOutput}

@@ -19,6 +19,7 @@ function createSrpStore() {
     let simulationInput = $state("");
     let simulationOutput = $state("");
     let isSimulating = $state(false);
+    let isLearning = $state(false);
     let isLoading = $state(false);
     let availablePlugins = $state<string[]>([]);
 
@@ -86,6 +87,35 @@ function createSrpStore() {
         }
     }
 
+    async function runDirectLearn() {
+        if (!simulationInput || !state.slug) return;
+        
+        isLearning = true;
+        simulationOutput = "Injecting phrasing & training SRP live...";
+        
+        try {
+            const response = await chatApi.learnSrp(state.slug, simulationInput);
+            
+            if (response && response.data && response.data.enriched_description) {
+                state = response.data;
+                simulationOutput = `Success! Nomi successfully reinforced & learned this phrasing for [${state.slug}] ✨\n\n` +
+                                   `Enriched Description:\n"${response.data.enriched_description}"\n\n` +
+                                   `New Rules Added:\n${response.data.additional_rules.map((r: string) => `- ${r}`).join('\n')}\n\n` +
+                                   `Vocabulary learned:\n${response.data.learned_phrases.map((p: string) => `- ${p}`).join('\n')}`;
+            } else if (response && response.meta && response.meta.message) {
+                simulationOutput = `Server Message: ${response.meta.message}`;
+            } else {
+                simulationOutput = "Phrasing injected successfully. Reloading state...";
+                await loadState(state.slug);
+            }
+        } catch (e: any) {
+            console.error("SrpStore: SRP Direct Learn error", e);
+            simulationOutput = `Injection Failed: ${e.message || "Unknown error occurred during live learning pass."}`;
+        } finally {
+            isLearning = false;
+        }
+    }
+
     // 🎁 Public Interface (Functional Svelte 5 pattern)
     return {
         get state() { return state; },
@@ -93,13 +123,15 @@ function createSrpStore() {
         set simulationInput(val: string) { simulationInput = val; },
         get simulationOutput() { return simulationOutput; },
         get isSimulating() { return isSimulating; },
+        get isLearning() { return isLearning; },
         get isLoading() { return isLoading; },
         get availablePlugins() { return availablePlugins; },
         
         loadAvailablePlugins,
         loadState,
         reset,
-        runSimulation
+        runSimulation,
+        runDirectLearn
     };
 }
 
