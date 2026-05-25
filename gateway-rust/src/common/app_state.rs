@@ -76,6 +76,23 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn broadcast_deb_update(
+        &self,
+        conversation_id: &Uuid,
+        thresholds: &serde_json::Value,
+    ) -> anyhow::Result<()> {
+        let sse_data = json!({
+            "conversation_id": conversation_id,
+            "thresholds": thresholds
+        });
+
+        // Publish to MQTT
+        let topic = format!("nomi/conversations/{}/deb_update", conversation_id);
+        let _ = self.mqtt.publish_event(&topic, &sse_data.to_string(), rumqttc::QoS::AtLeastOnce).await;
+
+        Ok(())
+    }
+
     pub async fn broadcast(
         &self,
         event_name: &str,

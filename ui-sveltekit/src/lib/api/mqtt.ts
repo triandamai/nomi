@@ -142,6 +142,9 @@ class MqttClient {
                 case 'token_update':
                     eventBus.emit('sse-token_update', data);
                     break;
+                case 'deb_update':
+                    eventBus.emit('sse-deb_update', data);
+                    break;
                 case 'presence':
                     eventBus.emit('sse-presence', data);
                     break;

@@ -163,3 +163,170 @@ pub async fn invalidate_conversation_cache(redis: &RedisClient, conversation_id:
     let _ = redis.del(&cache_key).await;
     info!("Invalidated cache for conversation {}", conversation_id);
 }
+
+pub async fn get_user_conversations(
+    pool: &Pool<Postgres>,
+    user_id: Uuid,
+    limit: Option<i64>,
+) -> anyhow::Result<Vec<ConversationCache>> {
+    let limit = limit.unwrap_or(50);
+    let rows = sqlx::query(
+        r#"
+        SELECT id, title, user_id, soul_content, bootstrap_content, created_at, updated_at, 
+               max_token_usage, cumulative_tokens, metadata, conversation_type, gateway_thresholds
+        FROM conversations c
+        INNER JOIN conversation_members cm ON c.id = cm.conversation_id
+        WHERE cm.user_id = $1
+        ORDER BY c.updated_at DESC
+        LIMIT $2
+        "#
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let mut conversations = Vec::new();
+    for r in rows {
+        conversations.push(ConversationCache {
+            id: r.get("id"),
+            title: r.get("title"),
+            user_id: r.get("user_id"),
+            soul_content: r.get("soul_content"),
+            bootstrap_content: r.get("bootstrap_content"),
+            created_at: r.get::<Option<DateTime<Utc>>, _>("created_at").unwrap_or_else(Utc::now),
+            updated_at: r.get::<Option<DateTime<Utc>>, _>("updated_at").unwrap_or_else(Utc::now),
+            max_token_usage: r.get::<Option<i32>, _>("max_token_usage").unwrap_or(700000),
+            cumulative_tokens: r.get::<Option<i32>, _>("cumulative_tokens").unwrap_or(0),
+            conversation_type: r.get::<Option<String>, _>("conversation_type").unwrap_or_else(|| "private".to_string()),
+            metadata: r.get("metadata"),
+            gateway_thresholds: r.get::<Option<Value>, _>("gateway_thresholds").unwrap_or_else(|| json!({
+                "interaction_gate": 0.6,
+                "intent_classification": 0.4,
+                "guardrails": 0.65
+            })),
+        });
+    }
+
+    Ok(conversations)
+}
+
+pub async fn create_conversation(
+    pool: &Pool<Postgres>,
+    id: Uuid,
+    title: String,
+    soul_content: Option<String>,
+    bootstrap_content: Option<String>,
+    conversation_type: Option<String>,
+    user_id: Uuid,
+) -> anyhow::Result<ConversationCache> {
+    let mut tx = pool.begin().await?;
+    let conv_type = conversation_type.unwrap_or_else(|| "private".to_string());
+
+    let r = sqlx::query(
+        r#"
+        INSERT INTO conversations (id, title, soul_content, bootstrap_content, cumulative_tokens, conversation_type) 
+        VALUES ($1, $2, $3, $4, 0, $5) 
+        RETURNING id, title, user_id, soul_content, bootstrap_content, created_at, updated_at, 
+                  max_token_usage, cumulative_tokens, metadata, conversation_type, gateway_thresholds
+        "#
+    )
+    .bind(id)
+    .bind(&title)
+    .bind(&soul_content)
+    .bind(&bootstrap_content)
+    .bind(conv_type)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2)"
+    )
+    .bind(id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    let cache = ConversationCache {
+        id: r.get("id"),
+        title: r.get("title"),
+        user_id: r.get("user_id"),
+        soul_content: r.get("soul_content"),
+        bootstrap_content: r.get("bootstrap_content"),
+        created_at: r.get::<Option<DateTime<Utc>>, _>("created_at").unwrap_or_else(Utc::now),
+        updated_at: r.get::<Option<DateTime<Utc>>, _>("updated_at").unwrap_or_else(Utc::now),
+        max_token_usage: r.get::<Option<i32>, _>("max_token_usage").unwrap_or(700000),
+        cumulative_tokens: r.get::<Option<i32>, _>("cumulative_tokens").unwrap_or(0),
+        conversation_type: r.get::<Option<String>, _>("conversation_type").unwrap_or_else(|| "private".to_string()),
+        metadata: r.get("metadata"),
+        gateway_thresholds: r.get::<Option<Value>, _>("gateway_thresholds").unwrap_or_else(|| json!({
+            "interaction_gate": 0.6,
+            "intent_classification": 0.4,
+            "guardrails": 0.65
+        })),
+    };
+
+    Ok(cache)
+}
+
+pub async fn update_conversation_title(
+    pool: &Pool<Postgres>,
+    redis: &RedisClient,
+    id: Uuid,
+    title: String,
+) -> anyhow::Result<ConversationCache> {
+    let r = sqlx::query(
+        r#"
+        UPDATE conversations 
+        SET title = $1, updated_at = NOW() 
+        WHERE id = $2 
+        RETURNING id, title, user_id, soul_content, bootstrap_content, created_at, updated_at, 
+                  max_token_usage, cumulative_tokens, metadata, conversation_type, gateway_thresholds
+        "#
+    )
+    .bind(&title)
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+
+    invalidate_conversation_cache(redis, id).await;
+
+    let cache = ConversationCache {
+        id: r.get("id"),
+        title: r.get("title"),
+        user_id: r.get("user_id"),
+        soul_content: r.get("soul_content"),
+        bootstrap_content: r.get("bootstrap_content"),
+        created_at: r.get::<Option<DateTime<Utc>>, _>("created_at").unwrap_or_else(Utc::now),
+        updated_at: r.get::<Option<DateTime<Utc>>, _>("updated_at").unwrap_or_else(Utc::now),
+        max_token_usage: r.get::<Option<i32>, _>("max_token_usage").unwrap_or(700000),
+        cumulative_tokens: r.get::<Option<i32>, _>("cumulative_tokens").unwrap_or(0),
+        conversation_type: r.get::<Option<String>, _>("conversation_type").unwrap_or_else(|| "private".to_string()),
+        metadata: r.get("metadata"),
+        gateway_thresholds: r.get::<Option<Value>, _>("gateway_thresholds").unwrap_or_else(|| json!({
+            "interaction_gate": 0.6,
+            "intent_classification": 0.4,
+            "guardrails": 0.65
+        })),
+    };
+
+    Ok(cache)
+}
+
+pub async fn is_conversation_member(
+    pool: &Pool<Postgres>,
+    conversation_id: Uuid,
+    user_id: Uuid,
+) -> anyhow::Result<bool> {
+    let row = sqlx::query(
+        "SELECT 1 FROM conversation_members WHERE conversation_id = $1 AND user_id = $2"
+    )
+    .bind(conversation_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.is_some())
+}

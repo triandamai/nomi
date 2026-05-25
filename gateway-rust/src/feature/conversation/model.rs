@@ -34,6 +34,20 @@ pub struct ConversationResponse {
     pub updated_at: DateTime<Utc>,
 }
 
+impl From<crate::common::repository::conversation_repo::ConversationCache> for ConversationResponse {
+    fn from(cache: crate::common::repository::conversation_repo::ConversationCache) -> Self {
+        Self {
+            id: cache.id,
+            name: cache.title.unwrap_or_default(),
+            cumulative_tokens: Some(cache.cumulative_tokens),
+            max_token_usage: Some(cache.max_token_usage),
+            gateway_thresholds: Some(cache.gateway_thresholds),
+            created_at: cache.created_at,
+            updated_at: cache.updated_at,
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub struct UpdateConversationRequest {
     pub name: String,

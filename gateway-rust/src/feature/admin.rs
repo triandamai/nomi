@@ -478,7 +478,7 @@ pub async fn handle_update_admin_conversation(
     )
     .bind(req.max_token_usage)
     .bind(req.title)
-    .bind(req.thresholds)
+    .bind(req.thresholds.clone())
     .bind(id)
     .execute(&state.pool)
     .await;
@@ -488,6 +488,10 @@ pub async fn handle_update_admin_conversation(
             &state.redis,
             id
         ).await;
+
+        if let Some(ref thresholds) = req.thresholds {
+            let _ = state.broadcast_deb_update(&id, thresholds).await;
+        }
     }
 
     match result {

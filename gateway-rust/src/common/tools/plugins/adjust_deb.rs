@@ -83,7 +83,8 @@ impl NomiToolPlugin for AdjustDebPlugin {
                 layer,
                 val
             ).await {
-                Ok(_) => {
+                Ok(updated_thresholds) => {
+                    let _ = dispatcher.app_state.broadcast_deb_update(&cid, &updated_thresholds).await;
                     Ok(ToolResult {
                         success: true,
                         content: format!("SYSTEM SIGNAL: Boundary parameter [{}] applied successfully to value {:.2}. Next conversational turns will use these metrics instantly.", layer, val),

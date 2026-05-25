@@ -9,6 +9,7 @@ export type Conversation = {
     cumulative_tokens: number,
     active?: boolean;
     online?: boolean;
+    gateway_thresholds?: any;
 };
 
 export const CONV_ID = "296e7dc6"
@@ -45,6 +46,22 @@ function createConversationStore() {
         }
     });
 
+    // Subscribe to DEB updates
+    eventBus.subscribe('sse-deb_update', (data) => {
+        if (data.conversation_id) {
+            conversations = conversations.map(c => {
+                if (c.id === data.conversation_id) {
+                    return {...c, gateway_thresholds: data.thresholds};
+                }
+                return c;
+            });
+
+            if (activeConversationId === data.conversation_id && activeConversation) {
+                activeConversation.gateway_thresholds = data.thresholds;
+            }
+        }
+    });
+
     return {
         get conversations() {
             return conversations;
@@ -66,6 +83,7 @@ function createConversationStore() {
                         name: c.name || c.title || 'Untitled',
                         active: c.id === activeConversationId,
                         cumulative_tokens: c.cumulative_tokens,
+                        gateway_thresholds: c.gateway_thresholds,
                         online: true
                     }));
                     conversations = loaded;

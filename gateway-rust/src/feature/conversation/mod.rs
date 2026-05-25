@@ -634,34 +634,14 @@ pub async fn handle_pairing_handshake(
         })
         .collect::<Vec<_>>();
 
-    // Fetch Conversations
-    let conv_rows = sqlx::query!(
-        r#"
-        SELECT c.id, c.title, c.created_at, c.updated_at, c.max_token_usage, c.cumulative_tokens, c.gateway_thresholds
-        FROM conversations c
-        INNER JOIN conversation_members cm ON c.id = cm.conversation_id
-        WHERE cm.user_id = $1
-        ORDER BY c.updated_at DESC
-        LIMIT 50
-        "#,
-        user_id
-    )
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
-
-    let conversations = conv_rows
-        .into_iter()
-        .map(|row| ConversationResponse {
-            id: row.id,
-            cumulative_tokens: row.cumulative_tokens,
-            max_token_usage: row.max_token_usage,
-            name: row.title.unwrap_or_default(),
-            gateway_thresholds: Some(row.gateway_thresholds),
-            created_at: row.created_at.unwrap_or_else(Utc::now),
-            updated_at: row.updated_at.unwrap_or_else(Utc::now),
-        })
-        .collect::<Vec<_>>();
+    // Fetch Conversations using consolidated repository layer
+    let conversations = match crate::common::repository::conversation_repo::get_user_conversations(&state.pool, user_id, Some(50)).await {
+        Ok(items) => items.into_iter().map(ConversationResponse::from).collect::<Vec<_>>(),
+        Err(e) => {
+            error!("Failed to fetch conversations in handshake: {}", e);
+            Vec::new()
+        }
+    };
 
     (
         StatusCode::OK,
@@ -892,33 +872,9 @@ pub async fn handle_get_conversations(
 
     info!(user_id = %user_id, "Fetching user conversations");
 
-    let result = sqlx::query!(
-        r#"
-        SELECT c.id, c.title, c.created_at, c.max_token_usage, c.updated_at, c.cumulative_tokens, c.gateway_thresholds
-        FROM conversations c
-        INNER JOIN conversation_members cm ON c.id = cm.conversation_id
-        WHERE cm.user_id = $1
-        ORDER BY c.updated_at DESC
-        "#,
-        user_id
-    )
-    .fetch_all(&state.pool)
-    .await;
-
-    match result {
-        Ok(rows) => {
-            let convs = rows
-                .into_iter()
-                .map(|row| ConversationResponse {
-                    id: row.id,
-                    cumulative_tokens: row.cumulative_tokens,
-                    max_token_usage: row.max_token_usage,
-                    name: row.title.unwrap_or_default(),
-                    gateway_thresholds: Some(row.gateway_thresholds),
-                    created_at: row.created_at.unwrap_or_else(Utc::now),
-                    updated_at: row.updated_at.unwrap_or_else(Utc::now),
-                })
-                .collect();
+    match crate::common::repository::conversation_repo::get_user_conversations(&state.pool, user_id, None).await {
+        Ok(items) => {
+            let convs = items.into_iter().map(ConversationResponse::from).collect();
             ApiResponse::ok(convs, "Conversations retrieved")
         }
         Err(e) => {
@@ -943,51 +899,24 @@ pub async fn handle_create_conversation(
     let id = Uuid::new_v4();
     let title = payload
         .name
-        .or(payload.title)
+        .clone()
+        .or(payload.title.clone())
         .unwrap_or_else(|| "New Conversation".to_string());
 
-    let result: Result<ConversationResponse, sqlx::Error> = async {
-        let mut tx = state.pool.begin().await?;
-
-        let conv_type = payload.conversation_type.unwrap_or_else(|| "private".to_string());
-
-        let row = sqlx::query!(
-            "INSERT INTO conversations (id, title, soul_content, bootstrap_content, cumulative_tokens, conversation_type) VALUES ($1, $2, $3, $4, 0, $5) RETURNING id, title, max_token_usage, created_at, updated_at, cumulative_tokens, gateway_thresholds",
-            id,
-            title,
-            payload.soul_content,
-            payload.bootstrap_content,
-            conv_type
-        )
-        .fetch_one(&mut *tx)
-        .await?;
-
-        sqlx::query!(
-            "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2)",
-            id,
-            user_id
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        tx.commit().await?;
-
-        Ok(ConversationResponse {
-            id: row.id,
-            cumulative_tokens: row.cumulative_tokens,
-            max_token_usage: row.max_token_usage,
-            name: row.title.unwrap_or_default(),
-            gateway_thresholds: Some(row.gateway_thresholds),
-            created_at: row.created_at.unwrap_or_else(Utc::now),
-            updated_at: row.updated_at.unwrap_or_else(Utc::now),
-        })
-    }
-    .await;
-
-    match result {
-        Ok(response) => {
+    match crate::common::repository::conversation_repo::create_conversation(
+        &state.pool,
+        id,
+        title,
+        payload.soul_content,
+        payload.bootstrap_content,
+        payload.conversation_type,
+        user_id,
+    )
+    .await
+    {
+        Ok(cache_item) => {
             info!(conversation_id = %id, user_id = %user_id, "Conversation created successfully");
-            ApiResponse::ok(response, "Conversation created")
+            ApiResponse::ok(ConversationResponse::from(cache_item), "Conversation created")
         }
         Err(e) => {
             error!("Failed to create conversation: {}", e);
@@ -1009,18 +938,10 @@ pub async fn handle_update_conversation(
         Err(_) => return ApiResponse::failed("Invalid user ID in token"),
     };
 
-    // Verify membership
-    let membership = sqlx::query!(
-        "SELECT 1 as one FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
-        id,
-        user_id
-    )
-    .fetch_optional(&state.pool)
-    .await;
-
-    match membership {
-        Ok(Some(_)) => (),
-        Ok(None) => {
+    // Verify membership using consolidated repository layer
+    match crate::common::repository::conversation_repo::is_conversation_member(&state.pool, id, user_id).await {
+        Ok(true) => (),
+        Ok(false) => {
             return ApiResponse::failed("Forbidden: You are not a member of this conversation");
         }
         Err(e) => {
@@ -1029,34 +950,11 @@ pub async fn handle_update_conversation(
         }
     }
 
-    info!(conversation_id = %id, user_id = %user_id, "Updating conversation");
+    info!(conversation_id = %id, user_id = %user_id, "Updating conversation title");
 
-    let result = sqlx::query!(
-        "UPDATE conversations SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, created_at, updated_at, max_token_usage, cumulative_tokens, gateway_thresholds",
-        payload.name,
-        id
-    )
-    .fetch_one(&state.pool)
-    .await;
-
-    if result.is_ok() {
-        crate::common::repository::conversation_repo::invalidate_conversation_cache(
-            &state.redis,
-            id
-        ).await;
-    }
-
-    match result {
-        Ok(row) => ApiResponse::ok(
-            ConversationResponse {
-                id: row.id,
-                cumulative_tokens: row.cumulative_tokens,
-                max_token_usage: row.max_token_usage,
-                name: row.title.unwrap_or_default(),
-                gateway_thresholds: Some(row.gateway_thresholds),
-                created_at: row.created_at.unwrap_or_else(Utc::now),
-                updated_at: row.updated_at.unwrap_or_else(Utc::now),
-            },
+    match crate::common::repository::conversation_repo::update_conversation_title(&state.pool, &state.redis, id, payload.name).await {
+        Ok(cache_item) => ApiResponse::ok(
+            ConversationResponse::from(cache_item),
             "Conversation updated",
         ),
         Err(e) => {

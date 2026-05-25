@@ -335,6 +335,74 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
 
         if is_ambient {
             info!("Processing as AMBIENT SOUL message");
+            
+            // Save the incoming ambient user message to the database so Nomi does not lose context!
+            let mut quoted_metadata = None;
+            if let Some(q) = &unified_msg.quoted_message {
+                let mut q_with_name = json!(q);
+                let quoted_sender_name: Option<String> = sqlx::query_scalar!(
+                    "SELECT u.display_name FROM users u JOIN channels c ON c.user_id = u.id WHERE c.external_id = $1 LIMIT 1",
+                    q.sender_id
+                )
+                .fetch_optional(&state_clone.pool)
+                .await
+                .unwrap_or(None)
+                .flatten();
+
+                if let Some(name) = quoted_sender_name {
+                    if let Some(obj) = q_with_name.as_object_mut() {
+                        obj.insert("display_name".to_string(), json!(name));
+                    }
+                }
+                quoted_metadata = Some(json!({ "quoted_message": q_with_name }));
+            }
+
+            let save_res = crate::common::repository::message_repo::save_message(
+                &state_clone.pool,
+                conversation_id,
+                "user",
+                &user_text,
+                None,
+                Some(user_id.id),
+                0,
+                0,
+                0,
+                unified_msg.image_url.clone(),
+                unified_msg.video_url.clone(),
+                unified_msg.audio_url.clone(),
+                unified_msg.doc_url.clone(),
+                unified_msg.sticker_url.clone(),
+                quoted_metadata,
+                unified_msg.reply_to_id,
+                Some(&state_clone.redis),
+            ).await;
+
+            // Notify connected dashboard clients in real-time even for ambient messages!
+            if let Ok(ref saved_msg) = save_res {
+                let members = sqlx::query!(
+                    "SELECT m.user_id FROM conversation_members as m WHERE m.conversation_id = $1",
+                    conversation_id
+                )
+                .fetch_all(&state_clone.pool)
+                .await
+                .unwrap_or(Vec::new());
+
+                for member in members.iter().map(|v| v.user_id) {
+                    info!("notify user message saved (ambient) :{:?}", member);
+                    let mut sse_msg = saved_msg.clone();
+                    sse_msg.display_name = unified_msg.display_name.clone();
+                    let _ = state_clone
+                        .dispatch(crate::services::event_dispatcher::AppEvent::user(
+                            member.to_string().as_str(),
+                            "message",
+                            sse_msg.to_sse_json(0),
+                        ))
+                        .await;
+                }
+            } else if let Err(e) = save_res {
+                error!("Failed to save ambient user message to database: {}", e);
+            }
+
             let ambient_soul = crate::services::ambient_soul::AmbientSoulService::new(
                 state_clone.pool.clone(),
                 state_clone.redis.clone(),
