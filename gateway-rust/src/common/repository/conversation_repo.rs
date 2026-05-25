@@ -172,8 +172,8 @@ pub async fn get_user_conversations(
     let limit = limit.unwrap_or(50);
     let rows = sqlx::query(
         r#"
-        SELECT id, title, user_id, soul_content, bootstrap_content, created_at, updated_at, 
-               max_token_usage, cumulative_tokens, metadata, conversation_type, gateway_thresholds
+        SELECT c.id, c.title, cm.user_id, c.soul_content, c.bootstrap_content, c.created_at, c.updated_at, 
+               c.max_token_usage, c.cumulative_tokens, c.metadata, c.conversation_type, c.gateway_thresholds
         FROM conversations c
         INNER JOIN conversation_members cm ON c.id = cm.conversation_id
         WHERE cm.user_id = $1
