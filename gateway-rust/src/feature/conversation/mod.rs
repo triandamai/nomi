@@ -1489,5 +1489,7 @@ pub async fn handle_get_available_plugins(
         }
     }
 
+    slugs.sort();
+
     ApiResponse::ok(slugs, "Available plugins retrieved")
 }

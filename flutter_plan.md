@@ -1,90 +1,52 @@
 # Flutter Implementation Plan: Nomi Mobile Migration
 
 ## 🎯 Objective
-Migrate the full technical and functional capabilities of the Nomi SvelteKit workspace into a high-fidelity, cross-platform Flutter application. The goal is to maintain the "Elite Engineering" aesthetic while providing native mobile performance.
+Migrate the full technical and functional capabilities of the Nomi SvelteKit workspace into a high-fidelity, cross-platform Flutter application. The goal is to maintain a professional, high-density industrial aesthetic ("Artifacts" design) while providing an ultra-responsive, offline-first experience.
 
----
+## 🛠️ Architecture
+*   **Framework:** Flutter (3.29+)
+*   **State Management:** Riverpod (Runes-parity logic)
+*   **Networking:** Dio (Standardized `ApiResponse` handling)
+*   **Persistence:** Drift (SQLite) for high-performance Offline-First core.
+*   **Real-time:** MQTT (Global UI Isolate Service)
+*   **Design System:** Glassmorphism (Liquid Glass), Deep Slate (#020617), Emerald (#10b981).
 
-## 🛠️ Technical Stack Recommendation
+## 🚀 Roadmap
 
-| Layer | Technology | Rationale |
-| :--- | :--- | :--- |
-| **State Management** | `Riverpod` | Best-in-class for global reactive state, matching the Svelte 5 "Store" logic. |
-| **Networking** | `Dio` | Robust HTTP client for handling complex headers, interceptors, and error logging. |
-| **Real-time** | `MQTT Client` | Native integration with Nomi's event bus (SSE-to-MQTT bridge). |
-| **UI Framework** | `Flutter (Material 3 + Custom)` | Custom glassmorphism and animations to match the "Artifacts" design. |
-| **3D Rendering** | `flutter_cube` or `webview_flutter` | For the RAG Knowledge Graph (Three.js integration). |
-| **Markdown** | `flutter_markdown` | High-fidelity rendering of Nomi's technical responses. |
-| **Authentication** | `flutter_secure_storage` | Secure JWT persistence for OTP-based login. |
+### Phase 1: Infrastructure & Auth [DONE]
+*   [x] Project scaffolding & High-fidelity theme.
+*   [x] Secure Storage (JWT & Device ID persistence).
+*   [x] OTP Auth Pipeline (Channel-aware).
+*   [x] Profile Management.
 
----
+### Phase 2: Chat & Real-time Connectivity [DONE]
+*   [x] Native Message Replies (Recursive Join).
+*   [x] Multimodal Rendering (Images, Stickers, Video, Audio).
+*   [x] Global MQTT Service with Structured Client IDs.
+*   [x] Reverse-descending reactive chat list.
+*   [x] Real-time Presence (Bouncing Typing Indicators, Streaming Thoughts).
+*   [x] Offline-First Persistent Core (SQLite/Drift).
 
-## 📋 Feature & Component Audit
+### Phase 3: Live Artifacts & Utilities [IN PROGRESS]
+*   [x] Utility 1: Reminders (Durable Offline Tasks).
+*   [x] Utility 2: Money Tracking (Financial History & Precision metrics).
+*   [x] Utility 3: Health & Vitality Hub (Biometric Trends & Charts).
+*   [x] Utility 4: System Blueprint (High-Fidelity WebView Graph).
+*   [x] Utility 5: Edge Plugins (Registry Console).
+*   [ ] **Utility 5.1: Plugin Editor (High-Fidelity IDE Experience)**.
+    *   [ ] Monaco Editor WebView Bridge (TS/IntelliSense).
+    *   [ ] Dual-Pane Metadata Management (Intents/Rules/Schema).
+    *   [ ] Plugin Execution & Log Streaming.
+*   [ ] Utility 6: Factory Console (SRP Operations & Log Aggregate).
 
-### 1. Core Pages (Routes)
-*   **Authentication:** OTP Request & Verification screens.
-*   **Chat Home:** Multi-conversation navigation and active session interface.
-*   **RAG Explorer:** 3D Knowledge Graph with temporal filtering (Month/Year).
-*   **System Utilities:** Centralized grid for all technical modules.
-*   **Agent Factory:** Staging queue, build telemetry, and source code viewer.
-*   **SRP Dashboard:** Reinforcement pass monitor and simulation interface.
+### Phase 4: Factory Console & SRP Dashboard Port [TODO]
+*   [ ] Master operation view.
+*   [ ] Technical log aggregation.
 
-### 2. High-Fidelity Artifacts (Components)
-*   **ChatBubble:** 
-    *   Markdown content rendering.
-    *   Deep Thought (<thinking>) expandable blocks.
-    *   Native Reply context UI.
-    *   Media support (Images, Audio, Stickers).
-*   **Artifact Cards:**
-    *   `ReminderCard`: Real-time task status.
-    *   `FinanceCard`: Transaction details with line-item breakdown.
-    *   `ProposalCard`: Factory blueprint status and action buttons.
-*   **Navigation:**
-    *   Drawer-based Sidebar (Discord-style) for conversation switching.
-    *   Floating Utility Grid.
+### Phase 5: Knowledge Graph Enhancements [TODO]
+*   [ ] Advanced interactions within the Blueprint WebView.
 
-### 3. Logic & State (Stores)
-*   **Orchestrator Logic:** Real-time turn management (typing, tool use, synthesis).
-*   **History Hydration:** High-fidelity `<MessageEntry>` parsing for context.
-*   **Identity Sync:** Profile management and channel connectivity status.
-
----
-
-## 🚀 Implementation Roadmap
-
-### Phase 1: Infrastructure & Auth (DONE)
-*   [x] Initialize Flutter project with Riverpod and Dio.
-*   [x] Implement `AuthRepository` (OTP Request/Verify).
-*   [x] Create Login UI with high-fidelity "Glass" inputs.
-*   [x] Implement Secure Token Persistence.
-
-### Phase 2: Chat & Real-time Connectivity (DONE)
-*   [x] Integrate `MQTT` client for real-time telemetry.
-*   [x] Build `ChatStore` logic (Streaming chunks, Thoughts, Tool status).
-*   [x] Implement `ChatPage` with specialized `ChatBubble`.
-*   [x] Add Media handling (Image/Audio downloads via Storage API).
-
-### Phase 3: Live Artifacts & Utilities (Week 3)
-*   [ ] Implement `UtilityGrid` dashboard.
-*   [ ] Create `ReminderCard` and `FinanceCard` with self-hydrating logic.
-*   [x] Implement Native Reply UI (Swipe-to-reply mechanics).
-*   [x] Build `ConversationStore` for sidebar switching.
-
-### Phase 4: Factory & SRP (Week 4)
-*   [ ] Build `FactoryStore` (Proposals queue & Telemetry).
-*   [ ] Implement `ProposalCard` and Build/Deploy action flows.
-*   [ ] Create `MonacoEditor` alternative (Syntax highlighted code viewer).
-*   [ ] Build SRP Simulation interface.
-
-### Phase 5: RAG & Optimization (Week 5)
-*   [ ] Integrate 3D Knowledge Graph (Three.js Webview or Native port).
-*   [ ] Implement Monthly/Yearly temporal filters.
-*   [ ] Perform Performance audit (FPS stabilization on large message logs).
-*   [ ] UI/UX Polishing (Transitions, Haptic feedback).
-
----
-
-## 🎨 Visual Identity Standards
-*   **Colors:** Deep Slate (`#020617`), Emerald (`#10b981`), Indigo (`#6366f1`).
-*   **FX:** Heavy use of `BackdropFilter` for blur and subtle `InnerShadow` for depth.
-*   **Typography:** JetBrains Mono for technical IDs and Inter for conversational content.
+## 🎨 Aesthetic Mandates
+*   **Theme:** Deep Slate (`#020617`), Emerald (`#10b981`), Indigo (`#6366f1`).
+*   **FX:** Heavy use of `BackdropFilter` (sigma 40) for "Liquid Glass".
+*   **Typography:** JetBrains Mono for technical IDs and Inter for content.

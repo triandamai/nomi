@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/data/models/transaction.dart';
 
 class FinanceCard extends ConsumerStatefulWidget {
   final String refId;
@@ -15,7 +16,7 @@ class FinanceCard extends ConsumerStatefulWidget {
 }
 
 class _FinanceCardState extends ConsumerState<FinanceCard> {
-  Map<String, dynamic>? _data;
+  Transaction? _transaction;
   bool _isLoading = true;
   String? _error;
 
@@ -27,11 +28,12 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
 
   Future<void> _fetchDetail() async {
     try {
-      final response = await ref.read(apiClientProvider).dio.get('/money/history/${widget.refId}');
+      final tx = await ref.read(chatRepositoryProvider).getTransaction(widget.refId);
       if (!mounted) return;
-      if (response.data != null && response.data['meta']['code'] == 200) {
+      
+      if (tx != null) {
         setState(() {
-          _data = response.data['data'];
+          _transaction = tx;
           _isLoading = false;
         });
       } else {
@@ -56,7 +58,7 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
         margin: const EdgeInsets.symmetric(vertical: 8),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(AppConfig.deepSlate).withAlpha(153),
+          color: Colors.white.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white10),
         ),
@@ -64,14 +66,9 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
       );
     }
 
-    if (_error != null || _data == null) {
+    if (_error != null || _transaction == null) {
       return const SizedBox.shrink();
     }
-
-    final String merchant = _data!['merchant_name'] ?? 'Unknown Merchant';
-    final double total = (_data!['total_amount'] ?? 0).toDouble();
-    final String category = _data!['category'] ?? 'General';
-    final List items = _data!['items'] ?? [];
 
     final currencyFormat = NumberFormat.currency(
       locale: 'id-ID',
@@ -79,17 +76,18 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
       decimalDigits: 0,
     );
 
-    const Color indigoColor = Color(AppConfig.indigo);
+    final amount = double.tryParse(_transaction!.totalAmount) ?? 0.0;
+    final items = _transaction!.items ?? [];
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF0f172a).withAlpha(153),
+        color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: indigoColor.withAlpha(77)),
+        border: Border.all(color: const Color(AppConfig.emerald).withValues(alpha: 0.2)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(51),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -104,20 +102,20 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: indigoColor.withAlpha(25),
-                border: Border(bottom: BorderSide(color: Colors.white.withAlpha(13))),
+                color: const Color(AppConfig.emerald).withValues(alpha: 0.05),
+                border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Row(
+                  Row(
                     children: [
-                      Icon(LucideIcons.wallet, size: 12, color: indigoColor),
-                      SizedBox(width: 8),
+                      const Icon(LucideIcons.wallet, size: 12, color: Color(AppConfig.emerald)),
+                      const SizedBox(width: 8),
                       Text(
                         'FINANCE ENTRY',
                         style: TextStyle(
-                          color: indigoColor,
+                          color: const Color(AppConfig.emerald).withValues(alpha: 0.8),
                           fontSize: 9,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.2,
@@ -125,17 +123,18 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                       ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: indigoColor.withAlpha(51),
-                      borderRadius: BorderRadius.circular(12),
+                  if (_transaction!.category != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(AppConfig.emerald).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _transaction!.category!.toUpperCase(),
+                        style: const TextStyle(color: Color(AppConfig.emerald), fontSize: 8, fontWeight: FontWeight.bold),
+                      ),
                     ),
-                    child: Text(
-                      category.toUpperCase(),
-                      style: const TextStyle(color: indigoColor, fontSize: 8, fontWeight: FontWeight.bold),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -148,10 +147,10 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                 children: [
                   const Text(
                     'MERCHANT',
-                    style: TextStyle(color: Colors.white38, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
+                    style: TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
                   ),
                   Text(
-                    merchant,
+                    _transaction!.merchantName ?? 'Unknown Merchant',
                     style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
@@ -163,10 +162,10 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                         children: [
                           const Text(
                             'TOTAL AMOUNT',
-                            style: TextStyle(color: Colors.white38, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
+                            style: TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
                           ),
                           Text(
-                            currencyFormat.format(total),
+                            currencyFormat.format(amount),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 20,
@@ -179,11 +178,11 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: indigoColor.withAlpha(25),
+                          color: const Color(AppConfig.emerald).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: indigoColor.withAlpha(25)),
+                          border: Border.all(color: const Color(AppConfig.emerald).withValues(alpha: 0.1)),
                         ),
-                        child: const Icon(LucideIcons.trendingDown, size: 20, color: indigoColor),
+                        child: const Icon(LucideIcons.trendingDown, size: 20, color: Color(AppConfig.emerald)),
                       ),
                     ],
                   ),
@@ -194,7 +193,7 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                     Container(
                       padding: const EdgeInsets.only(top: 12),
                       decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: Colors.white.withAlpha(13))),
+                        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,13 +216,13 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    "${item['name']} (x${item['quantity']})",
-                                    style: TextStyle(color: Colors.white.withAlpha(127), fontSize: 11),
+                                    "${item.name} (x${item.quantity})",
+                                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 Text(
-                                  currencyFormat.format(item['total_amount']),
+                                  currencyFormat.format(double.tryParse(item.totalAmount) ?? 0.0),
                                   style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
                                 ),
                               ],

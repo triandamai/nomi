@@ -3,15 +3,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/core/config.dart';
-import 'package:nomi_mobile/providers/auth_provider.dart';
+import 'package:nomi_mobile/ui/widgets/reminder_history.dart';
+import 'package:nomi_mobile/ui/widgets/finance_history.dart';
+import 'package:nomi_mobile/ui/widgets/health_history.dart';
+import 'package:nomi_mobile/ui/widgets/blueprint_viewer.dart';
+import 'package:nomi_mobile/ui/widgets/plugin_console.dart';
+import 'package:nomi_mobile/ui/widgets/factory_console.dart';
+import 'package:nomi_mobile/ui/widgets/user_directory.dart';
+import 'package:nomi_mobile/ui/pages/storage_page.dart';
+import 'package:nomi_mobile/ui/pages/reinforcement_page.dart';
+import 'package:nomi_mobile/ui/pages/monitor_page.dart';
+import 'package:nomi_mobile/ui/pages/guardrail_page.dart';
+import 'package:nomi_mobile/ui/pages/skills_page.dart';
 
 class UtilityGridSheet extends ConsumerWidget {
   const UtilityGridSheet({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authProvider);
-    final bool isAdmin = authState.user?.role == 'admin';
     final size = MediaQuery.of(context).size;
     final bool isLargeScreen = size.width >= 700;
 
@@ -20,6 +29,7 @@ class UtilityGridSheet extends ConsumerWidget {
         filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
         child: Container(
           width: double.infinity,
+          constraints: BoxConstraints(maxHeight: size.height * 0.9),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -37,31 +47,15 @@ class UtilityGridSheet extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
+                    const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'SYSTEM UTILITIES',
-                          style: TextStyle(
-                            color: const Color(AppConfig.emerald),
-                            fontSize: isLargeScreen ? 10 : 12,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Command Center',
-                          style: TextStyle(
-                            color: Colors.white, 
-                            fontSize: isLargeScreen ? 18 : 22, 
-                            fontWeight: FontWeight.bold
-                          ),
-                        ),
+                        Text('SYSTEM UTILITIES', style: TextStyle(color: Color(AppConfig.emerald), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                        SizedBox(height: 4),
+                        Text('Command Center', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                       ],
                     ),
                     IconButton(
@@ -72,7 +66,6 @@ class UtilityGridSheet extends ConsumerWidget {
                 ),
                 const SizedBox(height: 32),
 
-                // Grid
                 Flexible(
                   child: GridView.count(
                     shrinkWrap: true,
@@ -86,60 +79,121 @@ class UtilityGridSheet extends ConsumerWidget {
                         label: 'Reminders',
                         color: Colors.blue,
                         isLargeScreen: isLargeScreen,
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.pop(context);
+                          showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => const ReminderHistorySheet());
+                        },
                       ),
                       _UtilityButton(
                         icon: LucideIcons.dollarSign,
                         label: 'Money Tracking',
                         color: const Color(AppConfig.emerald),
                         isLargeScreen: isLargeScreen,
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.pop(context);
+                          showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => const FinanceHistorySheet());
+                        },
                       ),
                       _UtilityButton(
                         icon: LucideIcons.heartPulse,
                         label: 'Health & Vitality',
                         color: const Color(AppConfig.rose),
                         isLargeScreen: isLargeScreen,
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.pop(context);
+                          showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => const HealthHistorySheet());
+                        },
                       ),
                       _UtilityButton(
                         icon: LucideIcons.bookOpen,
                         label: 'System Blueprint',
                         color: Colors.amber,
                         isLargeScreen: isLargeScreen,
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.pop(context);
+                          showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => const BlueprintViewerSheet());
+                        },
                       ),
                       _UtilityButton(
                         icon: LucideIcons.cpu,
                         label: 'Edge Plugins',
                         color: Colors.indigo,
                         isLargeScreen: isLargeScreen,
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.pop(context);
+                          showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => const PluginConsoleSheet());
+                        },
+                      ),
+                      _UtilityButton(
+                        icon: LucideIcons.brain,
+                        label: 'Reinforcement',
+                        color: Colors.blue,
+                        isLargeScreen: isLargeScreen,
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const ReinforcementPage()));
+                        },
+                      ),
+                      _UtilityButton(
+                        icon: LucideIcons.shieldCheck,
+                        label: 'Guardrails',
+                        color: const Color(AppConfig.emerald),
+                        isLargeScreen: isLargeScreen,
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const GuardrailPage()));
+                        },
+                      ),
+                      _UtilityButton(
+                        icon: LucideIcons.puzzle,
+                        label: 'System Skills',
+                        color: const Color(AppConfig.indigo),
+                        isLargeScreen: isLargeScreen,
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const SkillsPage()));
+                        },
+                      ),
+                      _UtilityButton(
+                        icon: LucideIcons.lineChart,
+                        label: 'Monitor',
+                        color: Colors.blue,
+                        isLargeScreen: isLargeScreen,
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const MonitorPage()));
+                        },
+                      ),
+                      _UtilityButton(
+                        icon: LucideIcons.users,
+                        label: 'User Directory',
+                        color: const Color(AppConfig.blue),
+                        isLargeScreen: isLargeScreen,
+                        onTap: () {
+                          Navigator.pop(context);
+                          showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => const UserDirectorySheet());
+                        },
+                      ),
+                      _UtilityButton(
+                        icon: LucideIcons.database,
+                        label: 'Storage Monitor',
+                        color: Colors.purple,
+                        isLargeScreen: isLargeScreen,
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const StoragePage()));
+                        },
                       ),
                       _UtilityButton(
                         icon: LucideIcons.factory,
                         label: 'Factory Console',
                         color: const Color(AppConfig.emerald),
                         isLargeScreen: isLargeScreen,
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.pop(context);
+                          showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => const FactoryConsoleSheet());
+                        },
                       ),
-                      
-                      if (isAdmin) ...[
-                        _UtilityButton(
-                          icon: LucideIcons.shieldAlert,
-                          label: 'Guardrails',
-                          color: Colors.red,
-                          isLargeScreen: isLargeScreen,
-                          onTap: () {},
-                        ),
-                        _UtilityButton(
-                          icon: LucideIcons.user,
-                          label: 'User Directory',
-                          color: Colors.purple,
-                          isLargeScreen: isLargeScreen,
-                          onTap: () {},
-                        ),
-                      ],
                     ],
                   ),
                 ),

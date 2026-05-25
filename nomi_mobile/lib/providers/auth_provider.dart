@@ -5,6 +5,7 @@ import 'package:nomi_mobile/providers/repositories.dart';
 
 class AuthState {
   final Profile? user;
+  final String? token;
   final bool isLoading;
   final String? error;
   final bool isAuthenticated;
@@ -13,6 +14,7 @@ class AuthState {
 
   AuthState({
     this.user,
+    this.token,
     this.isLoading = false,
     this.error,
     this.isAuthenticated = false,
@@ -22,6 +24,7 @@ class AuthState {
 
   AuthState copyWith({
     Profile? user,
+    String? token,
     bool? isLoading,
     String? error,
     bool? isAuthenticated,
@@ -30,6 +33,7 @@ class AuthState {
   }) {
     return AuthState(
       user: user ?? this.user,
+      token: token ?? this.token,
       isLoading: isLoading ?? this.isLoading,
       error: error,
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
@@ -52,11 +56,11 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> _checkAuth() async {
     final token = await _storage.read(key: 'jwt_token');
     if (token == null) {
-      state = state.copyWith(isAuthenticated: false, isLoading: false);
+      state = state.copyWith(isAuthenticated: false, isLoading: false, token: null);
       return;
     }
 
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, token: token);
     try {
       final response = await ref.read(authRepositoryProvider).getProfile();
       if (response.meta.isSuccess) {
@@ -94,6 +98,7 @@ class AuthNotifier extends Notifier<AuthState> {
         final userId = response.data!['user_id'] as String;
         await _storage.write(key: 'jwt_token', value: token);
         await _storage.write(key: 'user_id', value: userId);
+        state = state.copyWith(token: token);
         await _checkAuth();
         return true;
       }

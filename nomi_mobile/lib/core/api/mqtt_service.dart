@@ -51,13 +51,13 @@ class MqttService {
     }
 
     if (isConnecting) {
-      print('[MQTT] ⏳ Connection already in progress. Waiting...');
+      debugPrint('[MQTT] ⏳ Connection already in progress. Waiting...');
       return _client?.connectionStatus;
     }
 
     // Disconnect if user changed
     if (isConnected && _currentUserId != userId) {
-      print('[MQTT] 👤 User changed. Reconnecting...');
+      debugPrint('[MQTT] 👤 User changed. Reconnecting...');
       disconnect();
     }
 
@@ -67,7 +67,7 @@ class MqttService {
     
     // 🏷️ Structured Client ID: nomi/users/${userId}/${platform}_${deviceId}
     final clientId = 'nomi/users/$userId/${platform}_$deviceId';
-    print('[MQTT] 🆔 Client ID: $clientId');
+    debugPrint('[MQTT] 🆔 Client ID: $clientId');
 
     _client = MqttServerClient.withPort(
       AppConfig.mqttHost,
@@ -80,7 +80,7 @@ class MqttService {
     _client!.onDisconnected = _onDisconnected;
     _client!.onSubscribed = _onSubscribed;
     _client!.pongCallback = _onPong;
-    _client!.logging(on: true);
+    _client!.logging(on: false);
 
     // 🔒 Security & Connection Hardening
     _client!.setProtocolV311();
@@ -89,11 +89,11 @@ class MqttService {
     if (AppConfig.mqttPort == 8883) {
       _client!.secure = true;
       _client!.onBadCertificate = (dynamic cert) => true; 
-      print('[MQTT] 🔒 Secure MQTTS Mode: TCP/SSL on port 8883');
+      debugPrint('[MQTT] 🔒 Secure MQTTS Mode: TCP/SSL on port 8883');
     }
 
     try {
-      print('[MQTT] 🛰️ Connecting to ${AppConfig.mqttHost}:${AppConfig.mqttPort} via Raw TCP...');
+      debugPrint('[MQTT] 🛰️ Connecting to ${AppConfig.mqttHost}:${AppConfig.mqttPort} via Raw TCP...');
       final status = await _client!.connect("nomi-client-app", "NomiPublicPass2026");
       
       // Auto-subscribe to technical topics
@@ -104,7 +104,7 @@ class MqttService {
       
       return status;
     } catch (e) {
-      print('[MQTT] ❌ Handshake failed - $e');
+      debugPrint('[MQTT] ❌ Handshake failed - $e');
       _client?.disconnect();
       return _client?.connectionStatus;
     }
@@ -112,16 +112,16 @@ class MqttService {
 
   void subscribe(String topic) {
     if (isConnected) {
-      print('[MQTT] 📝 Subscribing to: $topic');
+      debugPrint('[MQTT] 📝 Subscribing to: $topic');
       _client!.subscribe(topic, MqttQos.atMostOnce);
     } else {
-      print('[MQTT] ⚠️ Cannot subscribe to $topic: Not connected.');
+      debugPrint('[MQTT] ⚠️ Cannot subscribe to $topic: Not connected.');
     }
   }
 
   void disconnect() {
     if (isConnected || isConnecting) {
-      print('[MQTT] 🔌 Manually disconnecting...');
+      debugPrint('[MQTT] 🔌 Manually disconnecting...');
       _client?.disconnect();
       _currentUserId = null;
     }
@@ -130,19 +130,19 @@ class MqttService {
   Stream<List<MqttReceivedMessage<MqttMessage>>>? get updates => _client?.updates;
 
   void _onConnected() {
-    print('[MQTT] ✅ Handshake complete. Global connection active.');
+    debugPrint('[MQTT] ✅ Handshake complete. Global connection active.');
   }
 
   void _onDisconnected() {
-    print('[MQTT] 🔌 Service disconnected.');
+    debugPrint('[MQTT] 🔌 Service disconnected.');
   }
 
   void _onSubscribed(String topic) {
-    print('[MQTT] 📌 Subscription confirmed for: $topic');
+    debugPrint('[MQTT] 📌 Subscription confirmed for: $topic');
   }
 
   void _onPong() {
-    // print('[MQTT] 💓 Heartbeat (PONG) received.');
+    // debugPrint('[MQTT] 💓 Heartbeat (PONG) received.');
   }
 }
 

@@ -139,7 +139,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         ? ref.watch(messagesStreamProvider(activeConvId))
         : const AsyncValue<List<db.Message>>.data([]);
 
-    // Auto-scroll listener for real-time events
     ref.listen(chatProvider, (previous, next) {
       final cid = next.activeConversationId;
       if (cid == null) return;
@@ -160,7 +159,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       }
     });
     
-    // Also scroll when new messages arrive from DB
     ref.listen(messagesStreamProvider(activeConvId ?? ""), (previous, next) {
       final prevCount = previous?.asData?.value.length ?? 0;
       final nextCount = next.asData?.value.length ?? 0;
@@ -186,7 +184,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       drawer: isLargeScreen ? null : const NomiSidebar(),
       floatingActionButton: _showScrollToBottom
           ? Padding(
-              padding: const EdgeInsets.only(bottom: 45),
+              padding: const EdgeInsets.only(bottom: 80),
               child: FloatingActionButton.small(
                 onPressed: _scrollToBottom,
                 backgroundColor: const Color(AppConfig.blue).withValues(alpha: 0.8),
@@ -260,146 +258,129 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             ),
           ),
           
-          // 💬 Chat Content Layer (Shifted for Permanent Rail)
-          GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () {
-              if (isLargeScreen && chatState.isSidebarExpanded) {
-                ref.read(chatProvider.notifier).toggleSidebar();
-              }
-            },
-            child: Padding(
-              padding: EdgeInsets.only(left: isLargeScreen ? 72 : 0),
-              child: Column(
-              children: [
-                // 🏗️ Full-Width Header
-                if (isLargeScreen)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-                    decoration: BoxDecoration(
-                      color: const Color(AppConfig.deepSlate),
-                      border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Row(
+            children: [
+              if (isLargeScreen) const NomiSidebar(isDrawer: false),
+              Expanded(
+                child: activeConvId == null
+                  ? _buildEmptyState(isLargeScreen)
+                  : Stack(
                       children: [
                         Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Text(
-                                  activeConv?.name ?? 'Nomi Chat',
-                                  style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
+                            if (isLargeScreen)
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(AppConfig.deepSlate),
+                                  border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
                                 ),
-                                if (activeConv?.cumulativeTokens != null) ...[
-                                  const SizedBox(width: 12),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(AppConfig.blue).withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: const Color(AppConfig.blue).withValues(alpha: 0.2)),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              activeConv?.name ?? 'Nomi Chat',
+                                              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
+                                            ),
+                                            if (activeConv?.cumulativeTokens != null)
+                                              Padding(
+                                                padding: const EdgeInsets.only(left: 12),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(AppConfig.blue).withValues(alpha: 0.1),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(color: const Color(AppConfig.blue).withValues(alpha: 0.2)),
+                                                  ),
+                                                  child: Text(
+                                                    '${Formatter.formatTokenCount(activeConv!.cumulativeTokens)} CUMULATIVE TOKENS',
+                                                    style: const TextStyle(
+                                                      color: Color(AppConfig.blue),
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.w900,
+                                                      letterSpacing: 1.2,
+                                                      fontFamily: 'monospace',
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        if (chatState.isTyping[activeConvId] ?? false)
+                                          const Text(
+                                            'Nomi is typing...',
+                                            style: TextStyle(fontSize: 11, color: Color(AppConfig.blue), fontWeight: FontWeight.w900),
+                                          ),
+                                      ],
                                     ),
-                                    child: Text(
-                                      '${Formatter.formatTokenCount(activeConv!.cumulativeTokens)} CUMULATIVE TOKENS',
-                                      style: const TextStyle(
-                                        color: Color(AppConfig.blue),
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.2,
-                                        fontFamily: 'monospace',
-                                      ),
+                                    IconButton(
+                                      onPressed: () {
+                                        if (chatState.activeConversationId != null) {
+                                          ref.read(chatProvider.notifier).fetchMessages(chatState.activeConversationId!);
+                                        }
+                                      },
+                                      icon: const Icon(LucideIcons.refreshCw, size: 20, color: Colors.white24),
                                     ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            if (chatState.isTyping[activeConvId] ?? false)
-                              const Text(
-                                'Nomi is typing...',
-                                style: TextStyle(fontSize: 11, color: Color(AppConfig.blue), fontWeight: FontWeight.w900),
+                                  ],
+                                ),
                               ),
+                            Expanded(
+                              child: Center(
+                                child: Container(
+                                  constraints: BoxConstraints(maxWidth: isLargeScreen ? 800 : double.infinity),
+                                  child: messagesAsync.when(
+                                    data: (dbMessages) {
+                                      final uiMessages = dbMessages.map((m) => Message.fromDb(m)).toList();
+                                      return ListView.builder(
+                                        controller: _scrollController,
+                                        reverse: true,
+                                        padding: EdgeInsets.fromLTRB(
+                                          isLargeScreen ? 32 : 16,
+                                          16,
+                                          isLargeScreen ? 32 : 16,
+                                          100,
+                                        ),
+                                        itemCount: uiMessages.length + (showActiveProcess ? 1 : 0),
+                                        itemBuilder: (context, index) {
+                                          if (showActiveProcess && index == 0) {
+                                            return _buildActiveProcess(chatState, activeConvId);
+                                          }
+
+                                          final messageIndex = showActiveProcess ? index - 1 : index;
+                                          final message = uiMessages[messageIndex];
+                                          return ChatBubble(
+                                            message: message,
+                                            onReply: () => ref.read(chatProvider.notifier).setReplyingTo(message),
+                                          );
+                                        },
+                                      );
+                                    },
+                                    loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                    error: (e, _) => Center(child: Text('Sync Error: $e', style: const TextStyle(color: Colors.red))),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
-                        IconButton(
-                          onPressed: () {
-                            if (chatState.activeConversationId != null) {
-                              ref.read(chatProvider.notifier).fetchMessages(chatState.activeConversationId!);
-                            }
-                          },
-                          icon: const Icon(LucideIcons.refreshCw, size: 20, color: Colors.white24),
+                        
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          child: _buildInputArea(chatState, isLargeScreen),
                         ),
                       ],
                     ),
                   ),
-
-                // 💬 Centered Content Area
-                Expanded(
-                  child: activeConvId == null
-                      ? _buildEmptyState(isLargeScreen)
-                      : Center(
-                          child: Container(
-                            constraints: BoxConstraints(maxWidth: isLargeScreen ? 800 : double.infinity),
-                            child: Stack(
-                              children: [
-                                Column(
-                                  children: [
-                                    Expanded(
-                                      child: messagesAsync.when(
-                                        data: (dbMessages) {
-                                          final uiMessages = dbMessages.map((m) => Message.fromDb(m)).toList();
-                                          return ListView.builder(
-                                            controller: _scrollController,
-                                            reverse: true,
-                                            padding: EdgeInsets.fromLTRB(
-                                              isLargeScreen ? 32 : 16,
-                                              16,
-                                              isLargeScreen ? 32 : 16,
-                                              100,
-                                            ),
-                                            itemCount: uiMessages.length + (showActiveProcess ? 1 : 0),
-                                            itemBuilder: (context, index) {
-                                              if (showActiveProcess && index == 0) {
-                                                return _buildActiveProcess(chatState, activeConvId);
-                                              }
-
-                                              final messageIndex = showActiveProcess ? index - 1 : index;
-                                              final message = uiMessages[messageIndex];
-                                              return ChatBubble(
-                                                message: message,
-                                                onReply: () => ref.read(chatProvider.notifier).setReplyingTo(message),
-                                              );
-                                            },
-                                          );
-                                        },
-                                        loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                                        error: (e, _) => Center(child: Text('Sync Error: $e', style: const TextStyle(color: Colors.red))),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                
-                                Positioned(
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: _buildInputArea(chatState, isLargeScreen),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                ),
-              ],
-            ),
+            ],
           ),
-        ),
-
-        // 🏗️ Overlaid Sidebar (Permanent Rail + Floating Drawer)
-          if (isLargeScreen)
-            const NomiSidebar(isDrawer: false),
         ],
       ),
     );

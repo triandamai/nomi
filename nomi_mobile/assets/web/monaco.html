@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monaco Editor</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #020617; }
+        #container { width: 100%; height: 100%; }
+        #status { color: white; position: absolute; top: 10px; left: 10px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div id="status">Loading Monaco...</div>
+    <div id="container"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.46.0/min/vs/loader.min.js"></script>
+    <script>
+        console.log("HTML: Loading started");
+        
+        window.onload = function() {
+            require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.46.0/min/vs' }});
+            require(['vs/editor/editor.main'], function() {
+                console.log("HTML: Monaco loaded successfully.");
+                document.getElementById('status').innerText = 'Monaco Loaded';
+                
+                window.editor = monaco.editor.create(document.getElementById('container'), {
+                    value: '// Nomi TypeScript Editor\nexport function run() {\n  return "Nomi";\n}',
+                    language: 'typescript',
+                    theme: 'vs-dark',
+                    automaticLayout: true
+                });
+            }, function(err) {
+                console.error("HTML: Error loading Monaco", err);
+                document.getElementById('status').innerText = 'Monaco Error: ' + err.message;
+            });
+        };
+
+        window.getCode = () => window.editor ? window.editor.getValue() : "";
+        window.setCode = (code) => {
+            console.log("HTML: Setting code", code);
+            if (window.editor) {
+                window.editor.setValue(code);
+            } else {
+                console.error("HTML: Editor not initialized");
+            }
+        };
+    </script>
+</body>
+</html>

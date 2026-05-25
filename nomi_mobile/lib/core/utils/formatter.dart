@@ -33,4 +33,11 @@ class Formatter {
     final formatter = NumberFormat('#,###', 'de_DE');
     return formatter.format(value);
   }
+
+  static String formatBytes(int bytes) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB", "TB"];
+    var i = (math.log(bytes) / math.log(1024)).floor();
+    return '${(bytes / math.pow(1024, i)).toStringAsFixed(2)} ${suffixes[i]}';
+  }
 }
