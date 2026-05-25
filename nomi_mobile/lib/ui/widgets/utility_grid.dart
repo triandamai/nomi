@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/navigation_provider.dart';
 import 'package:nomi_mobile/ui/widgets/reminder_history.dart';
 import 'package:nomi_mobile/ui/widgets/finance_history.dart';
 import 'package:nomi_mobile/ui/widgets/health_history.dart';
@@ -10,11 +11,6 @@ import 'package:nomi_mobile/ui/widgets/blueprint_viewer.dart';
 import 'package:nomi_mobile/ui/widgets/plugin_console.dart';
 import 'package:nomi_mobile/ui/widgets/factory_console.dart';
 import 'package:nomi_mobile/ui/widgets/user_directory.dart';
-import 'package:nomi_mobile/ui/pages/storage_page.dart';
-import 'package:nomi_mobile/ui/pages/reinforcement_page.dart';
-import 'package:nomi_mobile/ui/pages/monitor_page.dart';
-import 'package:nomi_mobile/ui/pages/guardrail_page.dart';
-import 'package:nomi_mobile/ui/pages/skills_page.dart';
 
 class UtilityGridSheet extends ConsumerWidget {
   const UtilityGridSheet({super.key});
@@ -23,6 +19,7 @@ class UtilityGridSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final size = MediaQuery.of(context).size;
     final bool isLargeScreen = size.width >= 700;
+    final nav = ref.read(navigationProvider.notifier);
 
     return ClipRRect(
       child: BackdropFilter(
@@ -131,7 +128,7 @@ class UtilityGridSheet extends ConsumerWidget {
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const ReinforcementPage()));
+                          nav.navigateTo(MainView.reinforcement);
                         },
                       ),
                       _UtilityButton(
@@ -141,7 +138,7 @@ class UtilityGridSheet extends ConsumerWidget {
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const GuardrailPage()));
+                          nav.navigateTo(MainView.guardrails);
                         },
                       ),
                       _UtilityButton(
@@ -151,7 +148,7 @@ class UtilityGridSheet extends ConsumerWidget {
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const SkillsPage()));
+                          nav.navigateTo(MainView.skills);
                         },
                       ),
                       _UtilityButton(
@@ -161,7 +158,7 @@ class UtilityGridSheet extends ConsumerWidget {
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const MonitorPage()));
+                          nav.navigateTo(MainView.monitor);
                         },
                       ),
                       _UtilityButton(
@@ -181,7 +178,7 @@ class UtilityGridSheet extends ConsumerWidget {
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => const StoragePage()));
+                          nav.navigateTo(MainView.storage);
                         },
                       ),
                       _UtilityButton(

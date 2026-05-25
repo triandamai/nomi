@@ -161,36 +161,6 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
 
     let mut is_ambient = false;
 
-    // ======== Interaction Gate & Ambient Soul (Pre-Filtering for Groups) ========//
-    if msg.is_group && !msg.is_mentioned {
-        let gate = crate::services::interaction_gate::InteractionGateService::new(
-            state.pool.clone(),
-            state.gemini_api_key.clone(),
-        );
-
-        match gate.should_respond_to_group_message(&text, false).await {
-            Ok(true) => {
-                info!("Interaction Gate: Passed, processing as active participation.");
-                // Let it flow through as a normal message
-            }
-            Ok(false) => {
-                info!(
-                    "Interaction Gate: Dropping ambient message in group {}. Queuing for Ambient Soul.",
-                    msg.conversation_id
-                );
-                is_ambient = true;
-                // We don't return early here; we let it process minimally for ambient memory,
-                // but we will flag it so it doesn't trigger the main orchestrator loop.
-            }
-            Err(e) => {
-                error!(
-                    "Interaction Gate: Error during evaluation: {}. Continuing as fallback.",
-                    e
-                );
-            }
-        }
-    }
-
     // 2. Resolve Identity and Channel Info
     let (conversation_id, cumulative_tokens, max_token_usage) = if msg.is_group {
         // For groups, we look up the channel_group table instead of the regular channels table
@@ -214,6 +184,58 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         }
     };
     info!("Conversation id {}", conversation_id);
+
+    // ======== Interaction Gate & Ambient Soul (Pre-Filtering for Groups) ========//
+    if msg.is_group && !msg.is_mentioned && !conversation_id.is_nil() {
+        let gate = crate::services::interaction_gate::InteractionGateService::new(
+            state.pool.clone(),
+            state.gemini_api_key.clone(),
+        );
+
+        // Detect if this is a reply to Nomi
+        let mut is_reply_to_nomi = false;
+        if let Some(q) = &msg.quoted_message {
+            // We search for a message with this content and role='assistant' in this conversation
+            // This is a bit heuristic but effective if we don't have the internal ID of the quoted message yet.
+            let quoted_msg_role: Option<String> = sqlx::query_scalar!(
+                "SELECT role FROM messages WHERE conversation_id = $1 AND content = $2 LIMIT 1",
+                conversation_id,
+                q.text
+            )
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+
+            if let Some(role) = quoted_msg_role {
+                if role == "assistant" {
+                    is_reply_to_nomi = true;
+                    info!("Interaction Gate (Redis): Detected reply to Nomi (assistant message)");
+                }
+            }
+        }
+
+        match gate.should_respond_to_group_message(conversation_id, &text, is_reply_to_nomi).await {
+            Ok(true) => {
+                info!("Interaction Gate: Passed, processing as active participation.");
+                // Let it flow through as a normal message
+            }
+            Ok(false) => {
+                info!(
+                    "Interaction Gate: Dropping ambient message in group {}. Queuing for Ambient Soul.",
+                    msg.conversation_id
+                );
+                is_ambient = true;
+                // We don't return early here; we let it process minimally for ambient memory,
+                // but we will flag it so it doesn't trigger the main orchestrator loop.
+            }
+            Err(e) => {
+                error!(
+                    "Interaction Gate: Error during evaluation: {}. Continuing as fallback.",
+                    e
+                );
+            }
+        }
+    }
     if cumulative_tokens.to_i64().unwrap_or(0) >= max_token_usage.to_i64().unwrap_or(700000) {
         info!(
             "Conversation {} has reached max token usage",

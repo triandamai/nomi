@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
+import 'package:nomi_mobile/providers/navigation_provider.dart';
 import 'package:nomi_mobile/data/models/plugin.dart';
 import 'package:nomi_mobile/core/db/database.dart' as db;
-import 'package:nomi_mobile/ui/pages/plugin_editor.dart';
 import 'dart:ui';
 
 class PluginConsoleSheet extends ConsumerStatefulWidget {
@@ -35,11 +35,10 @@ class _PluginConsoleSheetState extends ConsumerState<PluginConsoleSheet> {
   @override
   Widget build(BuildContext context) {
     final pluginsStream = ref.watch(pluginsStreamProvider(_searchController.text));
-    final size = MediaQuery.of(context).size;
 
     return Container(
       width: double.infinity,
-      constraints: BoxConstraints(maxHeight: size.height * 0.9),
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
       decoration: BoxDecoration(
         color: const Color(AppConfig.deepSlate).withValues(alpha: 0.95),
         border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
@@ -97,7 +96,7 @@ class _PluginConsoleSheetState extends ConsumerState<PluginConsoleSheet> {
                       ),
                       child: TextField(
                         controller: _searchController,
-                        onChanged: (_) => setState(() {}), // Trigger stream rebuild
+                        onChanged: (_) => setState(() {}),
                         style: const TextStyle(color: Colors.white, fontSize: 14),
                         decoration: const InputDecoration(
                           hintText: 'Search plugins or slugs...',
@@ -151,15 +150,14 @@ class _PluginConsoleSheetState extends ConsumerState<PluginConsoleSheet> {
   }
 }
 
-class _PluginListItem extends StatelessWidget {
+class _PluginListItem extends ConsumerWidget {
   final Plugin plugin;
   const _PluginListItem({required this.plugin});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
@@ -167,62 +165,68 @@ class _PluginListItem extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => PluginEditorPage(plugin: plugin)),
+          Navigator.pop(context); // Close sheet
+          ref.read(navigationProvider.notifier).navigateTo(
+            MainView.pluginEditor,
+            args: {'plugin': plugin},
           );
         },
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(LucideIcons.code2, size: 20, color: Colors.blue),
               ),
-              child: const Icon(LucideIcons.code2, size: 20, color: Colors.blue),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        plugin.name,
-                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(4),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          plugin.name,
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                         ),
-                        child: Text(
-                          'V${plugin.version ?? "1.0"}',
-                          style: const TextStyle(color: Colors.white38, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'V${plugin.version ?? "1.0"}',
+                            style: const TextStyle(color: Colors.white38, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    plugin.slug,
-                    style: const TextStyle(color: Color(AppConfig.blue), fontSize: 10, fontFamily: 'monospace'),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    plugin.description ?? 'No description provided.',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      plugin.slug,
+                      style: const TextStyle(color: Color(AppConfig.blue), fontSize: 10, fontFamily: 'monospace'),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      plugin.description ?? 'No description provided.',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const Icon(LucideIcons.chevronRight, size: 16, color: Colors.white10),
-          ],
+              const Icon(LucideIcons.chevronRight, size: 16, color: Colors.white10),
+            ],
+          ),
         ),
       ),
     );

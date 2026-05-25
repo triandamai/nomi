@@ -5,7 +5,7 @@ import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/data/models/plugin.dart';
-import 'package:nomi_mobile/ui/widgets/sidebar.dart';
+import 'package:nomi_mobile/providers/navigation_provider.dart';
 
 class PluginEditorPage extends ConsumerStatefulWidget {
   final Plugin plugin;
@@ -19,26 +19,16 @@ class PluginEditorPage extends ConsumerStatefulWidget {
 class _PluginEditorPageState extends ConsumerState<PluginEditorPage> {
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isLargeScreen = size.width >= 900;
-
     return Scaffold(
-      backgroundColor: const Color(AppConfig.deepSlate),
-      body: Row(
+      backgroundColor: Colors.transparent,
+      body: Column(
         children: [
-          if (isLargeScreen) const NomiSidebar(isDrawer: false),
+          _buildHeader(),
           Expanded(
-            child: Column(
+            child: Row(
               children: [
-                _buildHeader(),
-                Expanded(
-                  child: Row(
-                    children: [
-                      Expanded(flex: 3, child: _buildMetadataPane()),
-                      Expanded(flex: 7, child: _buildEditorPane()),
-                    ],
-                  ),
-                ),
+                Expanded(flex: 3, child: _buildMetadataPane()),
+                Expanded(flex: 7, child: _buildEditorPane()),
               ],
             ),
           ),
@@ -60,7 +50,7 @@ class _PluginEditorPageState extends ConsumerState<PluginEditorPage> {
           Row(
             children: [
               IconButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
                 icon: const Icon(LucideIcons.chevronLeft, color: Colors.white),
               ),
               const SizedBox(width: 12),
@@ -143,7 +133,7 @@ class _ActionButton extends StatelessWidget {
       style: TextButton.styleFrom(
         backgroundColor: color.withValues(alpha: 0.1),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }

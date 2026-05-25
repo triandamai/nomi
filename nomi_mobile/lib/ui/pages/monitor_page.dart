@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
+import 'package:nomi_mobile/providers/navigation_provider.dart';
 import 'package:nomi_mobile/data/models/admin_conversation.dart';
 import 'package:nomi_mobile/core/utils/formatter.dart';
-import 'package:nomi_mobile/ui/widgets/sidebar.dart';
 
 class MonitorPage extends ConsumerStatefulWidget {
   const MonitorPage({super.key});
@@ -46,30 +46,34 @@ class _MonitorPageState extends ConsumerState<MonitorPage> {
     final isLargeScreen = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
-      backgroundColor: const Color(AppConfig.deepSlate),
-      body: Row(
-        children: [
-          if (isLargeScreen) const NomiSidebar(isDrawer: false),
-          Expanded(
-            child: Column(
-              children: [
-                _buildHeader(),
-                Expanded(
-                  child: _isLoading 
-                    ? const Center(child: CircularProgressIndicator())
-                    : _sessions.isEmpty
-                      ? const Center(child: Text('No active sessions detected.', style: TextStyle(color: Colors.white38)))
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(24),
-                          itemCount: _sessions.length,
-                          itemBuilder: (context, index) => _SessionItem(
-                            session: _sessions[index],
-                            onTap: () => _showDetailSheet(_sessions[index]),
-                          ),
-                        ),
-                ),
-              ],
+      backgroundColor: Colors.transparent,
+      appBar: isLargeScreen 
+        ? null 
+        : AppBar(
+            backgroundColor: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
+            elevation: 0,
+            leading: IconButton(
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              icon: const Icon(LucideIcons.menu),
             ),
+            title: const Text('Conversation Monitor', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ),
+      body: Column(
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: _isLoading 
+              ? const Center(child: CircularProgressIndicator())
+              : _sessions.isEmpty
+                ? const Center(child: Text('No active sessions detected.', style: TextStyle(color: Colors.white38)))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(24),
+                    itemCount: _sessions.length,
+                    itemBuilder: (context, index) => _SessionItem(
+                      session: _sessions[index],
+                      onTap: () => _showDetailSheet(_sessions[index]),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -98,6 +102,11 @@ class _MonitorPageState extends ConsumerState<MonitorPage> {
       ),
       child: Row(
         children: [
+          IconButton(
+            onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
+            icon: const Icon(LucideIcons.chevronLeft, color: Colors.white38, size: 20),
+          ),
+          const SizedBox(width: 8),
           const Icon(LucideIcons.lineChart, color: Color(AppConfig.blue), size: 24),
           const SizedBox(width: 16),
           const Column(
@@ -189,7 +198,6 @@ class _SessionItem extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 20),
-              // 📊 Token Usage Progress Bar
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
@@ -291,23 +299,16 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
                 ],
               ),
               const SizedBox(height: 32),
-              
               _buildField('Session Title', _titleController, 'e.g. Technical Research Pass'),
               const SizedBox(height: 24),
               _buildField('Max Token Limit', _limitController, 'e.g. 500000', isNumeric: true),
-              
               const SizedBox(height: 40),
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
                   onPressed: _isSaving ? null : _handleSave,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(AppConfig.blue),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 0,
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(AppConfig.blue), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
                   child: _isSaving 
                     ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Text('UPDATE SESSION', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
@@ -328,21 +329,8 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.03),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-          ),
-          child: TextField(
-            controller: controller,
-            keyboardType: isNumeric ? TextInputType.number : TextInputType.text,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(color: Colors.white24, fontSize: 14),
-              border: InputBorder.none,
-            ),
-          ),
+          decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.05))),
+          child: TextField(controller: controller, keyboardType: isNumeric ? TextInputType.number : TextInputType.text, style: const TextStyle(color: Colors.white, fontSize: 14), decoration: InputDecoration(hintText: hint, hintStyle: const TextStyle(color: Colors.white24, fontSize: 14), border: InputBorder.none)),
         ),
       ],
     );

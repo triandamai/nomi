@@ -1,13 +1,11 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
+import 'package:nomi_mobile/providers/navigation_provider.dart';
 import 'package:nomi_mobile/data/models/storage_item.dart';
-import 'package:nomi_mobile/ui/widgets/sidebar.dart';
 import 'package:nomi_mobile/ui/widgets/file_preview.dart';
-import 'package:path/path.dart' as p;
 
 class StoragePage extends ConsumerStatefulWidget {
   const StoragePage({super.key});
@@ -44,45 +42,56 @@ class _StoragePageState extends ConsumerState<StoragePage> {
     final isLargeScreen = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
-      backgroundColor: const Color(AppConfig.deepSlate),
-      body: Row(
-        children: [
-          if (isLargeScreen) const NomiSidebar(isDrawer: false),
-          Expanded(
-            child: Column(
-              children: [
-                _buildHeader(),
-                Expanded(
-                  child: _isLoading 
-                      ? const Center(child: CircularProgressIndicator())
-                      : GridView.builder(
-                          padding: const EdgeInsets.all(24),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 4,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                            childAspectRatio: 1.2,
-                          ),
-                          itemCount: _items.length,
-                          itemBuilder: (context, index) => _buildItem(_items[index]),
-                        ),
-                ),
-              ],
+      backgroundColor: Colors.transparent,
+      appBar: isLargeScreen 
+        ? null 
+        : AppBar(
+            backgroundColor: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
+            elevation: 0,
+            leading: IconButton(
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              icon: const Icon(LucideIcons.menu),
             ),
+            title: const Text('Storage Explorer', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ),
+      body: Column(
+        children: [
+          _buildHeader(isLargeScreen),
+          Expanded(
+            child: _isLoading 
+                ? const Center(child: CircularProgressIndicator())
+                : GridView.builder(
+                    padding: const EdgeInsets.all(24),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                      childAspectRatio: 1.2,
+                    ),
+                    itemCount: _items.length,
+                    itemBuilder: (context, index) => _buildItem(_items[index]),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(bool isLargeScreen) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05)))),
       child: Row(
         children: [
-          IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.chevronLeft, color: Colors.white)),
+          IconButton(
+            onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
+            icon: const Icon(LucideIcons.chevronLeft, color: Colors.white),
+          ),
           const SizedBox(width: 16),
+          if (isLargeScreen) ...[
+            const Icon(LucideIcons.database, color: Colors.purple, size: 24),
+            const SizedBox(width: 16),
+          ],
           Text(_currentPrefix.isEmpty ? 'Storage Root' : _currentPrefix, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
           const Spacer(),
           if (_currentPrefix.isNotEmpty)

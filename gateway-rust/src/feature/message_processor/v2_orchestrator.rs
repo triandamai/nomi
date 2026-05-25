@@ -176,8 +176,27 @@ pub async fn process_v2_message(
             state.gemini_api_key.clone(),
         );
 
+        // Detect if this is a reply to Nomi
+        let mut is_reply_to_nomi = false;
+        if let Some(reply_id) = msg.reply_to_id {
+            let reply_msg_role: Option<String> = sqlx::query_scalar!(
+                "SELECT role FROM messages WHERE id = $1 LIMIT 1",
+                reply_id
+            )
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+
+            if let Some(role) = reply_msg_role {
+                if role == "assistant" {
+                    is_reply_to_nomi = true;
+                    info!("Interaction Gate: Detected reply to Nomi (assistant message)");
+                }
+            }
+        }
+
         let should_respond = match gate
-            .should_respond_to_group_message(&hydrated_text, false)
+            .should_respond_to_group_message(conversation_id, &hydrated_text, is_reply_to_nomi)
             .await
         {
             Ok(true) => {

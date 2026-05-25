@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/providers/chat_provider.dart';
 import 'package:nomi_mobile/providers/auth_provider.dart';
+import 'package:nomi_mobile/providers/navigation_provider.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/ui/widgets/utility_grid.dart';
 import 'package:nomi_mobile/ui/widgets/profile_settings.dart';
@@ -21,7 +22,6 @@ class NomiSidebar extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final bool isAdmin = authState.user?.role == 'admin';
 
-    // 🏷️ Mobile Mode: Full Discord Sidebar as a Drawer
     if (isDrawer) {
       return Drawer(
         width: 320,
@@ -30,15 +30,13 @@ class NomiSidebar extends ConsumerWidget {
       );
     }
 
-    // 🖥️ Large Screen Mode: Permanent Rail + Overlaid "Drawer" Pane (LIQUID GLASS)
     return Row(
       children: [
         _buildNavigationRail(context, ref, isAdmin, authState, chatState),
         if (chatState.isSidebarExpanded)
-          // 🚀 Overlaid "Drawer" Effect: Premium Liquid Glass
           ClipRRect(
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40), // 🎯 Ultra-high liquid blur
+              filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
               child: Container(
                 width: 248,
                 decoration: BoxDecoration(
@@ -73,7 +71,7 @@ class NomiSidebar extends ConsumerWidget {
   Widget _buildFullSidebar(BuildContext context, WidgetRef ref, ChatState chatState, AsyncValue<List<db.Conversation>> conversationsAsync, bool isAdmin, AuthState authState) {
     return ClipRRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25), // 🎯 Deep glass ONLY for mobile drawer
+        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
         child: Row(
           children: [
             _buildNavigationRail(context, ref, isAdmin, authState, chatState),
@@ -102,11 +100,10 @@ class NomiSidebar extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
         children: [
-          _buildLogo(),
+          _buildLogo(ref),
           const SizedBox(height: 8),
           _buildSeparator(),
           const SizedBox(height: 12),
-          // Sidebar Toggle (Only for Large Screen)
           if (!isDrawer)
             _SidebarActionIcon(
               icon: LucideIcons.messageSquare,
@@ -131,7 +128,7 @@ class NomiSidebar extends ConsumerWidget {
 
   Widget _buildConversationPane(BuildContext context, WidgetRef ref, ChatState chatState, AsyncValue<List<db.Conversation>> conversationsAsync, {bool withBackground = true}) {
     return Container(
-      width: 248, // Standard Discord Pane width
+      width: 248,
       color: withBackground ? const Color(0xFF111b21).withValues(alpha: 0.45) : Colors.transparent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -151,6 +148,7 @@ class NomiSidebar extends ConsumerWidget {
                       child: ListTile(
                         onTap: () {
                           ref.read(chatProvider.notifier).setActiveConversation(conv.id);
+                          ref.read(navigationProvider.notifier).navigateTo(MainView.chat);
                           if (isDrawer) {
                             Navigator.pop(context);
                           } else if (chatState.isSidebarExpanded) {
@@ -197,25 +195,28 @@ class NomiSidebar extends ConsumerWidget {
     );
   }
 
-  Widget _buildLogo() {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: const Color(0xFF3b82f6),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF3b82f6).withValues(alpha: 0.2),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ],
-      ),
-      child: const Center(
-        child: Text(
-          'N',
-          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+  Widget _buildLogo(WidgetRef ref) {
+    return GestureDetector(
+      onTap: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: const Color(0xFF3b82f6),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF3b82f6).withValues(alpha: 0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
+        ),
+        child: const Center(
+          child: Text(
+            'N',
+            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+          ),
         ),
       ),
     );

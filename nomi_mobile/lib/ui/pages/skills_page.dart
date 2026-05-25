@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
+import 'package:nomi_mobile/providers/navigation_provider.dart';
 import 'package:nomi_mobile/data/models/skill.dart';
-import 'package:nomi_mobile/ui/widgets/sidebar.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'dart:convert';
@@ -58,37 +58,41 @@ class _SkillsPageState extends ConsumerState<SkillsPage> {
     final isLargeScreen = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
-      backgroundColor: const Color(AppConfig.deepSlate),
-      body: Row(
-        children: [
-          if (isLargeScreen) const NomiSidebar(isDrawer: false),
-          Expanded(
-            child: Column(
-              children: [
-                _buildHeader(),
-                _buildSearchBar(),
-                Expanded(
-                  child: _isLoading 
-                    ? const Center(child: CircularProgressIndicator())
-                    : _filteredSkills.isEmpty
-                      ? const Center(child: Text('No matching skills found.', style: TextStyle(color: Colors.white38)))
-                      : GridView.builder(
-                          padding: const EdgeInsets.all(32),
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: isLargeScreen ? 3 : 2,
-                            crossAxisSpacing: 24,
-                            mainAxisSpacing: 24,
-                            childAspectRatio: 1.3,
-                          ),
-                          itemCount: _filteredSkills.length,
-                          itemBuilder: (context, index) => _SkillCard(
-                            skill: _filteredSkills[index],
-                            onTap: () => _showSkillDetail(_filteredSkills[index]),
-                          ),
-                        ),
-                ),
-              ],
+      backgroundColor: Colors.transparent,
+      appBar: isLargeScreen 
+        ? null 
+        : AppBar(
+            backgroundColor: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
+            elevation: 0,
+            leading: IconButton(
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              icon: const Icon(LucideIcons.menu),
             ),
+            title: const Text('System Skills', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ),
+      body: Column(
+        children: [
+          _buildHeader(),
+          _buildSearchBar(),
+          Expanded(
+            child: _isLoading 
+              ? const Center(child: CircularProgressIndicator())
+              : _filteredSkills.isEmpty
+                ? const Center(child: Text('No matching skills found.', style: TextStyle(color: Colors.white38)))
+                : GridView.builder(
+                    padding: const EdgeInsets.all(32),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: isLargeScreen ? 3 : 2,
+                      crossAxisSpacing: 24,
+                      mainAxisSpacing: 24,
+                      childAspectRatio: 1.3,
+                    ),
+                    itemCount: _filteredSkills.length,
+                    itemBuilder: (context, index) => _SkillCard(
+                      skill: _filteredSkills[index],
+                      onTap: () => _showSkillDetail(_filteredSkills[index]),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -105,6 +109,11 @@ class _SkillsPageState extends ConsumerState<SkillsPage> {
       ),
       child: Row(
         children: [
+          IconButton(
+            onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
+            icon: const Icon(LucideIcons.chevronLeft, color: Colors.white38, size: 20),
+          ),
+          const SizedBox(width: 8),
           const Icon(LucideIcons.puzzle, color: Color(AppConfig.indigo), size: 24),
           const SizedBox(width: 16),
           const Column(

@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
+import 'package:nomi_mobile/providers/navigation_provider.dart';
 import 'package:nomi_mobile/data/models/reinforcement_state.dart';
-import 'package:nomi_mobile/ui/widgets/sidebar.dart';
 
 class ReinforcementPage extends ConsumerStatefulWidget {
   const ReinforcementPage({super.key});
@@ -39,24 +39,28 @@ class _ReinforcementPageState extends ConsumerState<ReinforcementPage> {
     final isLargeScreen = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
-      backgroundColor: const Color(AppConfig.deepSlate),
-      body: Row(
-        children: [
-          if (isLargeScreen) const NomiSidebar(isDrawer: false),
-          Expanded(
-            child: _selectedSlug == null
-                ? _buildPluginList()
-                : _ReinforcementPlayground(
-                    slug: _selectedSlug!,
-                    onBack: () => setState(() => _selectedSlug = null),
-                  ),
+      backgroundColor: Colors.transparent,
+      appBar: isLargeScreen 
+        ? null 
+        : AppBar(
+            backgroundColor: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
+            elevation: 0,
+            leading: IconButton(
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              icon: const Icon(LucideIcons.menu),
+            ),
+            title: const Text('Reinforcement', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ),
-        ],
-      ),
+      body: _selectedSlug == null
+          ? _buildPluginList(isLargeScreen)
+          : _ReinforcementPlayground(
+              slug: _selectedSlug!,
+              onBack: () => setState(() => _selectedSlug = null),
+            ),
     );
   }
 
-  Widget _buildPluginList() {
+  Widget _buildPluginList(bool isLargeScreen) {
     return Column(
       children: [
         _buildHeader('SRP Registry', 'Self-Reinforcement Tool Intelligence'),
@@ -67,8 +71,8 @@ class _ReinforcementPageState extends ConsumerState<ReinforcementPage> {
                   ? const Center(child: Text('No learning plugins detected.', style: TextStyle(color: Colors.white38)))
                   : GridView.builder(
                       padding: const EdgeInsets.all(32),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: isLargeScreen ? 3 : 2,
                         crossAxisSpacing: 24,
                         mainAxisSpacing: 24,
                         childAspectRatio: 1.4,
@@ -94,6 +98,11 @@ class _ReinforcementPageState extends ConsumerState<ReinforcementPage> {
       ),
       child: Row(
         children: [
+          IconButton(
+            onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
+            icon: const Icon(LucideIcons.chevronLeft, color: Colors.white38, size: 20),
+          ),
+          const SizedBox(width: 8),
           const Icon(LucideIcons.brain, color: Color(AppConfig.emerald), size: 24),
           const SizedBox(width: 16),
           Column(

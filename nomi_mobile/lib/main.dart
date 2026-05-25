@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:nomi_mobile/providers/auth_provider.dart';
 import 'package:nomi_mobile/providers/mqtt_provider.dart';
 import 'package:nomi_mobile/ui/pages/login_page.dart';
-import 'package:nomi_mobile/ui/pages/chat_page.dart';
+import 'package:nomi_mobile/ui/widgets/main_shell.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +31,7 @@ class NomiApp extends ConsumerWidget {
         ),
       ),
       home: authState.isAuthenticated
-              ? const ChatPage()
+              ? const MainShell()
               : const LoginPage(),
     );
   }
