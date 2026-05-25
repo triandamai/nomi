@@ -21,9 +21,11 @@ pub struct SearchResult {
 
 pub async fn get_embedding(api_key: &str, text: &str) -> anyhow::Result<EmbeddingResponse, String> {
     let client = ReqwestClient::new();
-    // Ensure this is NOT set to 768, or explicitly set to 3072
+    let base_url = std::env::var("GEMINI_BASE_URL")
+        .unwrap_or_else(|_| "https://generativelanguage.googleapis.com".to_string());
+
     let res = client
-        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent?key={}", api_key))
+        .post(format!("{}/v1beta/models/gemini-embedding-2:embedContent?key={}", base_url, api_key))
         .json(&json!({
             "content": {
                 "parts": [{ "text": &text }]
