@@ -189,6 +189,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/auth/request-otp", post(handle_request_otp))
         .route("/auth/verify-otp", post(handle_verify_otp))
+        .route("/health/diagnostics", get(crate::feature::diagnostics::handle_diagnostics))
         .route("/auth/pair", post(handle_pairing_handshake))
         .route("/skills", get(handle_get_public_skills))
         .route("/waitlist", post(handle_waitlist))

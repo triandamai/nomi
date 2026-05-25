@@ -3,7 +3,7 @@ import {eventBus} from '$lib/utils';
 import {getSession} from '$lib/stores/profile.svelte';
 import {env} from '$env/dynamic/public';
 
-const MQTT_URL = env.PUBLIC_MQTT_URL || 'wss://broker.pakaiarta.id';
+const MQTT_URL = env.PUBLIC_MQTT_URL || 'wss://broker.pakaiarta.id/mqtt';
 
 class MqttClient {
     private client: mqtt.MqttClient | null = null;

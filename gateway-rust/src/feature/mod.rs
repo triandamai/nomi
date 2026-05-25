@@ -14,6 +14,7 @@ pub mod health_tracking;
 pub mod money_tracking;
 pub mod reminder;
 pub mod edge_functions;
+pub mod diagnostics;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct QuotedMessage {
