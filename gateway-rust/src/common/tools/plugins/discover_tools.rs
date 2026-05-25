@@ -49,7 +49,8 @@ impl NomiToolPlugin for DiscoverToolsPlugin {
 
             // Reuse your production Intent Classifier Service to determine which domain Nomi needs
             let classifier = IntentClassifierService::new();
-            if let Ok(result) = classifier.classify_user_intent(dispatcher, missing_desc, "").await {
+            let thresholds = serde_json::json!({});
+            if let Ok(result) = classifier.classify_user_intent(dispatcher, missing_desc, "", &thresholds).await {
                 
                 // 🚨 THE CRITICAL PIVOT: If no existing tool matching the intent exists
                 if result.intents.is_empty() {

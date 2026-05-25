@@ -7,11 +7,35 @@
     // Detail / Edit State
     let selectedConv = $state<any>(null);
     let editMaxTokens = $state<number>(0);
+    let editThresholds = $state<any>({
+        interaction_gate: 0.6,
+        intent_classification: 0.4,
+        guardrails: 0.65
+    });
     let isSaving = $state(false);
 
     onMount(() => {
         adminStore.fetchConversations();
     });
+
+    function getInteractionMode(val: number) {
+        if (val <= 0.25) return { label: 'Proactive', color: 'text-emerald-400', icon: '🏁' };
+        if (val <= 0.50) return { label: 'Balanced', color: 'text-blue-400', icon: '🤝' };
+        if (val <= 0.75) return { label: 'Conservative', color: 'text-amber-400', icon: '🛡️' };
+        return { label: 'Silent Monitor', color: 'text-slate-400', icon: '🤫' };
+    }
+
+    function getIntentMode(val: number) {
+        if (val <= 0.40) return { label: 'Experimental', color: 'text-purple-400', icon: '🧪' };
+        if (val <= 0.70) return { label: 'Adaptive', color: 'text-blue-400', icon: '🏎️' };
+        return { label: 'Strict', color: 'text-rose-400', icon: '📐' };
+    }
+
+    function getGuardrailMode(val: number) {
+        if (val <= 0.50) return { label: 'Permissive', color: 'text-emerald-400', icon: '🔓' };
+        if (val <= 0.80) return { label: 'Standard', color: 'text-blue-400', icon: '👤' };
+        return { label: 'Hardened Shield', color: 'text-rose-400', icon: '🌋' };
+    }
 
     function formatTokens(n: number | undefined | null) {
         if (n === undefined || n === null) return '0';
@@ -36,6 +60,11 @@
     function openDetail(conv: any) {
         selectedConv = conv;
         editMaxTokens = conv.max_token_usage || 0;
+        editThresholds = conv.gateway_thresholds || {
+            interaction_gate: 0.6,
+            intent_classification: 0.4,
+            guardrails: 0.65
+        };
         popupStore.open({
             title: 'Thread Configuration',
             width: 'max-w-md',
@@ -48,7 +77,10 @@
         if (!selectedConv) return;
         isSaving = true;
         try {
-            await adminStore.updateConversation(selectedConv.id, editMaxTokens);
+            await adminStore.updateConversation(selectedConv.id, { 
+                max_token_usage: editMaxTokens,
+                thresholds: editThresholds
+            });
             popupStore.closeLast();
         } catch (e) {
             console.error(e);
@@ -106,6 +138,62 @@
                     <div class="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase text-slate-600 tracking-widest pointer-events-none">
                         Tokens
                     </div>
+                </div>
+            </div>
+
+            <!-- Dynamic Execution Boundaries (DEB) -->
+            <div class="space-y-4 pt-2 border-t border-slate-800">
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Behavior Boundaries (DEB)</p>
+                
+                <!-- Interaction Gate -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-end">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Sociability</label>
+                        <span class="text-[10px] font-mono font-black {getInteractionMode(editThresholds.interaction_gate).color}">
+                            {getInteractionMode(editThresholds.interaction_gate).icon} {getInteractionMode(editThresholds.interaction_gate).label} ({editThresholds.interaction_gate.toFixed(2)})
+                        </span>
+                    </div>
+                    <input 
+                        type="range" 
+                        min="0" max="1" step="0.01" 
+                        bind:value={editThresholds.interaction_gate}
+                        class="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        style="background: linear-gradient(to right, #3b82f6 0%, #3b82f6 {editThresholds.interaction_gate * 100}%, #0f172a {editThresholds.interaction_gate * 100}%, #0f172a 100%)"
+                    />
+                </div>
+
+                <!-- Intent Classifier -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-end">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Confidence</label>
+                        <span class="text-[10px] font-mono font-black {getIntentMode(editThresholds.intent_classification).color}">
+                            {getIntentMode(editThresholds.intent_classification).icon} {getIntentMode(editThresholds.intent_classification).label} ({editThresholds.intent_classification.toFixed(2)})
+                        </span>
+                    </div>
+                    <input 
+                        type="range" 
+                        min="0" max="1" step="0.01" 
+                        bind:value={editThresholds.intent_classification}
+                        class="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                        style="background: linear-gradient(to right, #a855f7 0%, #a855f7 {editThresholds.intent_classification * 100}%, #0f172a {editThresholds.intent_classification * 100}%, #0f172a 100%)"
+                    />
+                </div>
+
+                <!-- Guardrails -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-end">
+                        <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Vigilance</label>
+                        <span class="text-[10px] font-mono font-black {getGuardrailMode(editThresholds.guardrails).color}">
+                            {getGuardrailMode(editThresholds.guardrails).icon} {getGuardrailMode(editThresholds.guardrails).label} ({editThresholds.guardrails.toFixed(2)})
+                        </span>
+                    </div>
+                    <input 
+                        type="range" 
+                        min="0" max="1" step="0.01" 
+                        bind:value={editThresholds.guardrails}
+                        class="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-rose-500"
+                        style="background: linear-gradient(to right, #f43f5e 0%, #f43f5e {editThresholds.guardrails * 100}%, #0f172a {editThresholds.guardrails * 100}%, #0f172a 100%)"
+                    />
                 </div>
             </div>
         </div>

@@ -202,11 +202,17 @@ impl V2AgentOrchestrator {
         );
 
         let classifier = IntentClassifierService::new();
+        let default_thresholds = json!({});
+        let thresholds = self.conversation.as_ref()
+            .and_then(|c| c.gateway_thresholds.as_ref())
+            .unwrap_or(&default_thresholds);
+
         let intent = classifier
             .classify_user_intent(
                 &dispatcher.clone(),
                 msg.text_content.clone().as_str(),
                 history_text.as_str(),
+                thresholds,
             )
             .await
             .map_or_else(

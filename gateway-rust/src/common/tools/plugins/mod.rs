@@ -25,3 +25,5 @@ pub mod discover_tools;
 pub mod suggest_skill;
 pub mod manage_proposals;
 pub mod srp_summary;
+pub mod adjust_deb;
+pub mod get_workspace_summary;

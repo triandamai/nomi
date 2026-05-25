@@ -5,6 +5,7 @@ export type AdminConversation = {
     title: string | null;
     cumulative_tokens: number;
     max_token_usage: number;
+    gateway_thresholds: any;
     created_at: string;
 };
 
@@ -123,12 +124,12 @@ function createAdminStore() {
             }
         },
 
-        async updateConversation(id: string, maxTokens: number) {
+        async updateConversation(id: string, updates: { max_token_usage?: number, title?: string, thresholds?: any }) {
             try {
-                await chatApi.updateAdminConversation(id, { max_token_usage: maxTokens });
+                await chatApi.updateAdminConversation(id, updates);
                 const idx = conversations.findIndex(c => c.id === id);
                 if (idx !== -1) {
-                    conversations[idx] = { ...conversations[idx], max_token_usage: maxTokens };
+                    conversations[idx] = { ...conversations[idx], ...updates };
                 }
             } catch (e) {
                 console.error('Admin Store Error (Update):', e);

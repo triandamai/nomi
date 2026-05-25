@@ -26,6 +26,7 @@ impl InteractionGateService {
         conversation_id: Uuid,
         message_body: &str,
         is_reply_to_nomi: bool,
+        thresholds: &serde_json::Value,
     ) -> anyhow::Result<bool> {
         // Tier 1: Mechanical Fast-Pass (0 Token Cost)
         let body_lower = message_body.to_lowercase();
@@ -84,8 +85,15 @@ impl InteractionGateService {
             Some(row) => {
                 let score = row.score;
                 
+                // DEB: Read baseline from thresholds, fallback to 0.60
+                let base_threshold = thresholds["interaction_gate"].as_f64().unwrap_or(0.60);
+
                 // If we have momentum, we lower the threshold to be more participatory
-                let threshold = if has_momentum { 0.50 } else { 0.60 };
+                let threshold = if has_momentum { 
+                    (base_threshold - 0.10).max(0.10) 
+                } else { 
+                    base_threshold 
+                };
 
                 if score >= threshold {
                     info!("Interaction Gate: Match found (score={:.4}, momentum={}, threshold={:.2}), responding.", score, has_momentum, threshold);

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE channels SET external_chat_id = $1, external_id = $2 WHERE channel_type = $3 AND user_id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "86ddf91f32d00dee5eeb6fe3762e749542db50ba84e78ff902ba014eac894e80"
+}

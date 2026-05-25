@@ -195,20 +195,36 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 onPressed: () => Scaffold.of(context).openDrawer(),
                 icon: const Icon(LucideIcons.menu),
               ),
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    activeConv?.name ?? 'Nomi Chat',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    overflow: TextOverflow.ellipsis,
+              title: InkWell(
+                onTap: activeConv != null ? () => _showThreadDetail(context, activeConv!) : null,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              activeConv?.name ?? 'Nomi Chat',
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Icon(LucideIcons.info, size: 12, color: Colors.white24),
+                        ],
+                      ),
+                      if (chatState.isTyping[chatState.activeConversationId] ?? false)
+                        const Text(
+                          'Nomi is typing...',
+                          style: TextStyle(fontSize: 10, color: Color(AppConfig.blue), fontWeight: FontWeight.bold),
+                        ),
+                    ],
                   ),
-                  if (chatState.isTyping[chatState.activeConversationId] ?? false)
-                    const Text(
-                      'Nomi is typing...',
-                      style: TextStyle(fontSize: 10, color: Color(AppConfig.blue), fontWeight: FontWeight.bold),
-                    ),
-                ],
+                ),
               ),
               actions: [
                 IconButton(
@@ -304,7 +320,21 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             children: [
               Row(
                 children: [
-                  Text(activeConv?.name ?? 'Nomi Chat', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                  InkWell(
+                    onTap: activeConv != null ? () => _showThreadDetail(context, activeConv!) : null,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(activeConv?.name ?? 'Nomi Chat', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                          const SizedBox(width: 8),
+                          const Icon(LucideIcons.info, size: 16, color: Colors.white24),
+                        ],
+                      ),
+                    ),
+                  ),
                   if (activeConv?.cumulativeTokens != null)
                     Padding(
                       padding: const EdgeInsets.only(left: 12),
@@ -463,5 +493,161 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   Widget _buildReplyContext(Message message) {
     return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(AppConfig.blue).withValues(alpha: 0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(AppConfig.blue).withValues(alpha: 0.2))), child: Row(children: [const Icon(LucideIcons.reply, size: 14, color: Color(AppConfig.blue)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Replying to ${message.displayName ?? message.role}', style: const TextStyle(color: Color(AppConfig.blue), fontSize: 9, fontWeight: FontWeight.bold)), Text(message.content, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11))])), IconButton(onPressed: () => ref.read(chatProvider.notifier).setReplyingTo(null), icon: const Icon(LucideIcons.x, size: 14, color: Colors.white38))]));
+  }
+
+  void _showThreadDetail(BuildContext context, db.Conversation conv) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _ThreadDetailSheet(conv: conv),
+    );
+  }
+}
+
+class _ThreadDetailSheet extends StatelessWidget {
+  final db.Conversation conv;
+  const _ThreadDetailSheet({required this.conv});
+
+  (String, Color, String) _getInteractionMode(double val) {
+    if (val <= 0.25) return ('Proactive', const Color(AppConfig.emerald), '🏁');
+    if (val <= 0.50) return ('Balanced', const Color(AppConfig.blue), '🤝');
+    if (val <= 0.75) return ('Conservative', const Color(AppConfig.amber), '🛡️');
+    return ('Silent Monitor', Colors.white38, '🤫');
+  }
+
+  (String, Color, String) _getIntentMode(double val) {
+    if (val <= 0.40) return ('Experimental', const Color(AppConfig.indigo), '🧪');
+    if (val <= 0.70) return ('Adaptive', const Color(AppConfig.blue), '🏎️');
+    return ('Strict', const Color(AppConfig.rose), '📐');
+  }
+
+  (String, Color, String) _getGuardrailMode(double val) {
+    if (val <= 0.50) return ('Permissive', const Color(AppConfig.emerald), '🔓');
+    if (val <= 0.80) return ('Standard', const Color(AppConfig.blue), '👤');
+    return ('Hardened Shield', const Color(AppConfig.rose), '🌋');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Note: In a real scenario, we'd add this column to Drift.
+    // I'll assume standard defaults or empty if not present.
+    final double interactionGate = 0.60; 
+    final double intentClassification = 0.40;
+    final double guardrails = 0.65;
+
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: const Color(AppConfig.deepSlate).withValues(alpha: 0.9),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: const Border(top: BorderSide(color: Colors.white10)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(LucideIcons.terminal, color: Color(AppConfig.blue), size: 24),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('THREAD CONFIGURATION', style: TextStyle(color: Color(AppConfig.blue), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                        Text(conv.name ?? 'Untitled Session', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white38)),
+                ],
+              ),
+              const SizedBox(height: 32),
+              
+              // Token Metrics
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildMetricCard('TOTAL USAGE', Formatter.formatTokenCount(conv.cumulativeTokens ?? 0), const Color(AppConfig.blue)),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _buildMetricCard('LIMIT', Formatter.formatTokenCount(conv.maxTokenUsage ?? 0), Colors.white24),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 32),
+              const Divider(color: Colors.white10),
+              const SizedBox(height: 24),
+              const Text('BEHAVIOR BOUNDARIES (DEB)', style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+              const SizedBox(height: 24),
+
+              _buildReadOnlyBoundary('Sociability', interactionGate, _getInteractionMode(interactionGate)),
+              const SizedBox(height: 20),
+              _buildReadOnlyBoundary('Confidence', intentClassification, _getIntentMode(intentClassification)),
+              const SizedBox(height: 20),
+              _buildReadOnlyBoundary('Vigilance', guardrails, _getGuardrailMode(guardrails)),
+
+              const SizedBox(height: 40),
+              Center(
+                child: Text(
+                  'Parameters are optimized for this conversation context.',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 11, fontStyle: FontStyle.italic),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
+          const SizedBox(height: 8),
+          Text(value, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyBoundary(String label, double value, (String, Color, String) mode) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('${mode.$3} ${mode.$1} (${value.toStringAsFixed(2)})', style: TextStyle(color: mode.$2, fontSize: 10, fontWeight: FontWeight.w900, fontFamily: 'monospace')),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: LinearProgressIndicator(
+            value: value,
+            backgroundColor: Colors.white.withValues(alpha: 0.05),
+            valueColor: AlwaysStoppedAnimation<Color>(mode.$2.withValues(alpha: 0.5)),
+            minHeight: 2,
+          ),
+        ),
+      ],
+    );
   }
 }

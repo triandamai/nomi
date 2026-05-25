@@ -181,6 +181,7 @@ impl IntentClassifierService {
         dispatcher: &ToolDispatcher,
         user_message: &str,
         chat_history_summary: &str,
+        thresholds: &serde_json::Value,
     ) -> anyhow::Result<ClassificationResult> {
         // 1. Context Vector Creation
         let context_payload = format!(
@@ -211,10 +212,14 @@ impl IntentClassifierService {
         .await?;
 
         // 3. Similarity Threshold Guard Gate
-        if candidates.is_empty() || candidates[0].score < 0.40 {
+        // DEB: Read baseline from thresholds, fallback to 0.40
+        let threshold = thresholds["intent_classification"].as_f64().unwrap_or(0.40);
+
+        if candidates.is_empty() || candidates[0].score < threshold {
             info!(
-                "Intent classification: Below threshold ({:.4}), returning CHITCHAT",
-                candidates.get(0).map(|c| c.score).unwrap_or(0.0)
+                "Intent classification: Below threshold ({:.4}, target={:.2}), returning CHITCHAT",
+                candidates.get(0).map(|c| c.score).unwrap_or(0.0),
+                threshold
             );
             return Ok(ClassificationResult {
                 intents: vec!["CHITCHAT".to_string()],

@@ -298,10 +298,11 @@ class ChatRepository {
     return [];
   }
 
-  Future<bool> updateAdminConversation(String id, {int? maxTokenUsage, String? title}) async {
+  Future<bool> updateAdminConversation(String id, {int? maxTokenUsage, String? title, Map<String, dynamic>? thresholds}) async {
     final Map<String, dynamic> data = {};
     if (maxTokenUsage != null) data['max_token_usage'] = maxTokenUsage;
     if (title != null) data['title'] = title;
+    if (thresholds != null) data['thresholds'] = thresholds;
 
     try {
       final response = await _apiClient.dio.patch('/v1/admin/conversations/$id', data: data);

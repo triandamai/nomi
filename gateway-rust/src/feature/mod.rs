@@ -127,6 +127,7 @@ pub struct Conversation {
     pub title: Option<String>,
     pub soul_content: Option<String>,
     pub bootstrap_content: Option<String>,
+    pub gateway_thresholds: Option<serde_json::Value>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }

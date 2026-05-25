@@ -10,6 +10,8 @@ class AdminConversation {
   final int? cumulativeTokens;
   @JsonKey(name: 'max_token_usage')
   final int? maxTokenUsage;
+  @JsonKey(name: 'gateway_thresholds')
+  final Map<String, dynamic>? gatewayThresholds;
   @JsonKey(name: 'created_at')
   final String createdAt;
 
@@ -18,6 +20,7 @@ class AdminConversation {
     this.title,
     this.cumulativeTokens,
     this.maxTokenUsage,
+    this.gatewayThresholds,
     required this.createdAt,
   });
 

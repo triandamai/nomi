@@ -164,7 +164,7 @@ impl GuardrailService {
     /// 1. Tier 1: Cross-Lingual Adversarial Pattern Matching (0 Token Cost)
     /// 2. Tier 2: Multilingual Semantic Vector Lookup
     /// 3. Tier 3: Security Threshold Tripwire
-    pub async fn is_injection_detected(&self, message_body: &str) -> anyhow::Result<bool> {
+    pub async fn is_injection_detected(&self, message_body: &str, thresholds: &serde_json::Value) -> anyhow::Result<bool> {
         // Guard: Empty message body (Common when uploading media without text)
         // Gemini embedding API returns 400 Bad Request for empty strings.
         if message_body.trim().is_empty() {
@@ -232,11 +232,15 @@ impl GuardrailService {
         match match_result {
             Some(row) => {
                 let score = row.score;
-                if score >= 0.65 {
-                    warn!("Guardrail: Security alert! High similarity score detected ({:.4}) against known injection patterns.", score);
+                
+                // DEB: Read baseline from thresholds, fallback to 0.65
+                let threshold = thresholds["guardrails"].as_f64().unwrap_or(0.65);
+
+                if score >= threshold {
+                    warn!("Guardrail: Security alert! High similarity score detected ({:.4}, target={:.2}) against known injection patterns.", score, threshold);
                     Ok(true)
                 } else {
-                    info!("Guardrail: No significant injection patterns detected (score={:.4}).", score);
+                    info!("Guardrail: No significant injection patterns detected (score={:.4}, target={:.2}).", score, threshold);
                     Ok(false)
                 }
             }

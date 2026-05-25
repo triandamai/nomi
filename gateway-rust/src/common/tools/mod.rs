@@ -98,6 +98,8 @@ impl ToolDispatcher {
         plugins.insert("get_inbox_summary", Arc::new(GetInboxSummaryPlugin));
         plugins.insert("execute_read_query", Arc::new(ExecuteSqlQueryPlugin));
         plugins.insert("read_workspace_file", Arc::new(ReadWorkspaceFilePlugin));
+        plugins.insert("adjust_deb", Arc::new(crate::common::tools::plugins::adjust_deb::AdjustDebPlugin));
+        plugins.insert("get_workspace_summary", Arc::new(crate::common::tools::plugins::get_workspace_summary::GetWorkspaceSummaryPlugin));
         plugins.insert("parse_to_json", Arc::new(ParseStringToJsonPlugin));
         plugins.insert("create_sticker", Arc::new(StickerGeneratorPlugin));
         plugins.insert("get_current_weather", Arc::new(WeatherFallbackPlugin));

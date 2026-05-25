@@ -1,11 +1,13 @@
 <script lang="ts">
-    import { ChevronRight, MessageSquare, Network, Menu, X, Cpu } from 'lucide-svelte';
+    import { ChevronRight, MessageSquare, Network, Menu, X, Cpu, Info } from 'lucide-svelte';
     import { slide } from 'svelte/transition';
     import { page } from '$app/state';
     import { conversationStore } from '$lib/stores/conversation.svelte';
     import { headerStore } from '$lib/stores/header.svelte';
     import { formatTokenCount } from '$lib/utils';
     import { onMount } from "svelte";
+    import { popupStore } from '$lib/stores/popup.svelte';
+    import ThreadDetailPopUp from './ThreadDetailPopUp.svelte';
 
     let { title = '' } = $props<{ title?: string }>();
 
@@ -16,11 +18,23 @@
         headerStore.init();
     });
 
+    function openThreadDetail() {
+        popupStore.open({
+            title: 'Thread Detail',
+            width: 'max-w-md',
+            contentSnippet: threadDetailSnippet
+        });
+    }
+
     const tabs = [
         { name: 'Chat', href: '/chat', icon: MessageSquare },
         { name: 'RAG', href: '/rag', icon: Network }
     ];
 </script>
+
+{#snippet threadDetailSnippet()}
+    <ThreadDetailPopUp />
+{/snippet}
 
 <header class="h-14 border-b border-slate-800/50 flex justify-between items-center px-4 bg-[#0f172a] sticky top-0 z-20">
     <div class="flex items-center gap-6">
@@ -28,8 +42,16 @@
         <div class="flex items-center gap-2 text-slate-500">
             <span class="text-xs font-medium hover:text-slate-300 cursor-pointer transition-colors hidden sm:inline">Workspace</span>
             <ChevronRight class="w-3.5 h-3.5 text-slate-700 hidden sm:block" />
-            <span class="text-xs font-semibold text-slate-200 truncate max-w-[120px] sm:max-w-none">
-                {conversationStore.activeConversation?.name || 'No Session'} - <span class="font-mono">{formatTokenCount(conversationStore.activeConversation?.cumulative_tokens)}</span> Token
+            <button 
+                onclick={openThreadDetail}
+                class="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-blue-400 transition-colors truncate max-w-[150px] sm:max-w-none group text-left"
+            >
+                {conversationStore.activeConversation?.name || 'No Session'}
+                <Info size={12} class="text-slate-600 group-hover:text-blue-500 transition-colors shrink-0" />
+            </button>
+            <div class="h-3 w-[1px] bg-slate-800 mx-1"></div>
+            <span class="text-[10px] font-mono text-slate-500">
+                {formatTokenCount(conversationStore.activeConversation?.cumulative_tokens)}
             </span>
         </div>
 

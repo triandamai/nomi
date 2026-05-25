@@ -196,8 +196,9 @@ pub async fn process_v2_message(
             }
         }
 
+        let thresholds = convo.gateway_thresholds.clone().unwrap_or_else(|| json!({}));
         let should_respond = match gate
-            .should_respond_to_group_message(conversation_id, &hydrated_text, is_reply_to_nomi)
+            .should_respond_to_group_message(conversation_id, &hydrated_text, is_reply_to_nomi, &thresholds)
             .await
         {
             Ok(true) => {
@@ -231,8 +232,9 @@ pub async fn process_v2_message(
         state.gemini_api_key.clone(),
     );
 
+    let thresholds = convo.gateway_thresholds.clone().unwrap_or_else(|| json!({}));
     let is_injection = guard_rail
-        .is_injection_detected(msg.text_content.as_str())
+        .is_injection_detected(msg.text_content.as_str(), &thresholds)
         .await
         .unwrap_or_else(|_| false);
 

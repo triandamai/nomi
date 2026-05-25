@@ -1,10 +1,10 @@
 use crate::common::redis::RedisClient;
 use crate::feature::Conversation;
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Row};
 use uuid::Uuid;
 use tracing::{info, error};
-use serde_json::Value;
+use serde_json::{json, Value};
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -20,6 +20,7 @@ pub struct ConversationCache {
     pub cumulative_tokens: i32,
     pub conversation_type: String,
     pub metadata: Option<Value>,
+    pub gateway_thresholds: Value,
 }
 
 impl From<ConversationCache> for Conversation {
@@ -30,6 +31,7 @@ impl From<ConversationCache> for Conversation {
             title: cache.title,
             soul_content: cache.soul_content,
             bootstrap_content: cache.bootstrap_content,
+            gateway_thresholds: Some(cache.gateway_thresholds),
             created_at: Some(cache.created_at),
             updated_at: Some(cache.updated_at),
         }
@@ -53,7 +55,6 @@ pub async fn get_conversation_info(
                 }
                 Err(e) => {
                     error!("Cache HIT but DESERIALIZATION FAILED for key {}: {}", cache_key, e);
-                    // Continue to fallback
                 }
             }
         }
@@ -65,43 +66,36 @@ pub async fn get_conversation_info(
         }
     }
 
-    // 2. Fallback to Postgres
+    // 2. Fallback to Postgres (Using runtime query to avoid migration sync issues during build)
     info!("Fetching conversation {} from Postgres.", conversation_id);
-    let row = sqlx::query!(
-        r#"
-        SELECT
-            id,
-            title,
-            user_id,
-            soul_content,
-            bootstrap_content,
-            created_at,
-            updated_at,
-            max_token_usage,
-            cumulative_tokens,
-            metadata,
-            conversation_type
-        FROM conversations WHERE id = $1
-        "#,
-        conversation_id
+    let row = sqlx::query(
+        "SELECT id, title, user_id, soul_content, bootstrap_content, created_at, updated_at, 
+                max_token_usage, cumulative_tokens, metadata, conversation_type, gateway_thresholds 
+         FROM conversations WHERE id = $1"
     )
+    .bind(conversation_id)
     .fetch_optional(pool)
     .await?;
 
     match row {
         Some(r) => {
             let info = ConversationCache {
-                id: r.id,
-                title: r.title,
-                user_id: r.user_id,
-                soul_content: r.soul_content,
-                bootstrap_content: r.bootstrap_content,
-                created_at: r.created_at.unwrap_or_else(Utc::now),
-                updated_at: r.updated_at.unwrap_or_else(Utc::now),
-                max_token_usage: r.max_token_usage.unwrap_or(700000),
-                cumulative_tokens: r.cumulative_tokens.unwrap_or(0),
-                conversation_type: r.conversation_type,
-                metadata: r.metadata,
+                id: r.get("id"),
+                title: r.get("title"),
+                user_id: r.get("user_id"),
+                soul_content: r.get("soul_content"),
+                bootstrap_content: r.get("bootstrap_content"),
+                created_at: r.get::<Option<DateTime<Utc>>, _>("created_at").unwrap_or_else(Utc::now),
+                updated_at: r.get::<Option<DateTime<Utc>>, _>("updated_at").unwrap_or_else(Utc::now),
+                max_token_usage: r.get::<Option<i32>, _>("max_token_usage").unwrap_or(700000),
+                cumulative_tokens: r.get::<Option<i32>, _>("cumulative_tokens").unwrap_or(0),
+                conversation_type: r.get::<Option<String>, _>("conversation_type").unwrap_or_else(|| "private".to_string()),
+                metadata: r.get("metadata"),
+                gateway_thresholds: r.get::<Option<Value>, _>("gateway_thresholds").unwrap_or_else(|| json!({
+                    "interaction_gate": 0.6,
+                    "intent_classification": 0.4,
+                    "guardrails": 0.65
+                })),
             };
 
             // 3. Save to Redis (Expire in 1 hour)
@@ -133,6 +127,45 @@ pub async fn update_cached_tokens(redis: &RedisClient, conversation_id: Uuid, ne
             }
         }
     }
+}
+
+pub async fn update_conversation_thresholds(
+    pool: &Pool<Postgres>,
+    redis: &RedisClient,
+    conversation_id: Uuid,
+    layer: &str,
+    value: f64,
+) -> anyhow::Result<Value> {
+    // 1. Update Postgres (JSONB Patch) - Using runtime query
+    let row = sqlx::query(
+        "UPDATE conversations 
+         SET gateway_thresholds = gateway_thresholds || jsonb_build_object($1::text, $2::float8), 
+             updated_at = NOW() 
+         WHERE id = $3 
+         RETURNING gateway_thresholds"
+    )
+    .bind(layer)
+    .bind(value)
+    .bind(conversation_id)
+    .fetch_one(pool)
+    .await?;
+
+    let updated_thresholds: Value = row.get("gateway_thresholds");
+
+    // 2. Refresh Redis Cache
+    let cache_key = format!("nomi:conversation:{}", conversation_id);
+    if let Ok(Some(cached)) = redis.get(&cache_key).await {
+        if let Ok(mut info) = serde_json::from_str::<ConversationCache>(&cached) {
+            info.gateway_thresholds = updated_thresholds.clone();
+            if let Ok(serialized) = serde_json::to_string(&info) {
+                let _ = redis.set_ex(&cache_key, &serialized, 3600).await;
+            }
+        }
+    } else {
+        let _ = redis.del(&cache_key).await;
+    }
+
+    Ok(updated_thresholds)
 }
 
 pub async fn invalidate_conversation_cache(redis: &RedisClient, conversation_id: Uuid) {

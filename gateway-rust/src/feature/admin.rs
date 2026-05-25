@@ -428,7 +428,7 @@ pub async fn handle_get_admin_conversations(
     let limit = q.limit.unwrap_or(20).max(1).min(100);
 
     let mut qb = QueryBuilder::new(
-        r#"SELECT id, title, cumulative_tokens, max_token_usage, created_at FROM conversations WHERE 1=1 "#,
+        r#"SELECT id, title, cumulative_tokens, max_token_usage, gateway_thresholds, created_at FROM conversations WHERE 1=1 "#,
     );
 
     if let Some(cursor) = q.cursor {

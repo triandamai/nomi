@@ -228,6 +228,9 @@ class _SessionDetailSheet extends ConsumerStatefulWidget {
 class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
   late final TextEditingController _limitController;
   late final TextEditingController _titleController;
+  late double _interactionGate;
+  late double _intentClassification;
+  late double _guardrails;
   bool _isSaving = false;
 
   @override
@@ -235,6 +238,11 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
     super.initState();
     _limitController = TextEditingController(text: widget.session.maxTokenUsage?.toString() ?? '0');
     _titleController = TextEditingController(text: widget.session.title ?? '');
+    
+    final thresholds = widget.session.gatewayThresholds ?? {};
+    _interactionGate = (thresholds['interaction_gate'] as num?)?.toDouble() ?? 0.60;
+    _intentClassification = (thresholds['intent_classification'] as num?)?.toDouble() ?? 0.40;
+    _guardrails = (thresholds['guardrails'] as num?)?.toDouble() ?? 0.65;
   }
 
   @override
@@ -242,6 +250,25 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
     _limitController.dispose();
     _titleController.dispose();
     super.dispose();
+  }
+
+  (String, Color, String) _getInteractionMode(double val) {
+    if (val <= 0.25) return ('Proactive', const Color(AppConfig.emerald), '🏁');
+    if (val <= 0.50) return ('Balanced', const Color(AppConfig.blue), '🤝');
+    if (val <= 0.75) return ('Conservative', const Color(AppConfig.amber), '🛡️');
+    return ('Silent Monitor', Colors.white38, '🤫');
+  }
+
+  (String, Color, String) _getIntentMode(double val) {
+    if (val <= 0.40) return ('Experimental', const Color(AppConfig.indigo), '🧪');
+    if (val <= 0.70) return ('Adaptive', const Color(AppConfig.blue), '🏎️');
+    return ('Strict', const Color(AppConfig.rose), '📐');
+  }
+
+  (String, Color, String) _getGuardrailMode(double val) {
+    if (val <= 0.50) return ('Permissive', const Color(AppConfig.emerald), '🔓');
+    if (val <= 0.80) return ('Standard', const Color(AppConfig.blue), '👤');
+    return ('Hardened Shield', const Color(AppConfig.rose), '🌋');
   }
 
   Future<void> _handleSave() async {
@@ -253,6 +280,11 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
       widget.session.id,
       maxTokenUsage: newLimit,
       title: _titleController.text,
+      thresholds: {
+        'interaction_gate': _interactionGate,
+        'intent_classification': _intentClassification,
+        'guardrails': _guardrails,
+      },
     );
 
     if (mounted) {
@@ -274,50 +306,109 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
         child: Container(
-          padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
+          padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 40),
           decoration: BoxDecoration(
             color: const Color(AppConfig.deepSlate).withValues(alpha: 0.9),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             border: const Border(top: BorderSide(color: Colors.white10)),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('SESSION PARAMETERS', style: TextStyle(color: Color(AppConfig.blue), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                      SizedBox(height: 4),
-                      Text('Adjust Constraints', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white38)),
-                ],
-              ),
-              const SizedBox(height: 32),
-              _buildField('Session Title', _titleController, 'e.g. Technical Research Pass'),
-              const SizedBox(height: 24),
-              _buildField('Max Token Limit', _limitController, 'e.g. 500000', isNumeric: true),
-              const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isSaving ? null : _handleSave,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(AppConfig.blue), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-                  child: _isSaving 
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('UPDATE SESSION', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('SESSION PARAMETERS', style: TextStyle(color: Color(AppConfig.blue), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                        SizedBox(height: 4),
+                        Text('Adjust Constraints', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white38)),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 32),
+                _buildField('Session Title', _titleController, 'e.g. Technical Research Pass'),
+                const SizedBox(height: 24),
+                _buildField('Max Token Limit', _limitController, 'e.g. 500000', isNumeric: true),
+                
+                const SizedBox(height: 32),
+                const Divider(color: Colors.white10),
+                const SizedBox(height: 24),
+                const Text('BEHAVIOR BOUNDARIES (DEB)', style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                const SizedBox(height: 24),
+                
+                _buildSlider(
+                  'Sociability', 
+                  _interactionGate, 
+                  _getInteractionMode(_interactionGate),
+                  (val) => setState(() => _interactionGate = val)
+                ),
+                const SizedBox(height: 24),
+                _buildSlider(
+                  'Confidence', 
+                  _intentClassification, 
+                  _getIntentMode(_intentClassification),
+                  (val) => setState(() => _intentClassification = val)
+                ),
+                const SizedBox(height: 24),
+                _buildSlider(
+                  'Vigilance', 
+                  _guardrails, 
+                  _getGuardrailMode(_guardrails),
+                  (val) => setState(() => _guardrails = val)
+                ),
+
+                const SizedBox(height: 40),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _handleSave,
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(AppConfig.blue), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+                    child: _isSaving 
+                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('UPDATE SESSION', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSlider(String label, double value, (String, Color, String) mode, Function(double) onChanged) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('${mode.$3} ${mode.$1} (${value.toStringAsFixed(2)})', style: TextStyle(color: mode.$2, fontSize: 10, fontWeight: FontWeight.w900, fontFamily: 'monospace')),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 2,
+            activeTrackColor: mode.$2,
+            inactiveTrackColor: Colors.white10,
+            thumbColor: Colors.white,
+            overlayColor: mode.$2.withValues(alpha: 0.1),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+          ),
+          child: Slider(
+            value: value,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
     );
   }
 

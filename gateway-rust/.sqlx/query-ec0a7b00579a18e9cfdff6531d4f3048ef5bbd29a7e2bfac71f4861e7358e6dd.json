@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT c.user_id, u.display_name  FROM channels as c\n            RIGHT JOIN users as u ON u.id = c.user_id\n            WHERE c.channel_type = $1 AND c.external_chat_id = $2",
+  "query": "\n            SELECT c.user_id, u.display_name FROM channels as c\n            RIGHT JOIN users as u ON u.id = c.user_id\n            WHERE c.channel_type = $1 AND (c.external_id = $2 OR c.external_chat_id = $2)",
   "describe": {
     "columns": [
       {
@@ -25,5 +25,5 @@
       true
     ]
   },
-  "hash": "65c4b981060c7c46458d634474ce1f6684861337bacf285f9b82560917f38bc8"
+  "hash": "ec0a7b00579a18e9cfdff6531d4f3048ef5bbd29a7e2bfac71f4861e7358e6dd"
 }
