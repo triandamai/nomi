@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT count(*) as count FROM (\n                SELECT role FROM messages \n                WHERE conversation_id = $1 \n                ORDER BY created_at DESC \n                LIMIT 3\n            ) as recent WHERE role = 'assistant'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "1c6f89fe8243baa9fe75989e600be9a4e9cae394ce5e02060d5bdcd1e59606e0"
+}
