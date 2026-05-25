@@ -186,7 +186,11 @@ class _FinanceHistorySheetState extends ConsumerState<FinanceHistorySheet> {
                   padding: const EdgeInsets.all(24),
                   itemCount: items.length,
                   itemBuilder: (context, index) {
-                    return _TransactionListItem(tx: Transaction.fromDb(items[index]));
+                    final tx = Transaction.fromDb(items[index]);
+                    return _TransactionListItem(
+                      tx: tx,
+                      onTap: () => _showTransactionDetail(context, tx),
+                    );
                   },
                 );
               },
@@ -198,23 +202,177 @@ class _FinanceHistorySheetState extends ConsumerState<FinanceHistorySheet> {
       ),
     );
   }
+
+  void _showTransactionDetail(BuildContext context, Transaction tx) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _TransactionDetailSheet(tx: tx),
+    );
+  }
 }
 
-class _TransactionListItem extends StatelessWidget {
+class _TransactionDetailSheet extends StatelessWidget {
   final Transaction tx;
-  const _TransactionListItem({required this.tx});
+  const _TransactionDetailSheet({required this.tx});
 
   @override
   Widget build(BuildContext context) {
     final currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
     final amount = double.tryParse(tx.totalAmount) ?? 0.0;
-    
+    final size = MediaQuery.of(context).size;
+
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(maxHeight: size.height * 0.85),
+          decoration: BoxDecoration(
+            color: const Color(AppConfig.deepSlate).withValues(alpha: 0.9),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: const Border(top: BorderSide(color: Colors.white10)),
+          ),
+          padding: const EdgeInsets.all(32),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    const Icon(LucideIcons.receipt, color: Color(AppConfig.emerald), size: 24),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('TRANSACTION DETAILS', style: TextStyle(color: Color(AppConfig.emerald), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                          Text(tx.merchantName ?? 'Unknown Merchant', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white38)),
+                  ],
+                ),
+                const SizedBox(height: 32),
+
+                // Amount & Date
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('TOTAL AMOUNT', style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                        const SizedBox(height: 4),
+                        Text(currencyFormat.format(amount), style: const TextStyle(color: Color(AppConfig.rose), fontSize: 24, fontWeight: FontWeight.w900, fontFamily: 'monospace')),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text('DATE', style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                        const SizedBox(height: 4),
+                        Text(
+                          DateFormat('MMM d, yyyy').format(DateTime.parse(tx.createdAt)),
+                          style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          DateFormat('HH:mm:ss').format(DateTime.parse(tx.createdAt)),
+                          style: const TextStyle(color: Colors.white38, fontSize: 11, fontFamily: 'monospace'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 32),
+
+                // Category & Meta
+                Row(
+                  children: [
+                    if (tx.category != null) ...[
+                      _metaChip(LucideIcons.tag, tx.category!.toUpperCase()),
+                      const SizedBox(width: 12),
+                    ],
+                    if (tx.userDisplayName != null)
+                      _metaChip(LucideIcons.user, '@${tx.userDisplayName}'),
+                  ],
+                ),
+                const SizedBox(height: 32),
+
+                // Description
+                if (tx.description != null && tx.description!.isNotEmpty) ...[
+                  const Text('DESCRIPTION', style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.02),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    ),
+                    child: Text(tx.description!, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.6)),
+                  ),
+                  const SizedBox(height: 32),
+                ],
+
+                // Items List
+                const Text('PURCHASED ITEMS', style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                const SizedBox(height: 16),
+                if (tx.items != null && tx.items!.isNotEmpty)
+                  ...tx.items!.map((item) => _buildItemRow(item, currencyFormat))
+                else
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.02),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    ),
+                    child: const Center(
+                      child: Text('No specific items recorded.', style: TextStyle(color: Colors.white24, fontSize: 12, fontStyle: FontStyle.italic)),
+                    ),
+                  ),
+                const SizedBox(height: 40),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _metaChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: Colors.white38),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemRow(TransactionItem item, NumberFormat currencyFormat) {
+    final itemAmount = double.tryParse(item.totalAmount) ?? 0.0;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.black.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
@@ -223,59 +381,102 @@ class _TransactionListItem extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      tx.merchantName ?? 'Unknown Merchant',
-                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
-                    if (tx.category != null) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          tx.category!.toUpperCase(),
-                          style: const TextStyle(color: Colors.white38, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                Text(item.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                Text(
-                  tx.description ?? 'No description',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  DateFormat('MMM d, HH:mm').format(DateTime.parse(tx.createdAt)),
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.15), fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
-                ),
+                Text('QTY: ${item.quantity}', style: const TextStyle(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                currencyFormat.format(amount),
-                style: const TextStyle(color: Color(AppConfig.rose), fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'monospace'),
-              ),
-              const SizedBox(height: 4),
-              if (tx.userDisplayName != null)
-                Text(
-                  '@${tx.userDisplayName}',
-                  style: TextStyle(color: Colors.blue.withValues(alpha: 0.4), fontSize: 8, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic),
-                ),
-            ],
+          Text(
+            currencyFormat.format(itemAmount),
+            style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TransactionListItem extends StatelessWidget {
+  final Transaction tx;
+  final VoidCallback onTap;
+  const _TransactionListItem({required this.tx, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+    final amount = double.tryParse(tx.totalAmount) ?? 0.0;
+    
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        tx.merchantName ?? 'Unknown Merchant',
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      if (tx.category != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            tx.category!.toUpperCase(),
+                            style: const TextStyle(color: Colors.white38, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    tx.description ?? 'No description',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    DateFormat('MMM d, HH:mm').format(DateTime.parse(tx.createdAt)),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.15), fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  currencyFormat.format(amount),
+                  style: const TextStyle(color: Color(AppConfig.rose), fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'monospace'),
+                ),
+                const SizedBox(height: 4),
+                if (tx.userDisplayName != null)
+                  Text(
+                    '@${tx.userDisplayName}',
+                    style: TextStyle(color: Colors.blue.withValues(alpha: 0.4), fontSize: 8, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

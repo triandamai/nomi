@@ -159,7 +159,7 @@
         sidebarStore.showUserMenu = false;
         popupStore.open({
             title: 'Transaction History',
-            width: 'w-full max-w-2xl h-[100dvh]',
+            width: 'w-full max-w-2xl',
             contentSnippet: moneyTrackingSnippet
         });
     }
@@ -168,7 +168,7 @@
         sidebarStore.showUserMenu = false;
         popupStore.open({
             title: 'Health & Vitality',
-            width: 'w-full max-w-2xl h-[100dvh]',
+            width: 'w-full max-w-2xl',
             contentSnippet: healthTrackingSnippet
         });
     }
@@ -178,7 +178,7 @@
         popupStore.open({
             title: 'Admin Monitor',
             headerSnippet: adminHeaderSnippet,
-            width: 'w-full max-w-2xl h-[100dvh]',
+            width: 'w-full max-w-2xl',
             contentSnippet: adminConversationsSnippet
         });
     }
@@ -188,7 +188,7 @@
         popupStore.open({
             title: 'User Directory',
             headerSnippet: userHeaderSnippet,
-            width: 'w-full max-w-2xl h-[100dvh]',
+            width: 'w-full max-w-2xl',
             contentSnippet: userDirectorySnippet
         });
     }
@@ -968,7 +968,7 @@
 {/snippet}
 
 {#snippet utilityContent()}
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 py-4">
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 py-4 pb-12">
         <button onclick={() => { popupStore.closeLast(); handleShowReminders(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group">
             <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-blue-500/20 text-slate-400 group-hover:text-blue-400 transition-colors">
                 <Bell size={24} />

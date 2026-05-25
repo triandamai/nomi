@@ -84,6 +84,13 @@ impl NomiToolPlugin for EvolveBootstrapPlugin {
                 .await?;
 
                 tx.commit().await?;
+
+                // Invalidate Cache
+                crate::common::repository::conversation_repo::invalidate_conversation_cache(
+                    &dispatcher.app_state.redis,
+                    conversation_id
+                ).await;
+
                 Ok(Some(next_version))
             }
             .await;

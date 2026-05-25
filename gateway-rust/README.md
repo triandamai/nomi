@@ -77,37 +77,52 @@ graph TD
 5. **LLM Refinement**: If above the threshold, Gemini acts as a fine-grained judge to select the precise intent(s) from the candidate list.
 6. **Metric Tracking**: Token usage (input, output, total) is captured from the Gemini response for analytics.
 
-### 2. Interaction Gate Flow (Ambient Group Chat)
-Nomi uses a 3-tier isolated gate to decide if it should participate in ambient group conversations without an explicit `@mention`.
+### 2. Interaction Gate & Momentum Flow (Ambient Group Chat)
+Nomi uses a multi-tier isolated gate to decide if it should participate in ambient group conversations without an explicit `@mention`.
 
 ```mermaid
 graph TD
     Start[Inbound Message] --> Tier1{Tier 1: Mechanical}
     Tier1 -->|Reply or Keyword 'nomi'| Yes[Return true: Fast-Pass]
-    Tier1 -->|No Match| Tier2[Tier 2: Vector Embedding]
+    Tier1 -->|No Match| Tier15{Tier 1.5: Momentum}
+    Tier15 -->|Nomi active in last 3 msgs| Boost[Lower Threshold: 0.50]
+    Tier15 -->|Nomi inactive| Std[Standard Threshold: 0.60]
+    Boost --> Tier2[Tier 2: Vector Embedding]
+    Std --> Tier2
     Tier2 --> Search[Search knowledge_base: type='interaction_triggers']
     Search --> Tier3{Tier 3: Confidence Guard}
-    Tier3 -->|Highest Score >= 0.60| Yes
-    Tier3 -->|Score < 0.60 or Empty| No[Return false: Silent Drop]
+    Tier3 -->|Score >= Threshold| Yes
+    Tier3 -->|Score < Threshold| No[Return false: Silent Drop]
 ```
 
 **Step-by-Step Evaluation Pass:**
 1. **Tier 1: Mechanical Fast-Pass (0 Token Cost)**:
    - Converts the message to lowercase and checks for the keyword **"nomi"**.
-   - Checks if the message is a **direct reply** to Nomi's previous message.
+   - Checks if the message is a **direct reply** to a message where `role = 'assistant'`.
    - If either matches, it returns `true` immediately, bypassing all AI/Vector calls.
 
-2. **Tier 2: Semantic Interaction Vector Query**:
+2. **Tier 1.5: Conversation Momentum**:
+   - Checks the database for Nomi's recent participation in the specific conversation.
+   - If Nomi has spoken within the **last 3 messages**, she enters a "flow" state.
+   - **Dynamic Threshold**: Momentum lowers the semantic threshold from **0.60 to 0.50**, making her more likely to continue an ongoing discussion.
+
+3. **Tier 2: Semantic Interaction Vector Query**:
    - Generates a text embedding for the message body.
    - Performs a vector similarity search in the `knowledge_base` table, filtered by `metadata->>'type' = 'interaction_triggers'`.
-   - These triggers are expert-seeded rules (e.g., *"When group discusses production errors"*).
+   - These triggers represent expert-seeded rules (e.g., *"When group discusses production errors"*).
 
-3. **Tier 3: The Confidence Threshold Gate**:
+4. **Tier 3: The Confidence Threshold Gate**:
    - Evaluates the similarity score of the single closest match.
-   - **Guard Gate**: If the result set is empty OR the score is **`< 0.60`**, it returns `false`. The message is dropped silently.
-   - **Passed**: If the score is **`>= 0.60`**, it returns `true`, allowing Nomi to chime into the conversation naturally.
+   - **Passed**: If the score meets the dynamic threshold (**0.50** with momentum, **0.60** without), it returns `true`.
+   - **Silent Drop**: If no triggers match or the score is below threshold, it returns `false`.
 
-### 3. Prompt Injection Guardrail Flow
+### 3. Ambient Soul Initiative
+Even if the Interaction Gate doesn't trigger an immediate active response, messages are processed by **Ambient Soul** for memory extraction and potential proactive "initiative."
+
+- **Participation Boost**: Ambient Soul uses a dynamic probability roll (**30% base, 50% with momentum**) and a lowered relevance threshold (**0.60**) to decide when Nomi should chime in with a witty or observant comment.
+- **Cooldown**: A 15-minute per-conversation Redis lock prevents over-participation.
+
+### 4. Prompt Injection Guardrail Flow
 A dedicated security firewall to protect Nomi from adversarial manipulation and jailbreaks.
 
 ```mermaid

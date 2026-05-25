@@ -263,9 +263,9 @@
                         </div>
                     {:else}
                         <div class="flex items-start justify-between gap-4">
-                            <div class="flex-1 min-w-0" role="button" tabindex="0" onclick={() => showDetails(t)} onkeydown={(e) => e.key === 'Enter' && showDetails(t)}>
+                            <div class="flex-1 min-w-0 cursor-pointer" role="button" tabindex="0" onclick={() => showDetails(t)} onkeydown={(e) => e.key === 'Enter' && showDetails(t)}>
                                 <div class="flex items-center gap-2 mb-1.5">
-                                    <span class="font-bold text-slate-200 truncate">{t.merchant_name || 'Unknown Merchant'}</span>
+                                    <span class="font-bold text-slate-200 group-hover:text-blue-400 transition-colors truncate">{t.merchant_name || 'Unknown Merchant'}</span>
                                     {#if t.category}
                                         <span class="px-2 py-0.5 text-[9px] rounded-full bg-slate-800 text-slate-400 uppercase font-black tracking-widest border border-slate-700">{t.category}</span>
                                     {/if}

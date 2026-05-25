@@ -147,6 +147,7 @@ pub async fn process_v2_message(
         msg.sticker_url.clone(),
         quoted_metadata,
         msg.reply_to_id,
+        Some(&state.redis),
     )
     .await;
 
@@ -221,7 +222,7 @@ pub async fn process_v2_message(
 
         if !should_respond {
             info!("Interaction Gate: Not Passed, save to group message, but no reply needed.");
-            return Ok(saved_message);
+            return Ok(saved_message.into());
         }
     }
 
@@ -256,7 +257,7 @@ pub async fn process_v2_message(
                 Some(crate::prompts::PromptRegistry::guardrail_rejection().to_string()),
             )
             .await;
-        return Ok(saved_message);
+        return Ok(saved_message.into());
     }
 
     if has_media && has_only_trigger {
@@ -297,7 +298,7 @@ pub async fn process_v2_message(
                 Some(injected_system_prompt),
             )
             .await;
-        Ok(saved_message)
+        Ok(saved_message.into())
     } else if has_media && !is_skip {
         // Task 1: If message.text is NOT empty: Do not ask for clarification.
         // Combine the text and the image into a single multi-part prompt for Gemini.
@@ -311,13 +312,13 @@ pub async fn process_v2_message(
                 Some(injected_system_prompt),
             )
             .await;
-        Ok(saved_message)
+        Ok(saved_message.into())
     } else {
         let _ = orchestrator
             .process_v2_message_with_intent(state.clone(), msg, hydrated_text, None)
             .await;
 
-        Ok(saved_message)
+        Ok(saved_message.into())
     }
 }
 

@@ -478,6 +478,13 @@ pub async fn handle_update_admin_conversation(
     .execute(&state.pool)
     .await;
 
+    if result.is_ok() {
+        crate::common::repository::conversation_repo::invalidate_conversation_cache(
+            &state.redis,
+            id
+        ).await;
+    }
+
     match result {
         Ok(_) => Json(ApiResponse::ok((), "Conversation updated successfully")).into_response(),
         Err(e) => {

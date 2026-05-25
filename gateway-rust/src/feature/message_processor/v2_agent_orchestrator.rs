@@ -124,11 +124,15 @@ impl V2AgentOrchestrator {
         );
 
         let rows = sqlx::query(
-            "SELECT
+            "SELECT 
                 messages.id,
                 messages.created_at,
                 messages.role,
                 messages.content,
+                messages.thought,
+                messages.user_id,
+                messages.total_tokens,
+                messages.reply_to_id,
                 users.display_name as display_name,
                 messages.image_url,
                 messages.video_url,
@@ -151,29 +155,33 @@ impl V2AgentOrchestrator {
             WHERE messages.conversation_id = $1
             ORDER BY created_at
         DESC LIMIT 15",
-        )
-        .bind(conversation_id)
+        )        .bind(conversation_id)
         .fetch_all(&state.pool)
         .await?;
 
         use sqlx::Row;
         let history: Vec<crate::common::repository::message_repo::MessageItemWithDisplay> = rows.into_iter().map(|r| {
             let replied: Option<serde_json::Value> = r.get("replied_message");
-            let replied_message = replied.and_then(|v| serde_json::from_value(v).ok());
+            let _replied_message: Option<crate::feature::conversation::model::RepliedMessage> = replied.and_then(|v| serde_json::from_value(v).ok());
 
             crate::common::repository::message_repo::MessageItemWithDisplay {
                 id: r.get("id"),
+                conversation_id,
                 created_at: r.get("created_at"),
                 role: r.get("role"),
                 content: r.get("content"),
+                thought: r.get("thought"),
                 display_name: r.get("display_name"),
+                user_id: r.get("user_id"),
+                total_tokens: r.get("total_tokens"),
                 image_url: r.get("image_url"),
                 video_url: r.get("video_url"),
                 audio_url: r.get("audio_url"),
                 document_url: r.get("document_url"),
                 sticker_url: r.get("sticker_url"),
                 metadata: r.get("metadata"),
-                replied_message,
+                reply_to_id: r.get("reply_to_id"),
+                replied_message: r.get("replied_message"),
             }
         }).collect();
 
@@ -916,6 +924,7 @@ impl V2AgentOrchestrator {
                 None,
                 Some(accumulated_metadata.clone()),
                 None,
+                Some(&state.redis),
                 )
             .await;
             if let Err(err) = save_message{
@@ -933,7 +942,7 @@ impl V2AgentOrchestrator {
                     conversation_id,
                     msg.source.clone(),
                     record.to_sse_json(function_result.total_tokens),
-                    record.clone(),
+                    record.clone().into(),
                 )
                 .await;
 
@@ -1230,6 +1239,7 @@ impl V2AgentOrchestrator {
             None,
             Some(accumulated_metadata.clone()),
             None,
+            Some(&self.state.redis),
         )
         .await;
 
@@ -1250,7 +1260,7 @@ impl V2AgentOrchestrator {
                     ],
                 },
                 msg.to_sse_json(total_tokens),
-                msg,
+                msg.into()
             )
             .await;
         }

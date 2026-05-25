@@ -124,6 +124,22 @@ impl AmbientSoulService {
                     metrics.output_tokens as i32,
                     metrics.total_tokens as i32
                 ).await?;
+
+                // Update Cache tokens
+                let total_updated: i32 = sqlx::query_scalar!(
+                    "SELECT cumulative_tokens FROM conversations WHERE id = $1",
+                    conversation_id
+                )
+                .fetch_one(&self.pool)
+                .await
+                .unwrap_or(Some(0))
+                .unwrap_or(0);
+
+                crate::common::repository::conversation_repo::update_cached_tokens(
+                    &self.redis_client,
+                    conversation_id,
+                    total_updated
+                ).await;
             }
         } else {
             info!("AmbientSoul: No new facts extracted.");
@@ -167,18 +183,37 @@ impl AmbientSoulService {
         }
 
         // Rule 2: Relevance Guard
-        if interaction_score < 0.75 {
-            info!("AmbientSoul: Interaction score ({}) below threshold (0.75). Skipping.", interaction_score);
+        // Lowered threshold to 0.60 to align with Interaction Gate
+        if interaction_score < 0.60 {
+            info!("AmbientSoul: Interaction score ({}) below threshold (0.60). Skipping.", interaction_score);
             return Ok(InitiativeResult {
                 response_text: None,
                 tokens: TokenMetrics::default(),
             });
         }
 
-        // Rule 3: Probability Roll (20% success rate)
+        // Rule 3: Dynamic Probability Roll
+        // Check for momentum (Nomi's recent participation)
+        let recent_participation = sqlx::query!(
+            "SELECT count(*) as count FROM (
+                SELECT role FROM messages 
+                WHERE conversation_id = $1 
+                ORDER BY created_at DESC 
+                LIMIT 5
+            ) as recent WHERE role = 'assistant'",
+            conversation_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        let has_momentum = recent_participation.count.unwrap_or(0) > 0;
+        
+        // Base probability is 30%, if we have momentum, it bumps to 50%
+        let threshold = if has_momentum { 0.50 } else { 0.30 };
+
         let roll: f64 = rand::random();
-        if roll > 0.20 {
-            info!("AmbientSoul: Probability roll failed ({:.2} > 0.20). Skipping.", roll);
+        if roll > threshold {
+            info!("AmbientSoul: Probability roll failed ({:.2} > {:.2}, momentum={}). Skipping.", roll, threshold, has_momentum);
             return Ok(InitiativeResult {
                 response_text: None,
                 tokens: TokenMetrics::default(),
@@ -186,7 +221,7 @@ impl AmbientSoulService {
         }
 
         // Inference & State Lock
-        info!("AmbientSoul: All guards passed. Generating proactive response for {}", conversation_id);
+        info!("AmbientSoul: All guards passed (score={:.2}, momentum={}). Generating proactive response for {}", interaction_score, has_momentum, conversation_id);
         
         let system_prompt = "You are Nomi, a proactive and highly observant AI partner. You have chosen to speak up in a group conversation based on the context. Provide a very short, natural, and witty comment (1-2 sentences maximum). Do not use placeholders. Just say the comment.";
         

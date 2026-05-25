@@ -102,6 +102,21 @@ class ChatNotifier extends Notifier<ChatState> {
   Future<void> _handleIncomingMessage(Map<String, dynamic> data) async {
     final msg = Message.fromJson(data);
     final convId = msg.conversationId;
+    final db_client = ref.read(databaseProvider);
+
+    // 💡 Logic to prevent duplication: 
+    // If this is a 'user' message, check if we have a matching 'pending' message locally.
+    // We match by content and role because the temp ID won't match the server UUID.
+    if (msg.role == 'user') {
+      final pending = await db_client.getPendingMessages();
+      final match = pending.where((m) => m.content == msg.content && m.conversationId == convId).toList();
+      
+      if (match.isNotEmpty) {
+        for (var m in match) {
+          await db_client.customStatement('DELETE FROM messages WHERE id = ?', [m.id]);
+        }
+      }
+    }
 
     // 💾 Durable Persistence: MQTT ➡️ Local DB
     final companion = db.MessagesCompanion.insert(
@@ -125,7 +140,7 @@ class ChatNotifier extends Notifier<ChatState> {
       syncStatus: db.SyncStatus.synced,
     );
 
-    await ref.read(databaseProvider).upsertMessages([companion]);
+    await db_client.upsertMessages([companion]);
 
     // Clear temporary thought/tool/typing state
     final updatedThoughts = Map<String, String>.from(state.thoughts);

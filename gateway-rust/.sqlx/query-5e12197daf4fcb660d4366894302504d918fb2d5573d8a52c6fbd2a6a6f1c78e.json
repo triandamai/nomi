@@ -1,17 +1,17 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT conversation_id,user_id FROM conversation_members WHERE conversation_id = $1",
+  "query": "SELECT id, display_name FROM users WHERE id = $1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "conversation_id",
+        "name": "id",
         "type_info": "Uuid"
       },
       {
         "ordinal": 1,
-        "name": "user_id",
-        "type_info": "Uuid"
+        "name": "display_name",
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -21,8 +21,8 @@
     },
     "nullable": [
       false,
-      false
+      true
     ]
   },
-  "hash": "9c329d9e18cd4dd4a425641cfd23d7f382b064ef904355ec876c95374a83d456"
+  "hash": "5e12197daf4fcb660d4366894302504d918fb2d5573d8a52c6fbd2a6a6f1c78e"
 }

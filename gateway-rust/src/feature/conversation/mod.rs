@@ -1036,6 +1036,13 @@ pub async fn handle_update_conversation(
     .fetch_one(&state.pool)
     .await;
 
+    if result.is_ok() {
+        crate::common::repository::conversation_repo::invalidate_conversation_cache(
+            &state.redis,
+            id
+        ).await;
+    }
+
     match result {
         Ok(row) => ApiResponse::ok(
             ConversationResponse {
@@ -1312,52 +1319,38 @@ pub async fn handle_chat_stream(
         Err(_) => None,
     };
 
-    let conv_info = sqlx::query!(
-        "SELECT
-            id,
-            title,
-            user_id,
-            soul_content,
-            bootstrap_content,
-            created_at,
-            updated_at,
-            max_token_usage,
-            cumulative_tokens,
-            metadata,
-            conversation_type
-        FROM conversations WHERE id = $1",
-        payload.conversation_id
+    let conv_info = crate::common::repository::conversation_repo::get_conversation_info(
+        &state.pool,
+        &state.redis,
+        payload.conversation_id,
     )
-    .fetch_optional(&state.pool)
     .await;
 
-    if let Ok(c) = &conv_info {
-        if let Some(row) = &c {
-            let cumulative_tokens = row.cumulative_tokens.clone().map_or(0, |v| v);
-            let max_token_usage = row.max_token_usage.clone().map_or(700000, |v| v);
-            if cumulative_tokens.clone() as f64 >= max_token_usage.clone() as f64 {
-                let error_msg = format!(
-                    "Token limit reached ({}/{:.0})",
-                    cumulative_tokens, max_token_usage
-                );
-                if let Some(uid) = user_id {
-                    let _ = state
-                        .dispatch(AppEvent::user(
-                            uid.to_string().as_str(),
-                            "error",
-                            json!({
-                                "conversation_id": payload.conversation_id,
-                                "message": error_msg,
-                            }),
-                        ))
-                        .await;
-                }
-                return ApiResponse::custom(1000, &error_msg);
+    if let Ok(row) = &conv_info {
+        let cumulative_tokens = row.cumulative_tokens;
+        let max_token_usage = row.max_token_usage;
+        if cumulative_tokens as f64 >= max_token_usage as f64 {
+            let error_msg = format!(
+                "Token limit reached ({}/{:.0})",
+                cumulative_tokens, max_token_usage
+            );
+            if let Some(uid) = user_id {
+                let _ = state
+                    .dispatch(AppEvent::user(
+                        uid.to_string().as_str(),
+                        "error",
+                        json!({
+                            "conversation_id": payload.conversation_id,
+                            "message": error_msg,
+                        }),
+                    ))
+                    .await;
             }
+            return ApiResponse::custom(1000, &error_msg);
         }
     }
 
-    let conv_info = conv_info.unwrap().unwrap();
+    let conv_info = conv_info.unwrap();
     let state_clone = state.clone();
     let conversation_id = payload.conversation_id;
     let user_message = payload.message.clone();
@@ -1365,7 +1358,7 @@ pub async fn handle_chat_stream(
     let unified_msg = UnifiedMessage {
         is_group: conv_info.conversation_type != "private",
         is_mentioned: true,
-        display_name: Some(conv_info.title.clone().unwrap()),
+        display_name: Some(conv_info.title.clone().unwrap_or_else(|| "User".to_string())),
         conversation_id,
         user_id,
         text_content: user_message,
@@ -1382,15 +1375,7 @@ pub async fn handle_chat_stream(
         v2: true,
     };
 
-    let map_convo = Conversation {
-        id: conv_info.id,
-        session_id: conv_info.user_id,
-        title: conv_info.title,
-        soul_content: conv_info.soul_content,
-        bootstrap_content: conv_info.bootstrap_content,
-        created_at: conv_info.created_at,
-        updated_at: conv_info.updated_at,
-    };
+    let map_convo = Conversation::from(conv_info);
     let message = process_v2_message(state_clone, map_convo, unified_msg).await;
     if let Err(e) = message {
         error!("Failed to process web message: {}", e);

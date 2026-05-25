@@ -1,4 +1,5 @@
 use crate::AppState;
+use sqlx::{Pool, Postgres};
 use crate::prompts::PromptRegistry;
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -19,6 +20,20 @@ impl Display for UserIdentity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&serde_json::to_string(&self).unwrap())
     }
+}
+
+pub async fn resolve_identity_by_id(pool: &Pool<Postgres>, user_id: Uuid) -> anyhow::Result<UserIdentity> {
+    let row = sqlx::query!(
+        "SELECT id, display_name FROM users WHERE id = $1",
+        user_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(UserIdentity {
+        id: row.id,
+        display_name: row.display_name.unwrap_or_else(|| "User".to_string()),
+    })
 }
 
 pub async fn resolve_identity(
@@ -50,11 +65,12 @@ pub async fn resolve_identity(
             }
         };
 
+        // 🌟 SRP REFINEMENT: Lookup by external_id (stable ID like LID)
         let existing_channel_of_user = sqlx::query!(
             "
-            SELECT c.user_id, u.display_name  FROM channels as c
+            SELECT c.user_id, u.display_name FROM channels as c
             RIGHT JOIN users as u ON u.id = c.user_id
-            WHERE c.channel_type = $1 AND c.external_chat_id = $2",
+            WHERE c.channel_type = $1 AND (c.external_id = $2 OR c.external_chat_id = $2)",
             channel_type,
             external_sender_id
         )
@@ -110,13 +126,18 @@ pub async fn resolve_identity(
                 let _ = tx.rollback().await;
                 return Err(anyhow::anyhow!("Faield create member :{e}"));
             }
+            
+            // 🌟 SRP REFINEMENT: Save both stable ID and reachable chat ID
             let linked_channels = sqlx::query!(
                 "INSERT INTO channels(channel_type,external_id,external_chat_id, conversation_id,user_id,created_at)
-                 VALUES ($1,$2,$3,$4,$5,now()) RETURNING id
+                 VALUES ($1,$2,$3,$4,$5,now()) 
+                 ON CONFLICT (channel_type, external_chat_id) 
+                 DO UPDATE SET external_id = EXCLUDED.external_id, user_id = EXCLUDED.user_id
+                 RETURNING id
                 ",
                 channel_type,
-                external_sender_id,
-                external_sender_id,
+                external_sender_id, // Stable LID/JID
+                external_sender_id, // For groups, we map the person to their private ID in this table
                 new_convo.id,
                 new_user.id
             )
@@ -162,13 +183,16 @@ pub async fn resolve_identity(
                 return Err(anyhow::anyhow!("Db trx failed"));
             }
         };
+
+        // 🌟 SRP REFINEMENT: Lookup by external_id (LID) or external_chat_id (Phone)
         let find_user = sqlx::query!(
             "
-            SELECT c.user_id, u.display_name  FROM channels as c
+            SELECT c.user_id, u.display_name FROM channels as c
             RIGHT JOIN users as u ON u.id = c.user_id
-            WHERE c.channel_type = $1 AND c.external_chat_id = $2",
+            WHERE c.channel_type = $1 AND (c.external_id = $2 OR c.external_chat_id = $3)",
             channel_type,
-            external_sender_id
+            external_sender_id,
+            external_chat_id
         )
         .fetch_one(&mut *tx)
         .await;
@@ -178,6 +202,21 @@ pub async fn resolve_identity(
             let _ = tx.rollback().await;
             return Err(anyhow::anyhow!("Failed getting information identity:"));
         }
+        
+        let row = find_user.unwrap();
+        
+        // 🌟 SRP REFINEMENT: Ensure external_chat_id is updated if it differs (e.g. phone changed)
+        if let Some(uid) = row.user_id {
+            let _ = sqlx::query!(
+                "UPDATE channels SET external_chat_id = $1, external_id = $2 WHERE channel_type = $3 AND user_id = $4",
+                external_chat_id,
+                external_sender_id,
+                channel_type,
+                uid
+            )
+            .execute(&mut *tx)
+            .await;
+        }
 
         if let Err(e) = tx.commit().await {
             info!("Db trx commit failed:{}", e);
@@ -185,7 +224,6 @@ pub async fn resolve_identity(
         }
 
         //======//
-        let row = find_user?;
         if let None = row.user_id {
             info!("User doesnt exist");
             return Err(anyhow::anyhow!("User not found"));

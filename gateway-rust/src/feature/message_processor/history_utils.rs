@@ -20,19 +20,20 @@ impl HighFidelityHistory {
                 _ => "System".to_string(),
             };
 
-            let timestamp = m.created_at.unwrap_or(Utc::now()).format("%Y-%m-%d %H:%M:%S");
+            let timestamp = m.created_at.format("%Y-%m-%d %H:%M:%S");
             
             // Header: Entry point for the model's parser
             history_text.push_str(&format!("- <MessageEntry timestamp=\"{}\" id=\"{}\">\n", timestamp, m.id));
             history_text.push_str(&format!("    [Actor]: {}\n", display));
             
             // 🌟 HIGH-FIDELITY QUOTED CONTEXT: Standardized tagging for replies
-            // Prioritize native joined replied_message, fallback to metadata.quoted_message
             if let Some(replied) = &m.replied_message {
-                let q_id = replied.id.to_string();
-                let q_sender = replied.display_name.as_ref()
-                    .unwrap_or(&replied.role);
-                let q_text = &replied.content;
+                let q_id = replied.get("id").and_then(|v| v.as_str()).or_else(|| replied.get("message_id").and_then(|v| v.as_str())).unwrap_or("UNKNOWN");
+                let q_sender = replied.get("display_name")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| replied.get("role").and_then(|v| v.as_str()))
+                    .unwrap_or("UNKNOWN");
+                let q_text = replied.get("content").and_then(|v| v.as_str()).or_else(|| replied.get("text").and_then(|v| v.as_str())).unwrap_or("");
                 
                 history_text.push_str(&format!("    [SystemEvent: QUOTED_MESSAGE] id=\"{}\" actor=\"{}\"\n", q_id, q_sender));
                 history_text.push_str(&format!("    [QuotedContent]: {}\n", q_text));
@@ -54,14 +55,14 @@ impl HighFidelityHistory {
             history_text.push_str(&format!("    [Content]: {}\n", m.content));
 
             // Media Assets
-            if let Some(path) = m.image_url { history_text.push_str(&format!("    [Media: Image] {}\n", storage.get_full_url(&path))); }
-            if let Some(path) = m.video_url { history_text.push_str(&format!("    [Media: Video] {}\n", storage.get_full_url(&path))); }
-            if let Some(path) = m.audio_url { history_text.push_str(&format!("    [Media: Audio] {}\n", storage.get_full_url(&path))); }
-            if let Some(path) = m.document_url { history_text.push_str(&format!("    [Media: Document] {}\n", storage.get_full_url(&path))); }
-            if let Some(path) = m.sticker_url { history_text.push_str(&format!("    [Media: Sticker] {}\n", storage.get_full_url(&path))); }
+            if let Some(path) = &m.image_url { history_text.push_str(&format!("    [Media: Image] {}\n", storage.get_full_url(path))); }
+            if let Some(path) = &m.video_url { history_text.push_str(&format!("    [Media: Video] {}\n", storage.get_full_url(path))); }
+            if let Some(path) = &m.audio_url { history_text.push_str(&format!("    [Media: Audio] {}\n", storage.get_full_url(path))); }
+            if let Some(path) = &m.document_url { history_text.push_str(&format!("    [Media: Document] {}\n", storage.get_full_url(path))); }
+            if let Some(path) = &m.sticker_url { history_text.push_str(&format!("    [Media: Sticker] {}\n", storage.get_full_url(path))); }
 
             // Technical Metadata (Structured Context)
-            if let Some(meta) = m.metadata {
+            if let Some(meta) = &m.metadata {
                 if let Some(slug) = meta["proposal_slug"].as_str() {
                     history_text.push_str(&format!("    [SystemEvent: SKILL_PROPOSAL] slug=\"{}\"\n", slug));
                 }

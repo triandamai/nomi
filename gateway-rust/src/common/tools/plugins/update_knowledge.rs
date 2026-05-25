@@ -155,6 +155,14 @@ impl NomiToolPlugin for UpdateKnowledgeBasePlugin {
 
                                 if let Ok(row) = updated_convo {
                                     cumulative_tokens = row.cumulative_tokens;
+
+                                    if let Some(tokens) = row.cumulative_tokens {
+                                        crate::common::repository::conversation_repo::update_cached_tokens(
+                                            &dispatcher.app_state.redis,
+                                            conv_id,
+                                            tokens
+                                        ).await;
+                                    }
                                 }
                             }
 

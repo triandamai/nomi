@@ -70,30 +70,45 @@ class _SkillsPageState extends ConsumerState<SkillsPage> {
             ),
             title: const Text('System Skills', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ),
-      body: Column(
-        children: [
-          _buildHeader(),
-          _buildSearchBar(),
-          Expanded(
-            child: _isLoading 
-              ? const Center(child: CircularProgressIndicator())
-              : _filteredSkills.isEmpty
-                ? const Center(child: Text('No matching skills found.', style: TextStyle(color: Colors.white38)))
-                : GridView.builder(
-                    padding: const EdgeInsets.all(32),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: isLargeScreen ? 3 : 2,
-                      crossAxisSpacing: 24,
-                      mainAxisSpacing: 24,
-                      childAspectRatio: 1.3,
-                    ),
-                    itemCount: _filteredSkills.length,
-                    itemBuilder: (context, index) => _SkillCard(
-                      skill: _filteredSkills[index],
-                      onTap: () => _showSkillDetail(_filteredSkills[index]),
-                    ),
-                  ),
-          ),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(child: _buildHeader()),
+          SliverToBoxAdapter(child: _buildSearchBar()),
+          _isLoading 
+            ? const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
+            : _filteredSkills.isEmpty
+              ? const SliverFillRemaining(child: Center(child: Text('No matching skills found.', style: TextStyle(color: Colors.white38))))
+              : SliverPadding(
+                  padding: EdgeInsets.all(isLargeScreen ? 32 : 16),
+                  sliver: isLargeScreen 
+                    ? SliverGrid(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 24,
+                          mainAxisSpacing: 24,
+                          childAspectRatio: 1.3,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) => _SkillCard(
+                            skill: _filteredSkills[index],
+                            onTap: () => _showSkillDetail(_filteredSkills[index]),
+                          ),
+                          childCount: _filteredSkills.length,
+                        ),
+                      )
+                    : SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _SkillCard(
+                              skill: _filteredSkills[index],
+                              onTap: () => _showSkillDetail(_filteredSkills[index]),
+                            ),
+                          ),
+                          childCount: _filteredSkills.length,
+                        ),
+                      ),
+                ),
         ],
       ),
     );
@@ -188,12 +203,15 @@ class _SkillCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLargeScreen = MediaQuery.of(context).size.width >= 900;
     final isSystem = skill.skillType == 'System';
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
         child: Container(
+          height: isLargeScreen ? null : 160,
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.02),
             borderRadius: BorderRadius.circular(20),
@@ -230,11 +248,13 @@ class _SkillCard extends StatelessWidget {
               const Spacer(),
               Text(skill.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              Text(
-                skill.description,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.4),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+              Flexible(
+                child: Text(
+                  skill.description,
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.4),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),

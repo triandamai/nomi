@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            id,\n            title,\n            user_id,\n            soul_content,\n            bootstrap_content,\n            created_at,\n            updated_at,\n            max_token_usage,\n            cumulative_tokens,\n            metadata,\n            conversation_type\n        FROM conversations WHERE id = $1",
+  "query": "\n        SELECT\n            id,\n            title,\n            user_id,\n            soul_content,\n            bootstrap_content,\n            created_at,\n            updated_at,\n            max_token_usage,\n            cumulative_tokens,\n            metadata,\n            conversation_type\n        FROM conversations WHERE id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -78,5 +78,5 @@
       false
     ]
   },
-  "hash": "add89e55aa4c6a02801197f02681ae76a2d64d84aafe410f483d982237805a10"
+  "hash": "0b95ace44d4f5fed721dafa1a81b13af506b7d5f409298c05c30f549806f3c9a"
 }

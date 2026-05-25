@@ -21,11 +21,11 @@
 >
 	<!-- Popup Container -->
 	<div
-		class="absolute inset-y-0 right-0 flex w-full flex-col bg-[#0f172a] shadow-2xl border-l border-slate-800 text-slate-100 {popup.width} max-w-1/2"
+		class="absolute inset-y-0 right-0 flex w-full flex-col bg-[#0f172a] shadow-2xl border-l border-slate-800 text-slate-100 {popup.width} max-w-full md:max-w-[85%] lg:max-w-1/2"
 		transition:fly={{ x: '100%', duration: 300, opacity: 1 }}
 	>
 		<!-- Header -->
-		<header class="flex h-14 items-center justify-between border-b border-slate-800 px-6 bg-[#0f172a]/80 backdrop-blur-md">
+		<header class="flex h-14 min-h-[3.5rem] items-center justify-between border-b border-slate-800 px-6 bg-[#0f172a]/80 backdrop-blur-md sticky top-0 z-10">
 			{#if popup.headerSnippet}
 				{@render popup.headerSnippet()}
 			{:else}
@@ -45,6 +45,8 @@
 		<!-- Content -->
 		<main class="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar">
 			{@render popup.contentSnippet()}
+            <!-- Bottom spacer to ensure scrolling feels free and unbound -->
+            <div class="h-20 w-full pointer-events-none"></div>
 		</main>
 
 		<!-- Footer -->

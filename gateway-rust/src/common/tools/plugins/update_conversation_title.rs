@@ -55,6 +55,13 @@ impl NomiToolPlugin for UpdateConversationTitlePlugin {
             .execute(&dispatcher.pool)
             .await;
 
+            if result.is_ok() {
+                crate::common::repository::conversation_repo::invalidate_conversation_cache(
+                    &dispatcher.app_state.redis,
+                    conversation_id
+                ).await;
+            }
+
             match result {
                 Ok(_) => {
                     Ok(ToolResult {

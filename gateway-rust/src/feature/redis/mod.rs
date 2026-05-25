@@ -78,48 +78,42 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         text = text.replace("@42078516064356", "Nomi");
         msg.is_mentioned = true;
     }
-    if let Some((id, rest)) = msg.sender_id.split_once(':') {
-        if let Some((_, domain)) = rest.split_once('@') {
-            let clean_id = format!("{}@{}", id, domain);
-            msg.sender_id = clean_id;
+    // ======== WhatsApp ID Strategy Refinement ===========//
+    if msg.channel.starts_with("whatsapp") {
+        // 1. Clean LID/JID (remove :xx if present)
+        if let Some((id, rest)) = msg.sender_id.split_once(':') {
+            if let Some((_, domain)) = rest.split_once('@') {
+                msg.sender_id = format!("{}@{}", id, domain);
+            }
+        }
+
+        // 2. Extract phone-based ID (phone@s.whatsapp.net) from original_meta
+        let phone_id = msg
+            .original_meta
+            .as_ref()
+            .and_then(|meta| meta.get("source"))
+            .and_then(|source| source.get("sender_alt"))
+            .and_then(|sender_alt| {
+                let phone = sender_alt.get("user")?.as_str()?;
+                let server = sender_alt.get("server")?.as_str()?;
+                if phone.is_empty() || server.is_empty() {
+                    None
+                } else {
+                    Some(format!("{}@{}", phone, server))
+                }
+            });
+
+        // 3. For private chats, use phone_id as conversation_id for outbound
+        if let Some(pid) = phone_id {
+            if !msg.is_group {
+                msg.conversation_id = pid;
+            }
         }
     }
 
     if msg.sender_id.contains(":") {
-        info!("User {} has ':' skiped", msg.sender_id);
+        info!("User {} still has ':' after cleaning, skipping", msg.sender_id);
         return Ok(());
-    }
-
-    if msg.channel.starts_with("whatsapp") {
-        let sender_chat_id = msg
-            .original_meta
-            .clone()
-            .map_or(msg.sender_id.clone(), |original| {
-                original
-                    .get("source")
-                    .map_or(msg.sender_id.clone(), |source| {
-                        source
-                            .get("sender_alt")
-                            .map_or(msg.sender_id.clone(), |sender_alt| {
-                                let phone = sender_alt
-                                    .get("user")
-                                    .map_or("", |v| v.as_str().unwrap_or(""));
-                                let server = sender_alt
-                                    .get("server")
-                                    .map_or("", |v| v.as_str().unwrap_or(""));
-                                if phone.is_empty() || server.is_empty() {
-                                    msg.sender_id.clone()
-                                } else {
-                                    format!("{}@{}", phone, server)
-                                }
-                            })
-                    })
-            });
-
-        msg.sender_id = sender_chat_id.clone();
-        if !msg.is_group {
-            msg.conversation_id = sender_chat_id;
-        }
     }
 
     info!(
@@ -313,22 +307,13 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
     }
     let user_id = user_id?;
     info!("[USER]{}", user_id);
-    let conv_info = sqlx::query!(
-        "SELECT
-                id,
-                title,
-                conversation_type,
-                user_id,
-                created_at,
-                updated_at,
-                soul_content,
-                bootstrap_content
-            FROM conversations
-            WHERE id = $1",
-        conversation_id
+    let conv_info = crate::common::repository::conversation_repo::get_conversation_info(
+        &state.pool,
+        &state.redis,
+        conversation_id,
     )
-    .fetch_one(&state.pool)
     .await;
+    
     if let Err(err) = conv_info {
         info!("Conversation not exist:{}", err);
         let error_msg = "Workspace Conversation doesn exist".to_string();
@@ -389,15 +374,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
             v2: true,
         };
 
-        let map_convo = Conversation {
-            id: conv_info.id,
-            session_id: conv_info.user_id,
-            title: conv_info.title,
-            soul_content: conv_info.soul_content,
-            bootstrap_content: conv_info.bootstrap_content,
-            created_at: conv_info.created_at,
-            updated_at: conv_info.updated_at,
-        };
+        let map_convo = Conversation::from(conv_info);
 
         if is_ambient {
             info!("Processing as AMBIENT SOUL message");
@@ -444,6 +421,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
                             None,
                             None,
                             None,
+                            Some(&state_clone.redis),
                         )
                         .await;
 
