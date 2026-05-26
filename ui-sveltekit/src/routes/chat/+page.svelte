@@ -13,7 +13,8 @@
         FileText,
         Loader2,
         Wrench,
-        Reply
+        Reply,
+        Code
     } from 'lucide-svelte';
     import {chatStore, type Message} from '$lib/stores/chat.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
@@ -33,6 +34,177 @@
     let fileInput = $state<HTMLInputElement | null>(null);
     let selectedFile = $state<File | null>(null);
     let isUploading = $state(false);
+
+    let textareaRef = $state<HTMLTextAreaElement | null>(null);
+    let members = $state<Array<{ user_id: string; display_name: string | null; external_id: string | null; channel_type: string | null }>>([]);
+    let showMentions = $state(false);
+    let mentionQuery = $state('');
+    let mentionIndex = $state(0);
+    let triggerIndex = $state(-1);
+    let selectedMentions = $state<any[]>([]);
+    let globalUsers = $state<any[]>([]);
+
+    $effect(() => {
+        const cid = conversationStore.activeConversationId;
+        if (cid) {
+            chatApi.getConversationMembers(cid).then(res => {
+                if (res && res.data) {
+                    members = res.data;
+                }
+            }).catch(err => console.error("Failed to load members", err));
+        } else {
+            members = [];
+        }
+    });
+
+    let searchTimeout: any;
+    $effect(() => {
+        const query = mentionQuery.trim();
+        if (showMentions && query.length >= 1) {
+            if (searchTimeout) clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                chatApi.searchUsers(query).then(res => {
+                    if (res && res.data) {
+                        globalUsers = res.data;
+                    }
+                }).catch(err => console.error("Failed to search global users", err));
+            }, 150);
+        } else {
+            globalUsers = [];
+        }
+    });
+
+    let filteredMembers = $derived(() => {
+        if (!members) return [];
+        const query = mentionQuery.toLowerCase();
+        
+        // Local channel members matching query
+        const localMatches = members.filter(m => 
+            m.external_id && 
+            (!query || 
+             (m.display_name && m.display_name.toLowerCase().includes(query)) || 
+             m.external_id.toLowerCase().includes(query))
+        );
+
+        // Global users matching query
+        const globalMatches = globalUsers.filter(g => 
+            g.external_id && 
+            (!query || 
+             (g.display_name && g.display_name.toLowerCase().includes(query)) || 
+             g.external_id.toLowerCase().includes(query))
+        );
+
+        // Merge and deduplicate by external_id
+        const merged = [...localMatches];
+        for (const g of globalMatches) {
+            if (!merged.some(m => m.external_id === g.external_id)) {
+                merged.push(g);
+            }
+        }
+
+        return merged;
+    });
+
+    function checkMentionTrigger() {
+        if (!textareaRef) return;
+        const text = inputMessage;
+        const cursorPos = textareaRef.selectionStart;
+        
+        const lastAtIdx = text.lastIndexOf('@', cursorPos - 1);
+        if (lastAtIdx === -1) {
+            showMentions = false;
+            return;
+        }
+
+        if (lastAtIdx > 0 && text[lastAtIdx - 1] !== ' ' && text[lastAtIdx - 1] !== '\n') {
+            showMentions = false;
+            return;
+        }
+
+        const textBetween = text.substring(lastAtIdx + 1, cursorPos);
+        if (textBetween.includes(' ') || textBetween.includes('\n')) {
+            showMentions = false;
+            return;
+        }
+
+        showMentions = true;
+        mentionQuery = textBetween;
+        triggerIndex = lastAtIdx;
+        mentionIndex = 0;
+    }
+
+    function selectMention(member: any) {
+        if (!textareaRef || triggerIndex === -1) return;
+        const text = inputMessage;
+        const cursorPos = textareaRef.selectionStart;
+        
+        let rawId = member.external_id || '';
+        if (rawId.includes('@')) {
+            rawId = rawId.split('@')[0];
+        }
+
+        const nameToInsert = member.display_name || rawId;
+        const mentionText = `@${nameToInsert} `;
+
+        // Track selected mention for raw ID translation upon sending
+        if (!selectedMentions.some(m => m.external_id === member.external_id)) {
+            selectedMentions.push(member);
+        }
+
+        const before = text.substring(0, triggerIndex);
+        const after = text.substring(cursorPos);
+        
+        inputMessage = before + mentionText + after;
+        showMentions = false;
+        
+        const newCursorPos = triggerIndex + mentionText.length;
+        tick().then(() => {
+            if (textareaRef) {
+                textareaRef.focus();
+                textareaRef.setSelectionRange(newCursorPos, newCursorPos);
+            }
+        });
+    }
+
+    let backdropRef = $state<HTMLDivElement | null>(null);
+
+    function handleTextareaScroll(e: Event) {
+        const target = e.target as HTMLTextAreaElement;
+        if (backdropRef) {
+            backdropRef.scrollTop = target.scrollTop;
+            backdropRef.scrollLeft = target.scrollLeft;
+        }
+    }
+
+    function formatComposerHTML(text: string) {
+        if (!text) return '<span class="text-slate-600">Message Nomi...</span>';
+
+        // Escape HTML
+        let escaped = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        // Highlight Mentions: @username/id in a distinct blue color with 0 character width deviation!
+        escaped = escaped.replace(/@([a-zA-Z0-9_\-]+)/g, (match, username) => {
+            const member = members.find(m => 
+                (m.display_name && m.display_name.toLowerCase() === username.toLowerCase()) || 
+                (m.external_id && m.external_id.toLowerCase().includes(username.toLowerCase()))
+            );
+            if (member) {
+                // Return styled text with exactly the same characters and widths! No extra paddings or borders!
+                return `<span class="text-blue-400 font-bold">${match}</span>`;
+            }
+            return match;
+        });
+
+        // Add trailing newline placeholder
+        if (text.endsWith('\n')) {
+            escaped += '&nbsp;';
+        }
+
+        return escaped;
+    }
 
     function handleScroll() {
         if (!scrollContainer) return;
@@ -106,9 +278,22 @@
             }
         }
 
-        const msg = inputMessage;
+        let processedMsg = inputMessage;
+        for (const mention of selectedMentions) {
+            if (mention.display_name && mention.external_id) {
+                let rawId = mention.external_id;
+                if (rawId.includes('@')) {
+                    rawId = rawId.split('@')[0];
+                }
+                const escapedName = mention.display_name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                processedMsg = processedMsg.replace(new RegExp(`@${escapedName}\\b`, 'g'), `@${rawId}`);
+            }
+        }
+
+        const msg = processedMsg;
         inputMessage = '';
         selectedFile = null;
+        selectedMentions = [];
 
         // Force scroll to bottom when user sends a message
         isNearBottom = true;
@@ -139,6 +324,29 @@
     }
 
     function handleKeydown(e: KeyboardEvent) {
+        if (showMentions && filteredMembers().length > 0) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                mentionIndex = (mentionIndex + 1) % filteredMembers().length;
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                mentionIndex = (mentionIndex - 1 + filteredMembers().length) % filteredMembers().length;
+                return;
+            }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                selectMention(filteredMembers()[mentionIndex]);
+                return;
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                showMentions = false;
+                return;
+            }
+        }
+
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSubmit();
@@ -462,12 +670,50 @@
                     </div>
                 {/if}
 
-                <textarea
+                {#if showMentions && filteredMembers().length > 0}
+                    <div class="absolute bottom-full left-0 right-0 mb-2 max-h-60 overflow-y-auto bg-slate-950/95 border border-slate-800 rounded-xl shadow-2xl backdrop-blur-2xl z-50 divide-y divide-slate-900 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                        {#each filteredMembers() as member, idx}
+                            {@const rawId = member.external_id?.includes('@') ? member.external_id.split('@')[0] : member.external_id}
+                            <button
+                                type="button"
+                                onclick={() => selectMention(member)}
+                                class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors {idx === mentionIndex ? 'bg-blue-600/20 text-white border-l-2 border-blue-500' : 'text-slate-300 hover:bg-slate-900/50 hover:text-white'}"
+                            >
+                                <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-xs font-black text-white shadow-md">
+                                    {member.display_name?.substring(0, 2).toUpperCase() || 'U'}
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-xs font-bold truncate">{member.display_name || 'Anonymous'}</p>
+                                    <p class="text-[10px] text-slate-500 truncate">@{rawId} • {member.channel_type || 'platform'}</p>
+                                </div>
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
+
+                <div class="relative w-full min-h-[50px] md:min-h-[60px] max-h-32 md:max-h-48 overflow-hidden text-sm leading-relaxed">
+                    <!-- Synced Backdrop containing the rich styled HTML -->
+                    <div
+                        bind:this={backdropRef}
+                        class="w-full min-h-[50px] md:min-h-[60px] max-h-32 md:max-h-48 py-3 md:py-4 px-4 md:px-5 overflow-y-auto whitespace-pre-wrap break-words pointer-events-none select-none text-slate-200 hide-scrollbar"
+                        style="font-family: inherit; font-size: inherit; line-height: inherit;"
+                    >
+                        {@html formatComposerHTML(inputMessage)}
+                    </div>
+
+                    <!-- Interactive transparent textarea overlayed on top -->
+                    <textarea
+                        bind:this={textareaRef}
                         bind:value={inputMessage}
                         onkeydown={handleKeydown}
-                        placeholder="Message Nomi..."
-                        class="w-full bg-transparent border-none focus:ring-0 text-sm py-3 md:py-4 px-4 md:px-5 min-h-[50px] md:min-h-[60px] max-h-32 md:max-h-48 resize-none placeholder:text-slate-600 text-slate-200 focus-within:border-slate-700 focus:border-0 focus:outline-0"
-                ></textarea>
+                        oninput={(e) => { checkMentionTrigger(); handleTextareaScroll(e); }}
+                        onclick={checkMentionTrigger}
+                        onscroll={handleTextareaScroll}
+                        placeholder={showMentions ? '' : 'Message Nomi...'}
+                        class="absolute inset-0 w-full h-full bg-transparent border-none focus:ring-0 text-transparent caret-blue-500 py-3 md:py-4 px-4 md:px-5 resize-none overflow-y-auto whitespace-pre-wrap break-words outline-none focus:outline-none focus:border-0 focus:ring-0"
+                        style="font-family: inherit; font-size: inherit; line-height: inherit; color: transparent; -webkit-text-fill-color: transparent; caret-color: #3b82f6;"
+                    ></textarea>
+                </div>
 
                 <div class="flex items-center justify-between px-2 md:px-3 pb-2 pt-1">
                     <div class="flex items-center gap-0.5 md:gap-1">
@@ -539,5 +785,12 @@
 
     ::-webkit-scrollbar-thumb:hover {
         background: #334155;
+    }
+    .hide-scrollbar::-webkit-scrollbar {
+        display: none !important;
+    }
+    .hide-scrollbar {
+        -ms-overflow-style: none !important;  /* IE and Edge */
+        scrollbar-width: none !important;  /* Firefox */
     }
 </style>

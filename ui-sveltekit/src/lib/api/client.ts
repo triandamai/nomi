@@ -56,6 +56,10 @@ export const chatApi = {
         return apiFetch<{ user_id: string, display_name: string } | null>(`/users/lookup/${externalId}`);
     },
 
+    searchUsers: async (query: string) => {
+        return apiFetch<any>(`/users/search?q=${encodeURIComponent(query)}`);
+    },
+
     sendMessage: async (message: string, conversationId: string, media: any = {}) => {
         if (typeof window === 'undefined') {
             return {
@@ -169,6 +173,11 @@ export const chatApi = {
         if (cursor) url.searchParams.append('cursor', cursor);
         url.searchParams.append('limit', limit.toString());
         return apiFetch<any[]>(`/conversations/${conversationId}/messages` + url.search);
+    },
+    getConversationMembers: (conversationId: string) => {
+        return apiFetch<any>(`/conversations/${conversationId}/members`, {
+            method: 'GET'
+        });
     },
     getGraph: (conversationId?: string, month?: number, year?: number) => {
         const url = new URL(`${BASE_URL}/graph`);

@@ -29,12 +29,12 @@ class MentionStore {
                 // Cache the display name from the database
                 this.cache[externalId] = response.data.display_name;
             } else {
-                // If not found in channels, keep the raw external ID format
-                this.cache[externalId] = `@${externalId}`;
+                // If not found in database, do not cache permanently
+                this.loading.delete(externalId);
             }
         } catch (e) {
             console.error(`MentionStore: Failed to fetch display name for ${externalId}`, e);
-            this.cache[externalId] = `@${externalId}`;
+            this.loading.delete(externalId);
         }
     }
 }

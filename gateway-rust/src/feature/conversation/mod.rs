@@ -964,6 +964,75 @@ pub async fn handle_update_conversation(
     }
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct ConversationMemberItem {
+    pub user_id: Uuid,
+    pub display_name: Option<String>,
+    pub external_id: Option<String>,
+    pub channel_type: Option<String>,
+}
+
+pub async fn handle_get_conversation_members(
+    State(state): State<AppState>,
+    axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,
+    Path(conversation_id): Path<Uuid>,
+) -> ApiResponse<Vec<ConversationMemberItem>> {
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid user ID in token"),
+    };
+
+    // Verify membership
+    let membership = sqlx::query!(
+        "SELECT 1 as one FROM conversation_members WHERE conversation_id = $1 AND user_id = $2",
+        conversation_id,
+        user_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match membership {
+        Ok(Some(_)) => (),
+        Ok(None) => {
+            return ApiResponse::failed("Forbidden: You are not a member of this conversation");
+        }
+        Err(e) => {
+            error!("Failed to verify membership: {}", e);
+            return ApiResponse::failed("Internal server error");
+        }
+    }
+
+    let rows = sqlx::query!(
+        r#"SELECT DISTINCT u.id as user_id, u.display_name, c.external_id as "external_id?", c.channel_type as "channel_type?"
+         FROM conversation_members cm
+         JOIN users u ON u.id = cm.user_id
+         LEFT JOIN channels c ON c.user_id = u.id
+         WHERE cm.conversation_id = $1"#,
+        conversation_id
+    )
+    .fetch_all(&state.pool)
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            let members: Vec<ConversationMemberItem> = rows
+                .into_iter()
+                .map(|r| ConversationMemberItem {
+                    user_id: r.user_id,
+                    display_name: r.display_name,
+                    external_id: r.external_id,
+                    channel_type: r.channel_type,
+                })
+                .collect();
+            ApiResponse::ok(members, "Conversation members fetched")
+        }
+        Err(e) => {
+            error!("Failed to fetch conversation members: {}", e);
+            ApiResponse::failed("Failed to fetch conversation members")
+        }
+    }
+}
+
 pub async fn handle_get_soul_history(
     State(state): State<AppState>,
     axum::extract::Extension(claims): axum::extract::Extension<
@@ -1470,29 +1539,163 @@ pub async fn handle_lookup_external_user(
     State(state): State<AppState>,
     axum::extract::Path(external_id): axum::extract::Path<String>,
 ) -> ApiResponse<Option<ExternalUserLookupResult>> {
-    let result = sqlx::query!(
+    // 1. Try by channel external_id (matching raw, or with WhatsApp suffix)
+    let wa_lid = format!("{}@lid", external_id);
+    let wa_jid = format!("{}@s.whatsapp.net", external_id);
+
+    let channel_result = sqlx::query!(
         "SELECT u.id as user_id, u.display_name 
          FROM users u 
          JOIN channels c ON c.user_id = u.id 
-         WHERE c.external_id = $1 
+         WHERE c.external_id = $1 OR c.external_id = $2 OR c.external_id = $3
+         LIMIT 1",
+        external_id,
+        wa_lid,
+        wa_jid
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match channel_result {
+        Ok(Some(row)) => {
+            return ApiResponse::ok(
+                Some(ExternalUserLookupResult {
+                    user_id: row.user_id,
+                    display_name: row.display_name.unwrap_or_else(|| "Unknown".to_string()),
+                }),
+                "User found by channel",
+            );
+        }
+        Err(e) => {
+            error!("Failed to lookup user by channel: {}", e);
+        }
+        _ => {}
+    }
+
+    // 2. Try by user UUID (since platform users have external_id = UUID)
+    if let Ok(user_uuid) = uuid::Uuid::parse_str(&external_id) {
+        let user_result = sqlx::query!(
+            "SELECT id as user_id, display_name 
+             FROM users 
+             WHERE id = $1 
+             LIMIT 1",
+            user_uuid
+        )
+        .fetch_optional(&state.pool)
+        .await;
+
+        match user_result {
+            Ok(Some(row)) => {
+                return ApiResponse::ok(
+                    Some(ExternalUserLookupResult {
+                        user_id: row.user_id,
+                        display_name: row.display_name.unwrap_or_else(|| "Unknown".to_string()),
+                    }),
+                    "User found by UUID",
+                );
+            }
+            Err(e) => {
+                error!("Failed to lookup user by UUID: {}", e);
+            }
+            _ => {}
+        }
+    }
+
+    // 3. Try by username / name
+    let user_by_name = sqlx::query!(
+        "SELECT id as user_id, display_name 
+         FROM users 
+         WHERE name = $1 
          LIMIT 1",
         external_id
     )
     .fetch_optional(&state.pool)
     .await;
 
-    match result {
-        Ok(Some(row)) => ApiResponse::ok(
-            Some(ExternalUserLookupResult {
-                user_id: row.user_id,
-                display_name: row.display_name.unwrap_or_else(|| "Unknown".to_string()),
-            }),
-            "User found",
-        ),
-        Ok(None) => ApiResponse::ok(None, "User not found"),
+    match user_by_name {
+        Ok(Some(row)) => {
+            return ApiResponse::ok(
+                Some(ExternalUserLookupResult {
+                    user_id: row.user_id,
+                    display_name: row.display_name.unwrap_or_else(|| "Unknown".to_string()),
+                }),
+                "User found by name",
+            );
+        }
         Err(e) => {
-            error!("Failed to lookup external user: {}", e);
-            ApiResponse::failed("Database error")
+            error!("Failed to lookup user by name: {}", e);
+        }
+        _ => {}
+    }
+
+    ApiResponse::ok(None, "User not found")
+}
+
+#[derive(serde::Serialize)]
+pub struct SearchedUserResult {
+    pub id: String,
+    pub display_name: Option<String>,
+    pub username: Option<String>,
+    pub external_id: String,
+    pub channel_type: String,
+}
+
+#[derive(serde::Deserialize)]
+pub struct UserSearchQuery {
+    pub q: Option<String>,
+}
+
+pub async fn handle_search_users(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<UserSearchQuery>,
+) -> ApiResponse<Vec<SearchedUserResult>> {
+    let q_term = query.q.unwrap_or_default().trim().to_string();
+    let search_term = format!("%{}%", q_term);
+
+    let rows = sqlx::query(
+        "SELECT 
+            u.id, 
+            u.display_name, 
+            u.name as username, 
+            c.external_id, 
+            c.channel_type
+         FROM users u
+         LEFT JOIN channels c ON c.user_id = u.id
+         WHERE u.display_name ILIKE $1 
+            OR u.name ILIKE $1
+            OR c.external_id ILIKE $1
+         LIMIT 30"
+    )
+    .bind(search_term)
+    .fetch_all(&state.pool)
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            let mut users = Vec::new();
+            for row in rows {
+                let id: uuid::Uuid = row.get("id");
+                let display_name: Option<String> = row.get("display_name");
+                let username: Option<String> = row.get("username");
+                let external_id_opt: Option<String> = row.get("external_id");
+                let channel_type_opt: Option<String> = row.get("channel_type");
+
+                let external_id = external_id_opt.unwrap_or_else(|| id.to_string());
+                let channel_type = channel_type_opt.unwrap_or_else(|| "platform".to_string());
+
+                users.push(SearchedUserResult {
+                    id: id.to_string(),
+                    display_name,
+                    username,
+                    external_id,
+                    channel_type,
+                });
+            }
+            ApiResponse::ok(users, "Users fetched successfully")
+        }
+        Err(e) => {
+            error!("Failed to search users: {}", e);
+            ApiResponse::failed("Database error searching users")
         }
     }
 }

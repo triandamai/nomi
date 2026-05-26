@@ -1,5 +1,5 @@
 <script lang="ts">
-    import {onMount, tick} from 'svelte';
+    import {onMount, tick, untrack} from 'svelte';
     import {
         ChevronDown,
         ChevronRight,
@@ -81,8 +81,8 @@
 
             renderedContent = mdIt.render(displayContent);
             
-            // Wrap WhatsApp/Telegram mentions like @42078516064356 in a premium mention-pill
-            const mentionRegex = /@(\d+)\b/g;
+            // Wrap mentions (WhatsApp/Telegram numbers, platform UUIDs or usernames) in a premium mention-pill
+            const mentionRegex = /@([a-zA-Z0-9_\-]+)\b/g;
             renderedContent = renderedContent.replace(mentionRegex, '<span class="mention-pill" data-external-id="$1">@$1</span>');
             
             if (thought) {
@@ -137,8 +137,13 @@
     });
 
     $effect(() => {
+        // Explicitly track content, thought, and mdIt
+        const _trigger = { content, thought, mdIt };
+
         if (mdIt && (content || thought)) {
-            render();
+            untrack(() => {
+                render();
+            });
         }
     });
 
@@ -162,42 +167,70 @@
     // Reactive mention display name sync and hover listeners
     $effect(() => {
         if (renderedContent && bubbleElement) {
-            const pills = bubbleElement.querySelectorAll('.mention-pill');
-            pills.forEach((pill) => {
-                const extId = pill.getAttribute('data-external-id');
-                if (extId) {
-                    const displayName = mentionStore.getDisplayName(extId);
-                    // Update the text content reactively once resolved
-                    pill.textContent = displayName.startsWith('@') ? displayName : `@${displayName}`;
+            // 1. Synchronously read the cache for all matched mention IDs
+            // This forces Svelte to track them as dependencies of this effect!
+            const mentionRegex = /@([a-zA-Z0-9_\-]+)\b/g;
+            const matches = [...renderedContent.matchAll(mentionRegex)];
+            const resolvedNames: Record<string, string> = {};
+            for (const match of matches) {
+                const extId = match[1];
+                resolvedNames[extId] = mentionStore.getDisplayName(extId);
+            }
 
-                    // Tooltip hover events
-                    const onMouseEnter = (e: MouseEvent) => {
-                        const rect = pill.getBoundingClientRect();
-                        hoverTooltip = {
-                            visible: true,
-                            x: rect.left + rect.width / 2,
-                            y: rect.top - 10,
-                            displayName: displayName.startsWith('@') ? displayName.substring(1) : displayName,
-                            externalId: extId,
-                            avatarUrl: useAvatar(displayName)
+            let activePills: HTMLElement[] = [];
+
+            // 2. Schedule the DOM update after the tick
+            tick().then(() => {
+                if (!bubbleElement) return;
+                const pills = bubbleElement.querySelectorAll('.mention-pill');
+                activePills = Array.from(pills) as HTMLElement[];
+
+                activePills.forEach((pill) => {
+                    const extId = pill.getAttribute('data-external-id');
+                    if (extId && resolvedNames[extId]) {
+                        const displayName = resolvedNames[extId];
+                        
+                        // Update text content reactively
+                        pill.textContent = displayName.startsWith('@') ? displayName : `@${displayName}`;
+
+                        // Clean up any old listeners attached previously
+                        if ((pill as any)._onMouseEnter) {
+                            pill.removeEventListener('mouseenter', (pill as any)._onMouseEnter);
+                        }
+                        if ((pill as any)._onMouseLeave) {
+                            pill.removeEventListener('mouseleave', (pill as any)._onMouseLeave);
+                        }
+
+                        // Tooltip hover events
+                        const onMouseEnter = (e: MouseEvent) => {
+                            const rect = pill.getBoundingClientRect();
+                            hoverTooltip = {
+                                visible: true,
+                                x: rect.left + rect.width / 2,
+                                y: rect.top - 10,
+                                displayName: displayName.startsWith('@') ? displayName.substring(1) : displayName,
+                                externalId: extId,
+                                avatarUrl: useAvatar(displayName)
+                            };
                         };
-                    };
 
-                    const onMouseLeave = () => {
-                        hoverTooltip.visible = false;
-                    };
+                        const onMouseLeave = () => {
+                            hoverTooltip.visible = false;
+                        };
 
-                    pill.addEventListener('mouseenter', onMouseEnter);
-                    pill.addEventListener('mouseleave', onMouseLeave);
+                        pill.addEventListener('mouseenter', onMouseEnter);
+                        pill.addEventListener('mouseleave', onMouseLeave);
 
-                    // Cache listener functions on the element for clean removal
-                    (pill as any)._onMouseEnter = onMouseEnter;
-                    (pill as any)._onMouseLeave = onMouseLeave;
-                }
+                        // Cache listener functions on the element for clean removal
+                        (pill as any)._onMouseEnter = onMouseEnter;
+                        (pill as any)._onMouseLeave = onMouseLeave;
+                    }
+                });
             });
 
+            // 3. Synchronous cleanup of current listeners when effect is destroyed/re-run
             return () => {
-                pills.forEach((pill) => {
+                activePills.forEach((pill) => {
                     if ((pill as any)._onMouseEnter) {
                         pill.removeEventListener('mouseenter', (pill as any)._onMouseEnter);
                     }

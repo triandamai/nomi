@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT DISTINCT u.id as user_id, u.display_name, c.external_id as \"external_id?\", c.channel_type as \"channel_type?\"\n         FROM conversation_members cm\n         JOIN users u ON u.id = cm.user_id\n         LEFT JOIN channels c ON c.user_id = u.id\n         WHERE cm.conversation_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "display_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "external_id?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "channel_type?",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "13a5e44ba9d898408b6a546e8c6d790c10907dd51ac501018c94c434528617f4"
+}

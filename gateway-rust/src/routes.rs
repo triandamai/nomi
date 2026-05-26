@@ -6,12 +6,12 @@ use crate::feature::conversation::{
     handle_chat_stream, handle_create_conversation, handle_create_pairing, handle_pairing_handshake,
     handle_delete_conversation,
     handle_get_conversations, handle_get_file, handle_get_messages, handle_get_model_info,
-    handle_get_path_file, handle_get_soul_history, handle_get_user_channels,
+    handle_get_path_file, handle_get_soul_history, handle_get_user_channels, handle_get_conversation_members,
     handle_restore_conversation_soul, handle_update_conversation, handle_upload_file,
     handle_get_available_tools, handle_get_guardrail_patterns, handle_insert_guardrail_pattern,
     handle_delete_guardrail_pattern, handle_get_skill_schemas, handle_execute_skill,
     handle_get_readme, handle_get_skills_readme, handle_get_public_skills,
-    handle_get_srp_state, handle_test_srp, handle_learn_srp, handle_get_available_plugins, handle_lookup_external_user,
+    handle_get_srp_state, handle_test_srp, handle_learn_srp, handle_get_available_plugins, handle_lookup_external_user, handle_search_users,
     srp_factory::{get_proposals, update_proposal, delete_proposal, approve_proposal, deploy_proposal},
     };
 
@@ -105,6 +105,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/conversations", get(handle_get_conversations))
         .route("/user/channels", get(handle_get_user_channels))
         .route("/users/lookup/{external_id}", get(handle_lookup_external_user))
+        .route("/users/search", get(handle_search_users))
         .route("/tools", get(handle_get_available_tools))
         .route("/skills/schemas", get(handle_get_skill_schemas))
         .route("/skills/execute", post(handle_execute_skill))
@@ -147,6 +148,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/conversations/{id}", put(handle_update_conversation))
         .route("/conversations/{id}", delete(handle_delete_conversation))
         .route("/conversations/{id}/messages", get(handle_get_messages))
+        .route("/conversations/{id}/members", get(handle_get_conversation_members))
         .route(
             "/conversations/{id}/soul-history",
             get(handle_get_soul_history),
