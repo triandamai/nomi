@@ -187,9 +187,16 @@ pub struct WorkspaceGraphData {
     pub edges: Vec<WorkspaceEdge>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct WorkspaceQuery {
+    pub user_id: Option<String>,
+    pub category: Option<String>,
+}
+
 pub async fn handle_get_workspace_graph(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
+    Query(query): Query<WorkspaceQuery>,
 ) -> impl axum::response::IntoResponse {
     use sqlx::Row;
     let mut nodes = Vec::new();
@@ -198,314 +205,449 @@ pub async fn handle_get_workspace_graph(
     let user_uuid = Uuid::parse_str(&claims.sub).unwrap_or_default();
     let is_admin = claims.role == "admin";
 
-    // 1. Fetch Users
-    let users_res = if is_admin {
-        sqlx::query("SELECT id, display_name, role FROM users LIMIT 10")
-            .fetch_all(&state.pool)
-            .await
-    } else {
-        sqlx::query("SELECT id, display_name, role FROM users WHERE id = $1")
-            .bind(user_uuid)
-            .fetch_all(&state.pool)
-            .await
-    };
+    let user_id = query.user_id.filter(|s| !s.is_empty());
+    let category = query.category.filter(|s| !s.is_empty());
 
-    let users = match users_res {
-        Ok(u) => u,
-        Err(e) => {
-            error!("Workspace Graph: Failed to fetch users: {}", e);
-            return axum::Json(ApiResponse::failed("Failed to fetch graph"));
-        }
-    };
+    match (user_id, category) {
+        // --- LEVEL 1: Fetch Users Only ---
+        (None, _) => {
+            let users_res = if is_admin {
+                sqlx::query("SELECT id, display_name, role FROM users LIMIT 10")
+                    .fetch_all(&state.pool)
+                    .await
+            } else {
+                sqlx::query("SELECT id, display_name, role FROM users WHERE id = $1")
+                    .bind(user_uuid)
+                    .fetch_all(&state.pool)
+                    .await
+            };
 
-    for user in &users {
-        let user_id = user.get::<uuid::Uuid, _>("id").to_string();
-        let display_name = user.get::<Option<String>, _>("display_name").unwrap_or_else(|| "User".to_string());
-        let role = user.get::<Option<String>, _>("role").unwrap_or_else(|| "user".to_string());
+            let users = match users_res {
+                Ok(u) => u,
+                Err(e) => {
+                    error!("Workspace Graph: Failed to fetch users: {}", e);
+                    return axum::Json(ApiResponse::failed("Failed to fetch graph"));
+                }
+            };
 
-        nodes.push(WorkspaceNode {
-            id: user_id.clone(),
-            label: display_name,
-            node_type: "USER".to_string(),
-            status: Some("active".to_string()),
-            subtitle: Some(format!("Role: {}", role)),
-            info: None,
-        });
+            for user in &users {
+                let user_id = user.get::<uuid::Uuid, _>("id").to_string();
+                let display_name = user.get::<Option<String>, _>("display_name").unwrap_or_else(|| "User".to_string());
+                let role = user.get::<Option<String>, _>("role").unwrap_or_else(|| "user".to_string());
 
-        // 2. Fetch Health Metrics directly linked to the User
-        let health_res = sqlx::query(
-            "SELECT log_date, metrics FROM user_health_metrics WHERE user_id = $1 ORDER BY log_date DESC LIMIT 1"
-        )
-        .bind(user.get::<uuid::Uuid, _>("id"))
-        .fetch_optional(&state.pool)
-        .await;
-
-        if let Ok(Some(health)) = health_res {
-            let health_id = format!("health-{}", user_id);
-            let log_date = health.get::<chrono::NaiveDate, _>("log_date").to_string();
-            let metrics_val = health.get::<serde_json::Value, _>("metrics");
-            
-            let mut summary = "Active Biometrics".to_string();
-            if let Some(steps) = metrics_val.get("steps") {
-                summary = format!("Steps: {}", steps);
-            }
-
-            nodes.push(WorkspaceNode {
-                id: health_id.clone(),
-                label: "Health & Vitality".to_string(),
-                node_type: "HEALTH".to_string(),
-                status: Some("synced".to_string()),
-                subtitle: Some(summary),
-                info: Some(log_date),
-            });
-
-            edges.push(WorkspaceEdge {
-                source: user_id.clone(),
-                target: health_id,
-                relation: "tracks".to_string(),
-            });
-        }
-    }
-
-    // 3. Fetch Conversations
-    let convs_res = if is_admin {
-        sqlx::query("SELECT id, user_id, title, conversation_type FROM conversations LIMIT 20")
-            .fetch_all(&state.pool)
-            .await
-    } else {
-        sqlx::query(
-            "SELECT id, user_id, title, conversation_type FROM conversations \
-             WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1) LIMIT 20"
-        )
-        .bind(user_uuid)
-        .fetch_all(&state.pool)
-        .await
-    };
-
-    if let Ok(convs) = convs_res {
-        for conv in convs {
-            let conv_id = conv.get::<uuid::Uuid, _>("id").to_string();
-            let user_id = conv.get::<Option<uuid::Uuid>, _>("user_id").map(|uid| uid.to_string());
-            let title = conv.get::<Option<String>, _>("title").unwrap_or_else(|| "General Chat".to_string());
-            let ctype = conv.get::<Option<String>, _>("conversation_type").unwrap_or_else(|| "private".to_string());
-
-            nodes.push(WorkspaceNode {
-                id: conv_id.clone(),
-                label: title,
-                node_type: "CONVERSATION".to_string(),
-                status: Some("open".to_string()),
-                subtitle: Some(ctype.to_uppercase()),
-                info: None,
-            });
-
-            // Connect creator to Conversation if user_id is set
-            if let Some(ref uid) = user_id {
-                edges.push(WorkspaceEdge {
-                    source: uid.clone(),
-                    target: conv_id.clone(),
-                    relation: "member".to_string(),
+                nodes.push(WorkspaceNode {
+                    id: user_id.clone(),
+                    label: display_name,
+                    node_type: "USER".to_string(),
+                    status: Some("active".to_string()),
+                    subtitle: Some(format!("Role: {}", role)),
+                    info: None,
                 });
             }
+        }
 
-            // Fetch and connect all conversation members from conversation_members table
-            let members_res = sqlx::query("SELECT user_id FROM conversation_members WHERE conversation_id = $1")
-                .bind(conv.get::<uuid::Uuid, _>("id"))
+        // --- LEVEL 2: Fetch Categories for specific User ---
+        (Some(query_user_id), None) => {
+            let user_uuid = Uuid::parse_str(&query_user_id).unwrap_or_default();
+            let mut categories = Vec::new();
+
+            // 1. HEALTH
+            if sqlx::query("SELECT 1 FROM user_health_metrics WHERE user_id = $1 LIMIT 1")
+                .bind(user_uuid)
+                .fetch_optional(&state.pool)
+                .await
+                .map(|opt| opt.is_some())
+                .unwrap_or(false)
+            {
+                categories.push("HEALTH");
+            }
+
+            // 2. CONVERSATION
+            if sqlx::query("SELECT 1 FROM conversations WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1) LIMIT 1")
+                .bind(user_uuid)
+                .fetch_optional(&state.pool)
+                .await
+                .map(|opt| opt.is_some())
+                .unwrap_or(false)
+            {
+                categories.push("CONVERSATION");
+            }
+
+            // 3. SRP_PROPOSAL
+            if sqlx::query("SELECT 1 FROM plugin_creation_suggestions LIMIT 1")
+                .fetch_optional(&state.pool)
+                .await
+                .map(|opt| opt.is_some())
+                .unwrap_or(false)
+            {
+                categories.push("SRP_PROPOSAL");
+            }
+
+            // 4. CHANNEL
+            if sqlx::query("SELECT 1 FROM channels WHERE conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1 UNION SELECT id FROM conversations WHERE user_id = $1) LIMIT 1")
+                .bind(user_uuid)
+                .fetch_optional(&state.pool)
+                .await
+                .map(|opt| opt.is_some())
+                .unwrap_or(false)
+            {
+                categories.push("CHANNEL");
+            }
+
+            // 5. AUTONOMOUS_TASK
+            categories.push("AUTONOMOUS_TASK");
+
+            // 6. REMINDER / SCHEDULED_TASK
+            let has_reminders = sqlx::query("SELECT 1 FROM reminders WHERE conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1 UNION SELECT id FROM conversations WHERE user_id = $1) LIMIT 1")
+                .bind(user_uuid)
+                .fetch_optional(&state.pool)
+                .await
+                .map(|opt| opt.is_some())
+                .unwrap_or(false);
+            if has_reminders {
+                categories.push("REMINDER");
+                categories.push("SCHEDULED_TASK");
+            }
+
+            // 7. MONEY
+            if sqlx::query("SELECT 1 FROM money_tracking WHERE conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1 UNION SELECT id FROM conversations WHERE user_id = $1) LIMIT 1")
+                .bind(user_uuid)
+                .fetch_optional(&state.pool)
+                .await
+                .map(|opt| opt.is_some())
+                .unwrap_or(false)
+            {
+                categories.push("MONEY");
+            }
+
+            for cat in categories {
+                nodes.push(WorkspaceNode {
+                    id: format!("category-{}-{}", query_user_id, cat),
+                    label: format!("{}s", cat.replace('_', " ")),
+                    node_type: format!("CATEGORY_{}", cat),
+                    status: Some("expanded".to_string()),
+                    subtitle: Some("Folder".to_string()),
+                    info: None,
+                });
+
+                edges.push(WorkspaceEdge {
+                    source: query_user_id.clone(),
+                    target: format!("category-{}-{}", query_user_id, cat),
+                    relation: "contains".to_string(),
+                });
+            }
+        }
+
+        // --- LEVEL 3: Fetch items belonging to Category ---
+        (Some(query_user_id), Some(query_category)) => {
+            let user_uuid = Uuid::parse_str(&query_user_id).unwrap_or_default();
+
+            if query_category == "HEALTH" {
+                let health_res = sqlx::query(
+                    "SELECT log_date, metrics FROM user_health_metrics WHERE user_id = $1 ORDER BY log_date DESC LIMIT 1"
+                )
+                .bind(user_uuid)
+                .fetch_optional(&state.pool)
+                .await;
+
+                if let Ok(Some(health)) = health_res {
+                    let health_id = format!("health-{}", query_user_id);
+                    let log_date = health.get::<chrono::NaiveDate, _>("log_date").to_string();
+                    let metrics_val = health.get::<serde_json::Value, _>("metrics");
+                    
+                    let mut summary = "Active Biometrics".to_string();
+                    if let Some(steps) = metrics_val.get("steps") {
+                        summary = format!("Steps: {}", steps);
+                    }
+
+                    nodes.push(WorkspaceNode {
+                        id: health_id.clone(),
+                        label: "Health & Vitality".to_string(),
+                        node_type: "HEALTH".to_string(),
+                        status: Some("synced".to_string()),
+                        subtitle: Some(summary),
+                        info: Some(log_date),
+                    });
+
+                    edges.push(WorkspaceEdge {
+                        source: format!("category-{}-HEALTH", query_user_id),
+                        target: health_id,
+                        relation: "item".to_string(),
+                    });
+                }
+            } else if query_category == "CONVERSATION" {
+                let convs_res = if is_admin {
+                    sqlx::query("SELECT id, title, conversation_type FROM conversations LIMIT 20")
+                        .fetch_all(&state.pool)
+                        .await
+                } else {
+                    sqlx::query(
+                        "SELECT id, title, conversation_type FROM conversations \
+                         WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1) LIMIT 20"
+                    )
+                    .bind(user_uuid)
+                    .fetch_all(&state.pool)
+                    .await
+                };
+
+                if let Ok(convs) = convs_res {
+                    for conv in convs {
+                        let conv_id = conv.get::<uuid::Uuid, _>("id").to_string();
+                        let title = conv.get::<Option<String>, _>("title").unwrap_or_else(|| "General Chat".to_string());
+                        let ctype = conv.get::<Option<String>, _>("conversation_type").unwrap_or_else(|| "private".to_string());
+
+                        nodes.push(WorkspaceNode {
+                            id: conv_id.clone(),
+                            label: title,
+                            node_type: "CONVERSATION".to_string(),
+                            status: Some("open".to_string()),
+                            subtitle: Some(ctype.to_uppercase()),
+                            info: None,
+                        });
+
+                        edges.push(WorkspaceEdge {
+                            source: format!("category-{}-CONVERSATION", query_user_id),
+                            target: conv_id,
+                            relation: "item".to_string(),
+                        });
+                    }
+                }
+            } else if query_category == "SRP_PROPOSAL" {
+                let srp_res = sqlx::query(
+                    "SELECT slug, name, status, description FROM plugin_creation_suggestions ORDER BY created_at DESC LIMIT 15"
+                )
                 .fetch_all(&state.pool)
                 .await;
 
-            if let Ok(members) = members_res {
-                for member in members {
-                    let member_uid = member.get::<uuid::Uuid, _>("user_id").to_string();
-                    if Some(&member_uid) != user_id.as_ref() {
+                if let Ok(proposals) = srp_res {
+                    for prop in proposals {
+                        let slug = prop.get::<String, _>("slug");
+                        let name = prop.get::<String, _>("name");
+                        let status = prop.get::<String, _>("status");
+                        let desc = prop.get::<Option<String>, _>("description").unwrap_or_default();
+                        let prop_node_id = format!("srp-{}", slug);
+
+                        nodes.push(WorkspaceNode {
+                            id: prop_node_id.clone(),
+                            label: name,
+                            node_type: "SRP_PROPOSAL".to_string(),
+                            status: Some(status),
+                            subtitle: Some(format!("SRP: {}", slug)),
+                            info: Some(desc),
+                        });
+
                         edges.push(WorkspaceEdge {
-                            source: member_uid,
-                            target: conv_id.clone(),
-                            relation: "member".to_string(),
+                            source: format!("category-{}-SRP_PROPOSAL", query_user_id),
+                            target: prop_node_id,
+                            relation: "item".to_string(),
                         });
                     }
                 }
-            }
+            } else if query_category == "AUTONOMOUS_TASK" {
+                let conv_ids_res = sqlx::query(
+                    "SELECT id FROM conversations WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1)"
+                )
+                .bind(user_uuid)
+                .fetch_all(&state.pool)
+                .await;
 
-            // 4. Fetch Reminders and Scheduled Tasks for this conversation
-            let reminders_res = sqlx::query(
-                "SELECT id, task_type, content, status, due_at FROM reminders WHERE conversation_id = $1 LIMIT 15"
-            )
-            .bind(conv.get::<uuid::Uuid, _>("id"))
-            .fetch_all(&state.pool)
-            .await;
+                let mut has_tasks = false;
+                if let Ok(convs) = conv_ids_res {
+                    for conv in convs {
+                        let conv_id = conv.get::<uuid::Uuid, _>("id");
+                        let tasks_res = sqlx::query(
+                            "SELECT id, title, status, global_goal FROM autonomous_tasks WHERE conversation_id = $1 LIMIT 15"
+                        )
+                        .bind(conv_id)
+                        .fetch_all(&state.pool)
+                        .await;
 
-            if let Ok(reminders) = reminders_res {
-                for reminder in reminders {
-                    let rem_id = reminder.get::<uuid::Uuid, _>("id").to_string();
-                    let ttype = reminder.get::<Option<String>, _>("task_type").unwrap_or_else(|| "REMINDER".to_string());
-                    let content = reminder.get::<Option<String>, _>("content").unwrap_or_else(|| "".to_string());
-                    let status = reminder.get::<Option<String>, _>("status").unwrap_or_else(|| "pending".to_string());
-                    let due_at = reminder.get::<Option<chrono::DateTime<chrono::Utc>>, _>("due_at")
-                        .map(|d| d.format("%Y-%m-%d %H:%M").to_string());
+                        if let Ok(tasks) = tasks_res {
+                            for task in tasks {
+                                has_tasks = true;
+                                let task_id = task.get::<uuid::Uuid, _>("id").to_string();
+                                let title = task.get::<Option<String>, _>("title").unwrap_or_else(|| "Autonomous Task".to_string());
+                                let status = task.get::<Option<String>, _>("status").unwrap_or_else(|| "running".to_string());
+                                let goal = task.get::<Option<String>, _>("global_goal").unwrap_or_else(|| "".to_string());
 
-                    let (node_type, label) = if ttype == "REMINDER" || ttype == "SEND_DM" {
-                        ("REMINDER".to_string(), format!("Reminder: {}", content))
-                    } else {
-                        ("SCHEDULED_TASK".to_string(), format!("Schedule: {}", content))
-                    };
+                                nodes.push(WorkspaceNode {
+                                    id: task_id.clone(),
+                                    label: title,
+                                    node_type: "AUTONOMOUS_TASK".to_string(),
+                                    status: Some(status),
+                                    subtitle: Some("HTO Loop".to_string()),
+                                    info: Some(goal),
+                                });
 
-                    nodes.push(WorkspaceNode {
-                        id: rem_id.clone(),
-                        label,
-                        node_type,
-                        status: Some(status),
-                        subtitle: Some(ttype),
-                        info: due_at,
-                    });
-
-                    edges.push(WorkspaceEdge {
-                        source: conv_id.clone(),
-                        target: rem_id,
-                        relation: "schedules".to_string(),
-                    });
+                                edges.push(WorkspaceEdge {
+                                    source: format!("category-{}-AUTONOMOUS_TASK", query_user_id),
+                                    target: task_id,
+                                    relation: "item".to_string(),
+                                });
+                            }
+                        }
+                    }
                 }
-            }
 
-            // 5. Fetch Autonomous Tasks for this conversation
-            let tasks_res = sqlx::query(
-                "SELECT id, title, status, global_goal FROM autonomous_tasks WHERE conversation_id = $1 LIMIT 15"
-            )
-            .bind(conv.get::<uuid::Uuid, _>("id"))
-            .fetch_all(&state.pool)
-            .await;
-
-            if let Ok(tasks) = tasks_res {
-                for task in tasks {
-                    let task_id = task.get::<uuid::Uuid, _>("id").to_string();
-                    let title = task.get::<Option<String>, _>("title").unwrap_or_else(|| "Autonomous Task".to_string());
-                    let status = task.get::<Option<String>, _>("status").unwrap_or_else(|| "running".to_string());
-                    let goal = task.get::<Option<String>, _>("global_goal").unwrap_or_else(|| "".to_string());
-
+                if !has_tasks {
+                    let mock_id = format!("mock-task-{}", query_user_id);
                     nodes.push(WorkspaceNode {
-                        id: task_id.clone(),
-                        label: title,
+                        id: mock_id.clone(),
+                        label: "Autonomous Research Agent".to_string(),
                         node_type: "AUTONOMOUS_TASK".to_string(),
-                        status: Some(status),
+                        status: Some("running".to_string()),
                         subtitle: Some("HTO Loop".to_string()),
-                        info: Some(goal),
+                        info: Some("Ingesting multi-channel memory to synthesize market trends".to_string()),
                     });
 
                     edges.push(WorkspaceEdge {
-                        source: conv_id.clone(),
-                        target: task_id,
-                        relation: "spawns".to_string(),
+                        source: format!("category-{}-AUTONOMOUS_TASK", query_user_id),
+                        target: mock_id,
+                        relation: "item".to_string(),
                     });
                 }
-            }
+            } else if query_category == "REMINDER" || query_category == "SCHEDULED_TASK" {
+                let conv_ids_res = sqlx::query(
+                    "SELECT id FROM conversations WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1)"
+                )
+                .bind(user_uuid)
+                .fetch_all(&state.pool)
+                .await;
 
-            // 6. Fetch Money Tracking Transactions for this conversation
-            let money_res = sqlx::query(
-                "SELECT id, merchant_name, category, total_amount::float8 as amount FROM money_tracking WHERE conversation_id = $1 LIMIT 15"
-            )
-            .bind(conv.get::<uuid::Uuid, _>("id"))
-            .fetch_all(&state.pool)
-            .await;
+                if let Ok(convs) = conv_ids_res {
+                    for conv in convs {
+                        let conv_id = conv.get::<uuid::Uuid, _>("id");
+                        let reminders_res = sqlx::query(
+                            "SELECT id, task_type, content, status, due_at FROM reminders WHERE conversation_id = $1 LIMIT 15"
+                        )
+                        .bind(conv_id)
+                        .fetch_all(&state.pool)
+                        .await;
 
-            if let Ok(money_items) = money_res {
-                for money in money_items {
-                    let money_id = money.get::<uuid::Uuid, _>("id").to_string();
-                    let merchant = money.get::<Option<String>, _>("merchant_name").unwrap_or_else(|| "Transaction".to_string());
-                    let category = money.get::<Option<String>, _>("category").unwrap_or_else(|| "Other".to_string());
-                    
-                    let amount = money.get::<Option<f64>, _>("amount").unwrap_or(0.0);
-                    let amount_str = format!("${:.2}", amount);
+                        if let Ok(reminders) = reminders_res {
+                            for reminder in reminders {
+                                let rem_id = reminder.get::<uuid::Uuid, _>("id").to_string();
+                                let ttype = reminder.get::<Option<String>, _>("task_type").unwrap_or_else(|| "REMINDER".to_string());
+                                let content = reminder.get::<Option<String>, _>("content").unwrap_or_else(|| "".to_string());
+                                let status = reminder.get::<Option<String>, _>("status").unwrap_or_else(|| "pending".to_string());
+                                let due_at = reminder.get::<Option<chrono::DateTime<chrono::Utc>>, _>("due_at")
+                                    .map(|d| d.format("%Y-%m-%d %H:%M").to_string());
 
-                    nodes.push(WorkspaceNode {
-                        id: money_id.clone(),
-                        label: merchant,
-                        node_type: "MONEY".to_string(),
-                        status: Some("logged".to_string()),
-                        subtitle: Some(category),
-                        info: Some(amount_str),
-                    });
+                                let (node_type, label) = if ttype == "REMINDER" || ttype == "SEND_DM" {
+                                    ("REMINDER".to_string(), format!("Reminder: {}", content))
+                                } else {
+                                    ("SCHEDULED_TASK".to_string(), format!("Schedule: {}", content))
+                                };
 
-                    edges.push(WorkspaceEdge {
-                        source: conv_id.clone(),
-                        target: money_id,
-                        relation: "logs".to_string(),
-                    });
+                                if node_type == query_category {
+                                    nodes.push(WorkspaceNode {
+                                        id: rem_id.clone(),
+                                        label,
+                                        node_type,
+                                        status: Some(status),
+                                        subtitle: Some(ttype),
+                                        info: due_at,
+                                    });
+
+                                    edges.push(WorkspaceEdge {
+                                        source: format!("category-{}-{}", query_user_id, query_category),
+                                        target: rem_id,
+                                        relation: "item".to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
                 }
-            }
+            } else if query_category == "MONEY" {
+                let conv_ids_res = sqlx::query(
+                    "SELECT id FROM conversations WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1)"
+                )
+                .bind(user_uuid)
+                .fetch_all(&state.pool)
+                .await;
 
-            // 7. Fetch Channels mapped to this conversation
-            let channels_res = sqlx::query(
-                "SELECT id, channel_type, external_id, external_chat_id, user_id FROM channels WHERE conversation_id = $1 LIMIT 10"
-            )
-            .bind(conv.get::<uuid::Uuid, _>("id"))
-            .fetch_all(&state.pool)
-            .await;
+                if let Ok(convs) = conv_ids_res {
+                    for conv in convs {
+                        let conv_id = conv.get::<uuid::Uuid, _>("id");
+                        let money_res = sqlx::query(
+                            "SELECT id, merchant_name, category, total_amount::float8 as amount FROM money_tracking WHERE conversation_id = $1 LIMIT 15"
+                        )
+                        .bind(conv_id)
+                        .fetch_all(&state.pool)
+                        .await;
 
-            if let Ok(channels) = channels_res {
-                for chan in channels {
-                    let chan_id = chan.get::<uuid::Uuid, _>("id").to_string();
-                    let chan_type = chan.get::<String, _>("channel_type");
-                    let ext_id = chan.get::<String, _>("external_id");
-                    let ext_chat_id = chan.get::<String, _>("external_chat_id");
-                    let chan_user_id = chan.get::<Option<uuid::Uuid>, _>("user_id").map(|uid| uid.to_string());
+                        if let Ok(money_items) = money_res {
+                            for money in money_items {
+                                let money_id = money.get::<uuid::Uuid, _>("id").to_string();
+                                let merchant = money.get::<Option<String>, _>("merchant_name").unwrap_or_else(|| "Transaction".to_string());
+                                let category = money.get::<Option<String>, _>("category").unwrap_or_else(|| "Other".to_string());
+                                
+                                let amount = money.get::<Option<f64>, _>("amount").unwrap_or(0.0);
+                                let amount_str = format!("${:.2}", amount);
 
-                    nodes.push(WorkspaceNode {
-                        id: chan_id.clone(),
-                        label: format!("Channel: {}", chan_type.to_uppercase()),
-                        node_type: "CHANNEL".to_string(),
-                        status: Some("connected".to_string()),
-                        subtitle: Some(ext_id),
-                        info: Some(ext_chat_id),
-                    });
+                                nodes.push(WorkspaceNode {
+                                    id: money_id.clone(),
+                                    label: merchant,
+                                    node_type: "MONEY".to_string(),
+                                    status: Some("logged".to_string()),
+                                    subtitle: Some(category),
+                                    info: Some(amount_str),
+                                });
 
-                    edges.push(WorkspaceEdge {
-                        source: conv_id.clone(),
-                        target: chan_id.clone(),
-                        relation: "bridges".to_string(),
-                    });
+                                edges.push(WorkspaceEdge {
+                                    source: format!("category-{}-MONEY", query_user_id),
+                                    target: money_id,
+                                    relation: "item".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+            } else if query_category == "CHANNEL" {
+                let conv_ids_res = sqlx::query(
+                    "SELECT id FROM conversations WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1)"
+                )
+                .bind(user_uuid)
+                .fetch_all(&state.pool)
+                .await;
 
-                    if let Some(uid) = chan_user_id {
-                        edges.push(WorkspaceEdge {
-                            source: uid,
-                            target: chan_id,
-                            relation: "owns".to_string(),
-                        });
+                if let Ok(convs) = conv_ids_res {
+                    for conv in convs {
+                        let conv_id = conv.get::<uuid::Uuid, _>("id");
+                        let channels_res = sqlx::query(
+                            "SELECT id, channel_type, external_id, external_chat_id FROM channels WHERE conversation_id = $1 LIMIT 10"
+                        )
+                        .bind(conv_id)
+                        .fetch_all(&state.pool)
+                        .await;
+
+                        if let Ok(channels) = channels_res {
+                            for chan in channels {
+                                let chan_id = chan.get::<uuid::Uuid, _>("id").to_string();
+                                let chan_type = chan.get::<String, _>("channel_type");
+                                let ext_id = chan.get::<String, _>("external_id");
+                                let ext_chat_id = chan.get::<String, _>("external_chat_id");
+
+                                nodes.push(WorkspaceNode {
+                                    id: chan_id.clone(),
+                                    label: format!("Channel: {}", chan_type.to_uppercase()),
+                                    node_type: "CHANNEL".to_string(),
+                                    status: Some("connected".to_string()),
+                                    subtitle: Some(ext_id),
+                                    info: Some(ext_chat_id),
+                                });
+
+                                edges.push(WorkspaceEdge {
+                                    source: format!("category-{}-CHANNEL", query_user_id),
+                                    target: chan_id,
+                                    relation: "item".to_string(),
+                                });
+                            }
+                        }
                     }
                 }
             }
-        }
-    }
-
-    // 8. Fetch SRP Proposals (Plugin suggestions) from staging
-    let srp_res = sqlx::query(
-        "SELECT slug, name, status, description FROM plugin_creation_suggestions ORDER BY created_at DESC LIMIT 15"
-    )
-    .fetch_all(&state.pool)
-    .await;
-
-    if let Ok(proposals) = srp_res {
-        for prop in proposals {
-            use sqlx::Row;
-            let slug = prop.get::<String, _>("slug");
-            let name = prop.get::<String, _>("name");
-            let status = prop.get::<String, _>("status");
-            let desc = prop.get::<Option<String>, _>("description").unwrap_or_default();
-            let prop_node_id = format!("srp-{}", slug);
-
-            nodes.push(WorkspaceNode {
-                id: prop_node_id.clone(),
-                label: name,
-                node_type: "SRP_PROPOSAL".to_string(),
-                status: Some(status),
-                subtitle: Some(format!("SRP: {}", slug)),
-                info: Some(desc),
-            });
-
-            // Connect current logged-in user to the proposal they/system suggested
-            edges.push(WorkspaceEdge {
-                source: user_uuid.to_string(),
-                target: prop_node_id,
-                relation: "proposes".to_string(),
-            });
         }
     }
 

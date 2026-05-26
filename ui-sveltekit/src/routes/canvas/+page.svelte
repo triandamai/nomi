@@ -55,6 +55,8 @@
     let nodes = $state<WorkspaceNode[]>([]);
     let edges = $state<WorkspaceEdge[]>([]);
     let isLoading = $state(true);
+    let isFetchingCategories = $state(false);
+    let isFetchingItems = $state(false);
     let searchQuery = $state('');
 
     // Zoom & Pan Canvas Transform State
@@ -67,20 +69,115 @@
 
     // Active Highlight/Selection
     let selectedNodeId = $state<string | null>(null);
+    let selectedUserId = $state<string | null>(null);
+    let selectedCategoryType = $state<string | null>(null);
 
-    // Filter nodes by search query
-    let filteredNodes = $derived(
-        nodes.map(node => ({
+    // 1. Position USER nodes (always visible, Level 1)
+    let positionedUserNodes = $derived.by(() => {
+        const userNodes = nodes.filter(n => n.node_type === 'USER');
+        let userY = 150;
+        return userNodes.map(node => {
+            const copy = { ...node };
+            copy.x = 80;
+            copy.y = userY;
+            userY += 130;
+            return copy;
+        });
+    });
+
+    // 2. Position Category nodes (revealed on user click, Level 2)
+    let visibleCategoryNodes = $derived.by(() => {
+        if (!selectedUserId) return [];
+        
+        const catNodes = nodes.filter(n => n.node_type.startsWith('CATEGORY_') && n.id.includes(selectedUserId!));
+        const rowHeight = 110;
+        
+        const selectedUser = positionedUserNodes.find(u => u.id === selectedUserId);
+        const centerY = selectedUser ? selectedUser.y! : 200;
+        
+        let startY = centerY - ((catNodes.length - 1) * rowHeight) / 2;
+        startY = Math.max(startY, 80);
+        
+        return catNodes.map((node, index) => {
+            const categoryType = node.node_type.replace('CATEGORY_', '');
+            return {
+                ...node,
+                categoryType,
+                x: 420,
+                y: startY + index * rowHeight
+            };
+        });
+    });
+
+    // 3. Position Item nodes (revealed on category click, Level 3)
+    let visibleItemNodes = $derived.by(() => {
+        if (!selectedUserId || !selectedCategoryType) return [];
+        
+        const catNodeId = `category-${selectedUserId}-${selectedCategoryType}`;
+        const itemIds = edges
+            .filter(e => e.source === catNodeId)
+            .map(e => e.target);
+            
+        const items = nodes.filter(n => itemIds.includes(n.id));
+        const rowHeight = 110;
+        
+        const selectedCatNode = visibleCategoryNodes.find(c => c.categoryType === selectedCategoryType);
+        const catCenterY = selectedCatNode ? selectedCatNode.y! : 200;
+        
+        let itemStartY = catCenterY - ((items.length - 1) * rowHeight) / 2;
+        itemStartY = Math.max(itemStartY, 80);
+        
+        return items.map((item, index) => {
+            const copy = { ...item };
+            copy.x = 760;
+            copy.y = itemStartY + index * rowHeight;
+            return copy;
+        });
+    });
+
+    // Combine all currently visible nodes
+    let visibleNodes = $derived.by(() => {
+        return [...positionedUserNodes, ...visibleCategoryNodes, ...visibleItemNodes];
+    });
+
+    // Combine all currently visible edges
+    let visibleEdges = $derived.by(() => {
+        const edgesList: WorkspaceEdge[] = [];
+        if (!selectedUserId) return edgesList;
+
+        // Add category contains edges
+        edges.forEach(e => {
+            if (e.source === selectedUserId) {
+                edgesList.push(e);
+            }
+        });
+
+        // Add selected category items edges
+        if (selectedCategoryType) {
+            const catNodeId = `category-${selectedUserId}-${selectedCategoryType}`;
+            edges.forEach(e => {
+                if (e.source === catNodeId) {
+                    edgesList.push(e);
+                }
+            });
+        }
+
+        return edgesList;
+    });
+
+    // Filter visible nodes by search query
+    let visibleFilteredNodes = $derived(
+        visibleNodes.map(node => ({
             ...node,
             isHighlighted: searchQuery ? (
                 node.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 node.node_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                node.subtitle?.toLowerCase().includes(searchQuery.toLowerCase())
+                (node.subtitle && node.subtitle.toLowerCase().includes(searchQuery.toLowerCase()))
             ) : true
         }))
     );
 
-    // API Data retrieval & Hierarchical Layout Calculation
+    // API Data retrieval (Initial Load Level 1: Fetch Users)
     async function loadWorkspaceGraph() {
         isLoading = true;
         try {
@@ -88,143 +185,60 @@
             if (res.data) {
                 nodes = res.data.nodes;
                 edges = res.data.edges;
-                calculateLayout();
             }
         } catch (e) {
-            console.error('Failed to load workspace graph:', e);
+            console.error('Failed to load workspace graph users:', e);
         } finally {
             isLoading = false;
         }
     }
 
-    // Compute Left-to-Right n8n Layered Columns Layout with dynamic vertical centering
-    function calculateLayout() {
-        const rowHeight = 155;
-
-        // Group nodes by type to form hierarchical columns
-        const userNodes = nodes.filter(n => n.node_type === 'USER');
-        const healthNodes = nodes.filter(n => n.node_type === 'HEALTH');
-        const srpNodes = nodes.filter(n => n.node_type === 'SRP_PROPOSAL');
-        const convNodes = nodes.filter(n => n.node_type === 'CONVERSATION');
-        const leafNodes = nodes.filter(n => 
-            n.node_type === 'REMINDER' || 
-            n.node_type === 'SCHEDULED_TASK' || 
-            n.node_type === 'AUTONOMOUS_TASK' || 
-            n.node_type === 'MONEY' ||
-            n.node_type === 'CHANNEL'
-        );
-
-        if (isMobile) {
-            // Mobile: Stacks vertically center to avoid messy side scrolling
-            let currentY = 80;
-            const centerX = Math.max((windowWidth - 250) / 2, 20);
-
-            // 1. Users
-            userNodes.forEach((node) => {
-                node.x = centerX;
-                node.y = currentY;
-                currentY += rowHeight;
-            });
-
-            // 2. Health Metrics
-            if (healthNodes.length > 0) {
-                currentY += 20; // visual separator
-                healthNodes.forEach((node) => {
-                    node.x = centerX;
-                    node.y = currentY;
-                    currentY += rowHeight;
-                });
+    // Fetch Categories for a given user (Level 2: Fetch Categories)
+    async function loadCategories(userId: string) {
+        isFetchingCategories = true;
+        try {
+            const res = await api.get<GraphData>(`/graph/workspace?user_id=${encodeURIComponent(userId)}`);
+            if (res.data) {
+                // Merge category nodes and contains edges
+                const newNodes = res.data.nodes.filter(n => !nodes.some(existing => existing.id === n.id));
+                const newEdges = res.data.edges.filter(e => !edges.some(existing => existing.source === e.source && existing.target === e.target));
+                
+                nodes = [...nodes, ...newNodes];
+                edges = [...edges, ...newEdges];
             }
-
-            // 2.5 SRP Proposals
-            if (srpNodes.length > 0) {
-                currentY += 20; // visual separator
-                srpNodes.forEach((node) => {
-                    node.x = centerX;
-                    node.y = currentY;
-                    currentY += rowHeight;
-                });
-            }
-
-            // 3. Conversations and their connected leaves right underneath them!
-            let placedLeafIds = new Set<string>();
-            convNodes.forEach((conv) => {
-                currentY += 20; // visual separator
-                conv.x = centerX;
-                conv.y = currentY;
-                currentY += rowHeight;
-
-                const connectedLeaves = leafNodes.filter(leaf => 
-                    edges.some(e => e.source === conv.id && e.target === leaf.id)
-                );
-
-                connectedLeaves.forEach((leafNode) => {
-                    leafNode.x = centerX;
-                    leafNode.y = currentY;
-                    currentY += rowHeight;
-                    placedLeafIds.add(leafNode.id);
-                });
-            });
-
-            // 4. Any remaining leaf nodes not connected to a conversation
-            leafNodes.forEach((leafNode) => {
-                if (!placedLeafIds.has(leafNode.id)) {
-                    leafNode.x = centerX;
-                    leafNode.y = currentY;
-                    currentY += rowHeight;
-                }
-            });
-        } else {
-            // Desktop: 3-Column Progressive Vertical Flow
-            // Column 1 (Left - x = 80): Users, Health, and SRP Proposals stacked vertically
-            let currentColumn1Y = 150;
-
-            userNodes.forEach((userNode) => {
-                userNode.x = 80;
-                userNode.y = currentColumn1Y;
-                currentColumn1Y += 125; // User card + 35px visual gap
-
-                // Place corresponding health node immediately below its owner
-                const healthNode = healthNodes.find(h => h.id === `health-${userNode.id}`);
-                if (healthNode) {
-                    healthNode.x = 80;
-                    healthNode.y = currentColumn1Y;
-                    currentColumn1Y += 125; // Health card + 35px visual gap
-                }
-            });
-
-            // Stack SRP Proposals directly below users/health in Column 1
-            srpNodes.forEach((node) => {
-                node.x = 80;
-                node.y = currentColumn1Y;
-                currentColumn1Y += 125; // SRP card + 35px visual gap
-            });
-
-            // Column 2 (Middle - x = 440): Conversations stacked vertically
-            convNodes.forEach((conv, i) => {
-                conv.x = 440;
-                conv.y = 150 + i * 125; // Conversations card + 35px visual gap
-            });
-
-            // Column 3 (Right - x = 800): All other rest node types stacked vertically
-            leafNodes.forEach((leafNode, i) => {
-                leafNode.x = 800;
-                leafNode.y = 150 + i * 120; // Rest card + 30px visual gap
-            });
+        } catch (e) {
+            console.error('Failed to load workspace graph categories:', e);
+        } finally {
+            isFetchingCategories = false;
         }
+    }
 
-        // Fallback for any disconnected nodes
-        nodes.forEach(node => {
-            if (node.x === undefined || node.y === undefined) {
-                node.x = isMobile ? Math.max((windowWidth - 250) / 2, 20) : 440;
-                node.y = 300;
+    // Fetch Items for a given category (Level 3: Fetch Items)
+    async function loadCategoryItems(userId: string, category: string) {
+        isFetchingItems = true;
+        try {
+            const res = await api.get<GraphData>(`/graph/workspace?user_id=${encodeURIComponent(userId)}&category=${encodeURIComponent(category)}`);
+            if (res.data) {
+                // Merge item nodes and contains edges
+                const newNodes = res.data.nodes.filter(n => !nodes.some(existing => existing.id === n.id));
+                const newEdges = res.data.edges.filter(e => !edges.some(existing => existing.source === e.source && existing.target === e.target));
+                
+                nodes = [...nodes, ...newNodes];
+                edges = [...edges, ...newEdges];
             }
-        });
+        } catch (e) {
+            console.error('Failed to load workspace graph category items:', e);
+        } finally {
+            isFetchingItems = false;
+        }
     }
 
     // Canvas Zoom & Pan Mouse Listeners
     function handleMouseDown(e: MouseEvent) {
         if ((e.target as HTMLElement).closest('.node-card')) return;
+        selectedNodeId = null;
+        selectedUserId = null;
+        selectedCategoryType = null;
         isDragging = true;
         startX = e.clientX - panX;
         startY = e.clientY - panY;
@@ -257,6 +271,9 @@
 
     function handleTouchStart(e: TouchEvent) {
         if ((e.target as HTMLElement).closest('.node-card')) return;
+        selectedNodeId = null;
+        selectedUserId = null;
+        selectedCategoryType = null;
         isTouching = true;
         
         if (e.touches.length === 1) {
@@ -319,6 +336,16 @@
 
     // Node Type Helpers: Colors, Borders & Neon Glows
     function getNodeTheme(type: string) {
+        if (type.startsWith('CATEGORY_')) {
+            const baseType = type.replace('CATEGORY_', '');
+            const baseTheme = getNodeTheme(baseType);
+            return {
+                ...baseTheme,
+                border: 'border-dashed border-2 ' + baseTheme.border.split(' ')[0].replace('/40', ''),
+                glow: 'opacity-90 shadow-[0_0_15px_rgba(255,255,255,0.05)]'
+            };
+        }
+
         switch (type) {
             case 'USER': 
                 return {
@@ -458,52 +485,59 @@
     }
 
     // Contextual Click Action (Spawning specialized Svelte Popups!)
-    function handleNodeClick(node: WorkspaceNode) {
-        selectedNodeId = node.id;
+    function handleNodeClick(node: any) {
+        if (node.node_type === 'USER') {
+            // Clicked a user: expand categories
+            selectedUserId = node.id;
+            selectedCategoryType = null; // reset category
+            loadCategories(node.id);
+        } else if (node.node_type.startsWith('CATEGORY_')) {
+            // Clicked a category node: expand items
+            selectedCategoryType = node.categoryType;
+            if (selectedUserId) {
+                loadCategoryItems(selectedUserId, node.categoryType);
+            }
+        } else {
+            // Clicked an item node: open its popup exactly as before!
+            selectedNodeId = node.id;
 
-        switch (node.node_type) {
-            case 'USER':
-                popupStore.open({
-                    title: 'Profile Settings',
-                    width: 'max-w-xl',
-                    contentSnippet: profileSettingsSnippet
-                });
-                break;
-            case 'HEALTH':
-                popupStore.open({
-                    title: 'Health & Vitality Metrics',
-                    width: 'max-w-2xl',
-                    contentSnippet: healthMetricsSnippet
-                });
-                break;
-            case 'AUTONOMOUS_TASK':
-                popupStore.open({
-                    title: 'Autonomous Agent Tasks',
-                    width: 'max-w-3xl h-[100dvh]',
-                    contentSnippet: autonomousTasksSnippet
-                });
-                break;
-            case 'CONVERSATION':
-                popupStore.open({
-                    title: `Conversation: ${node.label}`,
-                    width: 'max-w-2xl',
-                    contentSnippet: conversationDetailSnippet
-                });
-                break;
-            case 'SRP_PROPOSAL':
-                popupStore.open({
-                    title: `SRP Proposal: ${node.label}`,
-                    width: 'max-w-2xl',
-                    contentSnippet: srpProposalSnippet
-                });
-                break;
-            default:
-                popupStore.open({
-                    title: node.label,
-                    width: 'max-w-lg',
-                    contentSnippet: defaultNodeSnippet
-                });
-                break;
+            switch (node.node_type) {
+                case 'HEALTH':
+                    popupStore.open({
+                        title: 'Health & Vitality Metrics',
+                        width: 'max-w-2xl',
+                        contentSnippet: healthMetricsSnippet
+                    });
+                    break;
+                case 'AUTONOMOUS_TASK':
+                    popupStore.open({
+                        title: 'Autonomous Agent Tasks',
+                        width: 'max-w-3xl h-[100dvh]',
+                        contentSnippet: autonomousTasksSnippet
+                    });
+                    break;
+                case 'CONVERSATION':
+                    popupStore.open({
+                        title: `Conversation: ${node.label}`,
+                        width: 'max-w-2xl',
+                        contentSnippet: conversationDetailSnippet
+                    });
+                    break;
+                case 'SRP_PROPOSAL':
+                    popupStore.open({
+                        title: `SRP Proposal: ${node.label}`,
+                        width: 'max-w-2xl',
+                        contentSnippet: srpProposalSnippet
+                    });
+                    break;
+                default:
+                    popupStore.open({
+                        title: node.label,
+                        width: 'max-w-lg',
+                        contentSnippet: defaultNodeSnippet
+                    });
+                    break;
+            }
         }
     }
 
@@ -573,12 +607,6 @@
                 </p>
             </div>
 
-            <div class="p-4 bg-slate-950/60 border border-slate-900 rounded-xl space-y-2">
-                <span class="text-[9px] font-bold text-slate-500 uppercase font-mono">Description</span>
-                <p class="text-xs leading-relaxed text-slate-300">
-                    {selectedNode.info || 'No description provided.'}
-                </p>
-            </div>
 
             <div class="flex items-center justify-between p-4 bg-slate-950/60 border border-slate-900 rounded-xl">
                 <span class="text-[9px] font-bold text-slate-500 uppercase font-mono">Build Queue Status</span>
@@ -739,7 +767,7 @@
             class="relative origin-top-left w-full h-full"
             style="transform: translate({panX}px, {panY}px) scale({zoom});"
         >
-            {#if isLoading}
+            {#if isLoading && nodes.length === 0}
                 <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 opacity-60">
                     <RefreshCw class="w-8 h-8 text-sky-500 animate-spin" />
                     <p class="text-slate-400 text-xs italic font-medium">Recompiling workspace nodes...</p>
@@ -759,9 +787,9 @@
                     </defs>
 
                     <!-- Render active lines linking parent-to-child relations -->
-                    {#each edges as edge}
-                        {@const sourceNode = nodes.find(n => n.id === edge.source)}
-                        {@const targetNode = nodes.find(n => n.id === edge.target)}
+                    {#each visibleEdges as edge}
+                        {@const sourceNode = visibleNodes.find(n => n.id === edge.source)}
+                        {@const targetNode = visibleNodes.find(n => n.id === edge.target)}
                         {#if sourceNode && targetNode}
                             {@const theme = getNodeTheme(targetNode.node_type)}
                             {@const isHighlighted = (!searchQuery) || (
@@ -774,8 +802,8 @@
                                 d={calculateBezierPath(sourceNode, targetNode)}
                                 fill="none"
                                 stroke={theme.accent}
-                                stroke-width={selectedNodeId === sourceNode.id || selectedNodeId === targetNode.id ? 3 : 1.8}
-                                stroke-opacity={isHighlighted ? 0.65 : 0.12}
+                                stroke-width={3}
+                                stroke-opacity={0.65}
                                 filter="url(#glow-blue)"
                                 class="transition-all duration-300"
                                 class:pulse-flow={targetNode.status === 'running' || targetNode.status === 'active'}
@@ -785,7 +813,27 @@
                 </svg>
 
                 <!-- HTML Nodes Layer -->
-                {#each filteredNodes as node}
+                {#if isFetchingCategories}
+                    <div 
+                        class="absolute w-[250px] min-h-[90px] rounded-2xl bg-slate-950/40 border border-slate-900 border-dashed p-4 flex items-center justify-center gap-3 animate-pulse pointer-events-none"
+                        style="left: 420px; top: 200px;"
+                    >
+                        <RefreshCw class="w-4 h-4 text-sky-500 animate-spin" />
+                        <span class="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Hydrating Folders...</span>
+                    </div>
+                {/if}
+
+                {#if isFetchingItems}
+                    <div 
+                        class="absolute w-[250px] min-h-[90px] rounded-2xl bg-slate-950/40 border border-slate-900 border-dashed p-4 flex items-center justify-center gap-3 animate-pulse pointer-events-none"
+                        style="left: 760px; top: 200px;"
+                    >
+                        <RefreshCw class="w-4 h-4 text-emerald-500 animate-spin" />
+                        <span class="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Hydrating Leaves...</span>
+                    </div>
+                {/if}
+
+                {#each visibleFilteredNodes as node}
                     {@const theme = getNodeTheme(node.node_type)}
                     {@const Icon = theme.icon}
                     
@@ -795,8 +843,8 @@
                         class="absolute w-[250px] min-h-[90px] rounded-2xl bg-slate-950/75 border text-left p-4 hover:-translate-y-1 transition-all duration-250 cursor-pointer flex flex-col justify-between group node-card {theme.border} {theme.glow}"
                         class:opacity-100={node.isHighlighted}
                         class:opacity-15={!node.isHighlighted}
-                        class:ring-2={selectedNodeId === node.id}
-                        class:ring-sky-500={selectedNodeId === node.id}
+                        class:ring-2={selectedUserId === node.id || selectedCategoryType === node.categoryType}
+                        class:ring-sky-500={selectedUserId === node.id || selectedCategoryType === node.categoryType}
                         style="left: {node.x}px; top: {node.y}px;"
                     >
                         <!-- n8n Port Anchors (Circle Ports) -->
@@ -811,7 +859,7 @@
                         {/if}
 
                         <!-- Output Port (Right side on desktop, Bottom side on mobile) -->
-                        {#if node.node_type === 'USER' || node.node_type === 'CONVERSATION'}
+                        {#if node.node_type === 'USER' || node.node_type === 'CONVERSATION' || node.node_type.startsWith('CATEGORY_')}
                             <div 
                                 class="absolute w-3 h-3 rounded-full bg-slate-950 border flex items-center justify-center z-10 group-hover:scale-110 transition-transform {isMobile ? 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1.5' : 'top-1/2 -right-1.5 -translate-y-1/2'}"
                                 style="border-color: {theme.accent};"
@@ -841,7 +889,7 @@
                                 {node.subtitle || node.node_type.toLowerCase()}
                             </span>
                             <span class="shrink-0 uppercase font-bold tracking-widest font-mono text-[8px] {theme.text}">
-                                {node.info || node.status}
+                                {(node.node_type === 'SRP_PROPOSAL' || node.node_type === 'AUTONOMOUS_TASK') ? node.status : (node.info || node.status)}
                             </span>
                         </div>
                     </button>
