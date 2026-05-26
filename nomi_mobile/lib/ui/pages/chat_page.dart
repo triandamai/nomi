@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:nomi_mobile/providers/chat_provider.dart';
+import 'package:nomi_mobile/providers/auth_provider.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/data/models/message.dart';
 import 'package:nomi_mobile/ui/widgets/chat_bubble.dart';
@@ -28,12 +29,165 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   XFile? _selectedFile;
   bool _isUploading = false;
 
+  List<dynamic> _mentionCandidates = [];
+  bool _showMentionSuggestions = false;
+  int _mentionStartIdx = -1;
+  final Map<String, String> _selectedMentions = {};
+  List<dynamic> _conversationMembers = [];
+
+  Future<void> _fetchConversationMembers(String conversationId) async {
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.dio.get('/conversations/$conversationId/members');
+      if (response.statusCode == 200 && response.data != null && response.data['data'] != null) {
+        final List<dynamic> members = response.data['data'] ?? [];
+        if (mounted) {
+          setState(() {
+            _conversationMembers = members;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to fetch conversation members: $e');
+    }
+  }
+
+  void _onTextChanged(String text) {
+    final selection = _textController.selection;
+    if (!selection.isValid || !selection.isCollapsed) {
+      setState(() => _showMentionSuggestions = false);
+      return;
+    }
+
+    final cursorIdx = selection.baseOffset;
+    final textBeforeCursor = text.substring(0, cursorIdx);
+    final lastAtIdx = textBeforeCursor.lastIndexOf('@');
+
+    if (lastAtIdx != -1) {
+      final query = textBeforeCursor.substring(lastAtIdx + 1);
+      // Ensure there are no spaces in the query and we are immediately after @
+      if (!query.contains(' ')) {
+        setState(() {
+          _showMentionSuggestions = true;
+          _mentionStartIdx = lastAtIdx;
+        });
+        _searchMentions(query);
+        return;
+      }
+    }
+
+    setState(() => _showMentionSuggestions = false);
+  }
+
+  Future<void> _searchMentions(String query) async {
+    final currentUserId = ref.read(authProvider).user?.id;
+    final term = query.toLowerCase();
+
+    // 1. Get initial local matches from _conversationMembers
+    final seenIds = <String>{};
+    final localMatches = <dynamic>[];
+    for (final member in _conversationMembers) {
+      final userId = member['user_id']?.toString() ?? member['id']?.toString();
+      if (userId != null && userId != currentUserId && !seenIds.contains(userId)) {
+        final String displayName = (member['display_name']?.toString() ?? '').toLowerCase();
+        final String username = (member['username']?.toString() ?? '').toLowerCase();
+        final String extId = (member['external_id']?.toString() ?? '').toLowerCase();
+
+        if (displayName.contains(term) || username.contains(term) || extId.contains(term)) {
+          seenIds.add(userId);
+          localMatches.add(member);
+        }
+      }
+    }
+
+    // Set local candidates immediately so the UI is highly reactive
+    setState(() {
+      _mentionCandidates = List.from(localMatches);
+    });
+
+    // 2. Fetch global matches in background to enrich results and support private chats
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      // Fix: Query parameter key must be 'q' to align with the Rust backend!
+      final response = await apiClient.dio.get('/users/search', queryParameters: {'q': query});
+      
+      if (response.statusCode == 200 && response.data != null && response.data['data'] != null) {
+        final List<dynamic> globalItems = response.data['data'] ?? [];
+        
+        // Merge global items that aren't duplicates and aren't self
+        final merged = List.from(localMatches);
+        for (final g in globalItems) {
+          final userId = g['user_id']?.toString() ?? g['id']?.toString();
+          if (userId != null && userId != currentUserId && !seenIds.contains(userId)) {
+            seenIds.add(userId);
+            merged.add(g);
+          }
+        }
+
+        // Only update state if the user is still looking at suggestions for this specific query
+        if (mounted && _showMentionSuggestions) {
+          setState(() {
+            _mentionCandidates = merged;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Global search mentions failed: $e');
+    }
+  }
+
+  void _selectMention(dynamic user) {
+    final text = _textController.text;
+    final String identifier = user['external_id']?.toString() ?? user['username']?.toString() ?? user['id']?.toString() ?? '';
+    if (identifier.isEmpty) return;
+
+    String displayName = user['display_name']?.toString() ?? '';
+    // Strip JID/LID '@...' suffixes if they exist in the display name
+    if (displayName.contains('@')) {
+      displayName = displayName.split('@')[0];
+    }
+    // Fallback to cleaned external ID / username if display name is not populated
+    if (displayName.isEmpty) {
+      displayName = identifier.contains('@') ? identifier.split('@')[0] : identifier;
+    }
+    if (displayName.isEmpty) {
+      displayName = 'User';
+    }
+
+    final cursorIdx = _textController.selection.baseOffset;
+    final prefix = text.substring(0, _mentionStartIdx);
+    final suffix = text.substring(cursorIdx);
+
+    // Friendly display: e.g. "@Trian" or "@628123456789"
+    final String friendlyMention = '@$displayName';
+    
+    // Save to our state map for raw ID translation upon sending!
+    _selectedMentions[friendlyMention] = identifier;
+
+    final replacement = '$friendlyMention ';
+    _textController.text = '$prefix$replacement$suffix';
+
+    // Move cursor to the end of the replaced mention
+    _textController.selection = TextSelection.collapsed(
+      offset: _mentionStartIdx + replacement.length,
+    );
+
+    setState(() {
+      _showMentionSuggestions = false;
+      _mentionCandidates = [];
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_scrollListener);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatProvider.notifier).fetchConversations();
+      final activeConvId = ref.read(chatProvider).activeConversationId;
+      if (activeConvId != null) {
+        _fetchConversationMembers(activeConvId);
+      }
     });
   }
 
@@ -99,7 +253,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Future<void> _handleSend() async {
     if (_textController.text.isEmpty && _selectedFile == null) return;
 
-    final String content = _textController.text;
+    String content = _textController.text;
+    
+    // Convert friendly mentions (e.g., "@TRIAN") to raw identifiers (e.g., "@166168073642181")
+    _selectedMentions.forEach((friendly, rawId) {
+      final escaped = RegExp.escape(friendly);
+      final regex = RegExp('$escaped\\b');
+      content = content.replaceAll(regex, '@$rawId');
+    });
+
     Map<String, String>? media;
 
     if (_selectedFile != null) {
@@ -123,6 +285,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     ref.read(chatProvider.notifier).sendMessage(content, media: media);
     _textController.clear();
+    _selectedMentions.clear(); // Clear the local state mapping
     setState(() => _selectedFile = null);
     _scrollToBottom();
   }
@@ -141,6 +304,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     ref.listen(chatProvider, (previous, next) {
       final cid = next.activeConversationId;
       if (cid == null) return;
+
+      // Switch conversation members dynamically
+      if (previous?.activeConversationId != cid) {
+        _fetchConversationMembers(cid);
+      }
+
       final wasTyping = previous?.isTyping[cid] ?? false;
       final isTyping = next.isTyping[cid] ?? false;
       final hadThought = previous?.thoughts[cid]?.isNotEmpty ?? false;
@@ -321,7 +490,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               Row(
                 children: [
                   InkWell(
-                    onTap: activeConv != null ? () => _showThreadDetail(context, activeConv!) : null,
+                    onTap: activeConv != null ? () => _showThreadDetail(context, activeConv) : null,
                     borderRadius: BorderRadius.circular(8),
                     child: Padding(
                       padding: const EdgeInsets.all(4.0),
@@ -451,6 +620,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (_showMentionSuggestions && _mentionCandidates.isNotEmpty)
+                  _buildMentionSuggestions(),
                 if (_selectedFile != null) _buildFilePreview(),
                 if (chatState.replyingTo != null) _buildReplyContext(chatState.replyingTo!),
                 Row(
@@ -463,7 +634,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03), borderRadius: BorderRadius.circular(20)),
-                        child: TextField(controller: _textController, onSubmitted: (_) => _handleSend(), style: const TextStyle(color: Colors.white, fontSize: 14), decoration: const InputDecoration(hintText: 'Message Nomi...', hintStyle: TextStyle(color: Colors.white24, fontSize: 14), border: InputBorder.none)),
+                        child: TextField(
+                          controller: _textController, 
+                          onChanged: _onTextChanged,
+                          onSubmitted: (_) => _handleSend(), 
+                          style: const TextStyle(color: Colors.white, fontSize: 14), 
+                          decoration: const InputDecoration(
+                            hintText: 'Message Nomi...', 
+                            hintStyle: TextStyle(color: Colors.white24, fontSize: 14), 
+                            border: InputBorder.none
+                          )
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -483,6 +664,79 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMentionSuggestions() {
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 180),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: _mentionCandidates.length,
+        separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+        itemBuilder: (context, index) {
+          final user = _mentionCandidates[index];
+          final String username = user['username']?.toString() ?? '';
+          final String externalId = user['external_id']?.toString() ?? '';
+          
+          String displayName = user['display_name']?.toString() ?? '';
+          // Strip JID/LID '@...' suffixes if they exist in the display name
+          if (displayName.contains('@')) {
+            displayName = displayName.split('@')[0];
+          }
+          // Fallback to cleaned external ID / username if display name is not populated
+          if (displayName.isEmpty) {
+            final String rawId = externalId.isNotEmpty ? externalId : (username.isNotEmpty ? username : (user['id']?.toString() ?? ''));
+            displayName = rawId.contains('@') ? rawId.split('@')[0] : rawId;
+          }
+          if (displayName.isEmpty) {
+            displayName = 'User';
+          }
+          
+          return InkWell(
+            onTap: () => _selectMention(user),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: const Color(AppConfig.blue).withValues(alpha: 0.1),
+                    radius: 14,
+                    child: Text(
+                      displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U',
+                      style: const TextStyle(color: Color(AppConfig.blue), fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        if (username.isNotEmpty)
+                          Text(
+                            '@$username${externalId.isNotEmpty ? " • $externalId" : ""}',
+                            style: const TextStyle(color: Colors.white38, fontSize: 10),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

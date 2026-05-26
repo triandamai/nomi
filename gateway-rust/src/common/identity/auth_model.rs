@@ -4,12 +4,14 @@ use validator::Validate;
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct OtpRequest {
     #[validate(length(min = 1))]
+    #[serde(alias = "external_id")]
     pub identity: String, // email, phone, or telegram_id
     pub channel: String,      // "email", "telegram", etc.
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct OtpVerify {
+    #[serde(alias = "external_id")]
     pub identity: String,
     pub code: String,
 }

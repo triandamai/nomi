@@ -11,10 +11,44 @@ import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/core/utils/formatter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:markdown/markdown.dart' as md;
-import 'package:nomi_mobile/ui/widgets/code_block.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nomi_mobile/providers/repositories.dart';
+import 'package:nomi_mobile/core/api/api_client.dart';
 
-class ChatBubble extends StatefulWidget {
+class MentionCache {
+  static final Map<String, String> _cache = {};
+  static final Set<String> _loading = {};
+
+  static String getDisplayName(String externalId, ApiClient apiClient, VoidCallback onUpdate) {
+    if (_cache.containsKey(externalId)) {
+      return _cache[externalId]!;
+    }
+
+    if (!_loading.contains(externalId)) {
+      _loading.add(externalId);
+      _fetchDisplayName(externalId, apiClient, onUpdate);
+    }
+
+    return '@$externalId'; // Fallback while loading
+  }
+
+  static Future<void> _fetchDisplayName(String externalId, ApiClient apiClient, VoidCallback onUpdate) async {
+    try {
+      final response = await apiClient.dio.get('/users/lookup/$externalId');
+      if (response.statusCode == 200 && response.data != null && response.data['data'] != null) {
+        final displayName = response.data['data']['display_name'] as String?;
+        if (displayName != null) {
+          _cache[externalId] = displayName;
+          onUpdate();
+        }
+      }
+    } catch (_) {
+      _loading.remove(externalId);
+    }
+  }
+}
+
+class ChatBubble extends ConsumerStatefulWidget {
   final Message message;
   final VoidCallback? onReply;
 
@@ -25,11 +59,12 @@ class ChatBubble extends StatefulWidget {
   });
 
   @override
-  State<ChatBubble> createState() => _ChatBubbleState();
+  ConsumerState<ChatBubble> createState() => _ChatBubbleState();
 }
 
-class _ChatBubbleState extends State<ChatBubble> {
+class _ChatBubbleState extends ConsumerState<ChatBubble> {
   bool _thoughtExpanded = false;
+  TapDownDetails? _lastTapDownDetails;
 
   String _getFileUrl(String? path) {
     if (path == null) return '';
@@ -37,9 +72,140 @@ class _ChatBubbleState extends State<ChatBubble> {
     return '${AppConfig.fileUrl}/$path';
   }
 
+  String _processContent(String content, ApiClient apiClient) {
+    // Split by triple backticks to isolate multi-line code blocks
+    final codeBlockParts = content.split('```');
+    for (int i = 0; i < codeBlockParts.length; i++) {
+      // Only process parts that are NOT inside code blocks (even indices)
+      if (i % 2 == 0) {
+        // Also handle inline code blocks by splitting by single backtick
+        final inlineParts = codeBlockParts[i].split('`');
+        for (int j = 0; j < inlineParts.length; j++) {
+          if (j % 2 == 0) {
+            // Process regular text
+            final mentionRegex = RegExp(r'@([a-zA-Z0-9_\-]+)\b');
+            String partText = inlineParts[j];
+            final matches = mentionRegex.allMatches(partText).toList();
+            
+            for (final match in matches.reversed) {
+              final extId = match.group(1);
+              if (extId != null) {
+                final displayName = MentionCache.getDisplayName(extId, apiClient, () {
+                  if (mounted) {
+                    setState(() {});
+                  }
+                });
+                final replacement = '[$displayName](https://nomi.ai/mention/$extId)';
+                partText = partText.replaceRange(match.start, match.end, replacement);
+              }
+            }
+            inlineParts[j] = partText;
+          }
+        }
+        codeBlockParts[i] = inlineParts.join('`');
+      }
+    }
+    return codeBlockParts.join('```');
+  }
+
+  void _showUserMentionTooltip(BuildContext context, Offset position, String extId, ApiClient apiClient) {
+    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    
+    showMenu<void>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(position.dx, position.dy - 10, 0, 0),
+        Offset.zero & overlay.size,
+      ),
+      color: const Color(0xFF202225),
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Colors.white10),
+      ),
+      constraints: const BoxConstraints(maxWidth: 220),
+      items: [
+        PopupMenuItem<void>(
+          enabled: false, // Purely informational, non-clickable
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: FutureBuilder<dynamic>(
+            future: apiClient.dio.get('/users/lookup/$extId'),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox(
+                  width: 140,
+                  height: 40,
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                );
+              }
+              if (snapshot.hasError || snapshot.data == null || snapshot.data.data == null || snapshot.data.data['data'] == null) {
+                return Text(
+                  'User not found\nID: $extId',
+                  style: const TextStyle(color: Colors.white70, fontSize: 10, height: 1.4),
+                );
+              }
+
+              final user = snapshot.data.data['data'];
+              final String displayName = user['display_name']?.toString() ?? '';
+              final String username = user['username']?.toString() ?? 'unknown';
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: const Color(AppConfig.blue).withValues(alpha: 0.1),
+                        radius: 12,
+                        child: Text(
+                          displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U',
+                          style: const TextStyle(color: Color(AppConfig.blue), fontSize: 8, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              displayName,
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '@$username',
+                              style: const TextStyle(color: Colors.white38, fontSize: 8),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Divider(color: Colors.white10, height: 1),
+                  const SizedBox(height: 6),
+                  Text(
+                    'ID: $extId',
+                    style: const TextStyle(color: Color(AppConfig.blue), fontSize: 8, fontFamily: 'monospace'),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final message = widget.message;
+    final apiClient = ref.watch(apiClientProvider);
+    final processedContent = _processContent(message.content, apiClient);
 
     return Dismissible(
       key: Key('reply_${message.id}'),
@@ -131,22 +297,44 @@ class _ChatBubbleState extends State<ChatBubble> {
                   if (message.document_url != null) _buildDocumentLink(_getFileUrl(message.document_url)),
 
                   if (message.content.isNotEmpty)
-                    MarkdownBody(
-                      data: message.content,
-                      selectable: true,
-                      onTapLink: (text, href, title) {
-                        if (href != null) launchUrl(Uri.parse(href));
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: (details) {
+                        _lastTapDownDetails = details;
                       },
-                      builders: {
-                        'pre': CodeElementBuilder(),
-                      },
-                      styleSheet: MarkdownStyleSheet(
-                        p: const TextStyle(color: Color(0xFFdcddde), fontSize: 14, height: 1.4),
-                        code: const TextStyle(
-                          backgroundColor: Color(0xFF202225),
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                          color: Color(0xFF10b981),
+                      child: MarkdownBody(
+                        data: processedContent,
+                        selectable: true,
+                        onTapLink: (text, href, title) {
+                          if (href != null) {
+                            if (href.startsWith('https://nomi.ai/mention/')) {
+                              final extId = href.split('/').last;
+                              final position = _lastTapDownDetails?.globalPosition ?? Offset.zero;
+                              _showUserMentionTooltip(context, position, extId, apiClient);
+                            } else {
+                              launchUrl(Uri.parse(href));
+                            }
+                          }
+                        },
+                        styleSheet: MarkdownStyleSheet(
+                          p: const TextStyle(color: Color(0xFFdcddde), fontSize: 14, height: 1.4),
+                          code: const TextStyle(
+                            backgroundColor: Color(0xFF202225),
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            color: Color(0xFF10b981),
+                          ),
+                          codeblockDecoration: BoxDecoration(
+                            color: const Color(0xFF202225),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                          ),
+                          codeblockPadding: const EdgeInsets.all(12),
+                          a: const TextStyle(
+                            color: Color(0xFF60a5fa),
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.none,
+                          ),
                         ),
                       ),
                     ),
@@ -403,24 +591,6 @@ class _ChatBubbleState extends State<ChatBubble> {
   }
 }
 
-class CodeElementBuilder extends MarkdownElementBuilder {
-  @override
-  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    var language = 'text';
-
-    if (element.attributes['class'] != null) {
-      String lg = element.attributes['class'] as String;
-      if (lg.contains('-')) {
-        language = lg.split('-')[1];
-      }
-    }
-
-    return CodeBlock(
-      code: element.textContent.trim(),
-      language: language,
-    );
-  }
-}
 
 class _AudioPlayerWidget extends StatefulWidget {
   final String url;

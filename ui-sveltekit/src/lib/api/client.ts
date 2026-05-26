@@ -351,13 +351,13 @@ export const chatApi = {
     requestOtp: (externalId: string, channel: string = 'email') => {
         return apiFetch<any>('/auth/request-otp', {
             method: 'POST',
-            body: JSON.stringify({external_id: externalId, channel})
+            body: JSON.stringify({identity: externalId, external_id: externalId, channel})
         });
     },
     verifyOtp: (externalId: string, code: string) => {
         return apiFetch<any>('/auth/verify-otp', {
             method: 'POST',
-            body: JSON.stringify({external_id: externalId, code})
+            body: JSON.stringify({identity: externalId, external_id: externalId, code})
         });
     },
     getAvailableTools: () => {
