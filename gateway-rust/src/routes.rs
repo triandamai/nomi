@@ -15,7 +15,7 @@ use crate::feature::conversation::{
     srp_factory::{get_proposals, update_proposal, delete_proposal, approve_proposal, deploy_proposal},
     };
 
-use crate::feature::graph::{handle_get_graph, handle_search_graph};
+use crate::feature::graph::{handle_get_graph, handle_search_graph, handle_get_workspace_graph};
 use crate::feature::reminder::{handle_get_reminders, handle_get_reminder_detail};
 use crate::feature::waitlist::handle_waitlist;
 use crate::feature::edge_functions::{
@@ -163,6 +163,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/conversations/{id}/pairing", post(handle_create_pairing))
         .route("/graph", get(handle_get_graph))
         .route("/graph/search", get(handle_search_graph))
+        .route("/graph/workspace", get(handle_get_workspace_graph))
         .route("/upload", post(handle_upload_file))
         .layer(DefaultBodyLimit::max(20 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(

@@ -156,26 +156,40 @@ pub async fn handle_verify_otp(
     let _ = state.redis.del(&redis_key).await;
 
     // 4. Resolve User and Generate JWT
-    let transform_ids: Vec<String> = vec![
-        format!("{}@s.whatsapp.net", payload.identity),
-        format!("{}@lid", payload.identity),
-        payload.identity.clone(),
-    ];
-    info!("[Auth] Resolving user for identity Variants: {:?}", transform_ids);
+    let parsed_uuid = uuid::Uuid::parse_str(&payload.identity).ok();
 
-    let user_row = sqlx::query(
-        "SELECT u.id, u.role
-         FROM users u
-         LEFT JOIN channels ch ON u.id = ch.user_id
-         WHERE ch.external_id = ANY($1::text[]) 
-            OR ch.external_chat_id = ANY($1::text[]) 
-            OR u.email = $2
-         ORDER BY u.created_at DESC LIMIT 1"
-    )
-    .bind(&transform_ids[..])
-    .bind(&payload.identity)
-    .fetch_optional(&state.pool)
-    .await;
+    let user_row = if let Some(uid) = parsed_uuid {
+        info!("[Auth] Identity is a valid UUID. Querying user directly: {}", uid);
+        sqlx::query(
+            "SELECT u.id, u.role
+             FROM users u
+             WHERE u.id = $1"
+        )
+        .bind(uid)
+        .fetch_optional(&state.pool)
+        .await
+    } else {
+        let transform_ids: Vec<String> = vec![
+            format!("{}@s.whatsapp.net", payload.identity),
+            format!("{}@lid", payload.identity),
+            payload.identity.clone(),
+        ];
+        info!("[Auth] Resolving user for identity Variants: {:?}", transform_ids);
+
+        sqlx::query(
+            "SELECT u.id, u.role
+             FROM users u
+             LEFT JOIN channels ch ON u.id = ch.user_id
+             WHERE ch.external_id = ANY($1::text[]) 
+                OR ch.external_chat_id = ANY($1::text[]) 
+                OR u.email = $2
+             ORDER BY u.created_at DESC LIMIT 1"
+        )
+        .bind(&transform_ids[..])
+        .bind(&payload.identity)
+        .fetch_optional(&state.pool)
+        .await
+    };
 
     use sqlx::Row;
     let (user_id, user_role) = match user_row {
@@ -186,35 +200,11 @@ pub async fn handle_verify_otp(
             (uid, role)
         },
         Ok(None) => {
-            info!("[Auth] No user found. Attempting automatic account creation for identity: {}", payload.identity);
-            let (email, display_name) = if payload.identity.contains('@') {
-                (Some(payload.identity.clone()), "User".to_string())
-            } else {
-                (None, payload.identity.clone())
-            };
-
-            match sqlx::query(
-                "INSERT INTO users (email, display_name) VALUES ($1, $2) RETURNING id, role"
-            )
-            .bind(email)
-            .bind(display_name)
-            .fetch_one(&state.pool)
-            .await
-            {
-                Ok(row) => {
-                    let uid = row.get::<uuid::Uuid, _>("id");
-                    let role = row.get::<Option<String>, _>("role");
-                    info!("[Auth] Successfully created new user: {} with role: {:?}", uid, role);
-                    (uid, role)
-                },
-                Err(e) => {
-                    error!("[Auth] Database error during user automatic creation: {}", e);
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(ApiResponse::<AuthResponse>::failed("Database error")),
-                    );
-                }
-            }
+            info!("[Auth] No user found for identity: {}. Denying automatic account creation.", payload.identity);
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ApiResponse::<AuthResponse>::failed("Identity not registered. Please contact an administrator.")),
+            );
         }
         Err(e) => {
             error!("[Auth] Database error during final user resolution: {}", e);

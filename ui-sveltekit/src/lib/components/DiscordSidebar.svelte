@@ -1018,6 +1018,13 @@
             <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">System Blueprint</span>
         </button>
 
+        <button onclick={() => { popupStore.closeLast(); goto('/canvas'); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-violet-500/50 hover:bg-violet-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-violet-500/20 text-slate-400 group-hover:text-violet-400 transition-colors">
+                <Activity size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Workspace Canvas</span>
+        </button>
+
         <button onclick={() => { popupStore.closeLast(); handleShowTools(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-blue-400/50 hover:bg-blue-400/5 transition-all group">
             <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-blue-400/20 text-slate-400 group-hover:text-blue-300 transition-colors">
                 <Sparkles size={24} />
