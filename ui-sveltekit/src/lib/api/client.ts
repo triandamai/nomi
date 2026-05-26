@@ -52,6 +52,10 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
 }
 
 export const chatApi = {
+    lookupExternalUser: async (externalId: string) => {
+        return apiFetch<{ user_id: string, display_name: string } | null>(`/users/lookup/${externalId}`);
+    },
+
     sendMessage: async (message: string, conversationId: string, media: any = {}) => {
         if (typeof window === 'undefined') {
             return {

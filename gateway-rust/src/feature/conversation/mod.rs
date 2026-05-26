@@ -1459,3 +1459,40 @@ pub async fn handle_get_available_plugins(
 
     ApiResponse::ok(slugs, "Available plugins retrieved")
 }
+
+#[derive(serde::Serialize)]
+pub struct ExternalUserLookupResult {
+    pub user_id: Uuid,
+    pub display_name: String,
+}
+
+pub async fn handle_lookup_external_user(
+    State(state): State<AppState>,
+    axum::extract::Path(external_id): axum::extract::Path<String>,
+) -> ApiResponse<Option<ExternalUserLookupResult>> {
+    let result = sqlx::query!(
+        "SELECT u.id as user_id, u.display_name 
+         FROM users u 
+         JOIN channels c ON c.user_id = u.id 
+         WHERE c.external_id = $1 
+         LIMIT 1",
+        external_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match result {
+        Ok(Some(row)) => ApiResponse::ok(
+            Some(ExternalUserLookupResult {
+                user_id: row.user_id,
+                display_name: row.display_name.unwrap_or_else(|| "Unknown".to_string()),
+            }),
+            "User found",
+        ),
+        Ok(None) => ApiResponse::ok(None, "User not found"),
+        Err(e) => {
+            error!("Failed to lookup external user: {}", e);
+            ApiResponse::failed("Database error")
+        }
+    }
+}

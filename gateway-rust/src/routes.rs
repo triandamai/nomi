@@ -11,7 +11,7 @@ use crate::feature::conversation::{
     handle_get_available_tools, handle_get_guardrail_patterns, handle_insert_guardrail_pattern,
     handle_delete_guardrail_pattern, handle_get_skill_schemas, handle_execute_skill,
     handle_get_readme, handle_get_skills_readme, handle_get_public_skills,
-    handle_get_srp_state, handle_test_srp, handle_learn_srp, handle_get_available_plugins,
+    handle_get_srp_state, handle_test_srp, handle_learn_srp, handle_get_available_plugins, handle_lookup_external_user,
     srp_factory::{get_proposals, update_proposal, delete_proposal, approve_proposal, deploy_proposal},
     };
 
@@ -104,6 +104,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/chat/stream", post(handle_chat_stream))
         .route("/conversations", get(handle_get_conversations))
         .route("/user/channels", get(handle_get_user_channels))
+        .route("/users/lookup/{external_id}", get(handle_lookup_external_user))
         .route("/tools", get(handle_get_available_tools))
         .route("/skills/schemas", get(handle_get_skill_schemas))
         .route("/skills/execute", post(handle_execute_skill))

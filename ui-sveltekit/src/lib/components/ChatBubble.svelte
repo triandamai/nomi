@@ -14,12 +14,13 @@
         ArrowRight,
         CornerUpLeft
     } from 'lucide-svelte';
-    import {mdIt, formatDate, setupMarkdownHelpers} from "$lib/utils";
+    import {mdIt, formatDate, setupMarkdownHelpers, useAvatar} from "$lib/utils";
     import {env} from '$env/dynamic/public';
     import {goto} from '$app/navigation';
     import ReminderCard from './ReminderCard.svelte';
     import FinanceCard from './FinanceCard.svelte';
     import PluginProposalCard from './PluginProposalCard.svelte';
+    import {mentionStore} from '$lib/stores/mentions.svelte';
 
     let {
         content = '',
@@ -80,6 +81,10 @@
 
             renderedContent = mdIt.render(displayContent);
             
+            // Wrap WhatsApp/Telegram mentions like @42078516064356 in a premium mention-pill
+            const mentionRegex = /@(\d+)\b/g;
+            renderedContent = renderedContent.replace(mentionRegex, '<span class="mention-pill" data-external-id="$1">@$1</span>');
+            
             if (thought) {
                 const cleanThought = thought.replace(/<\/?thinking>/g, '');
                 renderedThought = mdIt.render(cleanThought);
@@ -134,6 +139,73 @@
     $effect(() => {
         if (mdIt && (content || thought)) {
             render();
+        }
+    });
+
+    // Tooltip hover state
+    let hoverTooltip = $state<{
+        visible: boolean;
+        x: number;
+        y: number;
+        displayName: string;
+        externalId: string;
+        avatarUrl: string;
+    }>({
+        visible: false,
+        x: 0,
+        y: 0,
+        displayName: '',
+        externalId: '',
+        avatarUrl: ''
+    });
+
+    // Reactive mention display name sync and hover listeners
+    $effect(() => {
+        if (renderedContent && bubbleElement) {
+            const pills = bubbleElement.querySelectorAll('.mention-pill');
+            pills.forEach((pill) => {
+                const extId = pill.getAttribute('data-external-id');
+                if (extId) {
+                    const displayName = mentionStore.getDisplayName(extId);
+                    // Update the text content reactively once resolved
+                    pill.textContent = displayName.startsWith('@') ? displayName : `@${displayName}`;
+
+                    // Tooltip hover events
+                    const onMouseEnter = (e: MouseEvent) => {
+                        const rect = pill.getBoundingClientRect();
+                        hoverTooltip = {
+                            visible: true,
+                            x: rect.left + rect.width / 2,
+                            y: rect.top - 10,
+                            displayName: displayName.startsWith('@') ? displayName.substring(1) : displayName,
+                            externalId: extId,
+                            avatarUrl: useAvatar(displayName)
+                        };
+                    };
+
+                    const onMouseLeave = () => {
+                        hoverTooltip.visible = false;
+                    };
+
+                    pill.addEventListener('mouseenter', onMouseEnter);
+                    pill.addEventListener('mouseleave', onMouseLeave);
+
+                    // Cache listener functions on the element for clean removal
+                    (pill as any)._onMouseEnter = onMouseEnter;
+                    (pill as any)._onMouseLeave = onMouseLeave;
+                }
+            });
+
+            return () => {
+                pills.forEach((pill) => {
+                    if ((pill as any)._onMouseEnter) {
+                        pill.removeEventListener('mouseenter', (pill as any)._onMouseEnter);
+                    }
+                    if ((pill as any)._onMouseLeave) {
+                        pill.removeEventListener('mouseleave', (pill as any)._onMouseLeave);
+                    }
+                });
+            };
         }
     });
 </script>
@@ -314,6 +386,23 @@
     </div>
 </div>
 
+{#if hoverTooltip.visible}
+    <div 
+        class="mention-tooltip animate-in fade-in zoom-in-95 duration-150"
+        style="position: fixed; left: {hoverTooltip.x}px; top: {hoverTooltip.y}px;"
+    >
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl overflow-hidden bg-slate-800 border border-slate-700/50 flex-shrink-0 shadow-md">
+                <img src={hoverTooltip.avatarUrl} alt={hoverTooltip.displayName} class="w-full h-full object-cover" />
+            </div>
+            <div class="flex flex-col min-w-0">
+                <span class="text-xs font-black text-slate-100 truncate leading-none mb-1">@{hoverTooltip.displayName}</span>
+                <span class="text-[9px] font-bold text-purple-400/90 font-mono tracking-wider uppercase leading-none">@{hoverTooltip.externalId}</span>
+            </div>
+        </div>
+    </div>
+{/if}
+
 <style>
     :global(.prose pre) {
         background-color: #020617 !important;
@@ -435,5 +524,60 @@
     :global(.mermaid svg) {
         max-width: 100% !important;
         height: auto !important;
+    }
+
+    /* Premium Mentions Badge Styling (Violet HSL Gradient) */
+    :global(.mention-pill) {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.15rem 0.55rem;
+        border-radius: 9999px;
+        font-size: 0.85em;
+        font-weight: 800;
+        color: #c084fc !important; /* Soft Purple/Violet */
+        background: rgba(192, 132, 252, 0.08) !important;
+        border: 1px solid rgba(192, 132, 252, 0.2) !important;
+        box-shadow: 0 0 12px rgba(192, 132, 252, 0.05);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        cursor: pointer;
+        user-select: none;
+        text-decoration: none !important;
+        margin: 0 0.15rem;
+    }
+
+    :global(.mention-pill:hover) {
+        background: rgba(192, 132, 252, 0.2) !important;
+        border-color: rgba(192, 132, 252, 0.5) !important;
+        box-shadow: 0 0 18px rgba(192, 132, 252, 0.25);
+        transform: translateY(-0.5px);
+        color: #e9d5ff !important; /* Lighter Purple */
+    }
+
+    /* Premium Mention Tooltip */
+    :global(.mention-tooltip) {
+        transform: translate(-50%, -100%);
+        background: rgba(15, 23, 42, 0.95) !important;
+        backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(192, 132, 252, 0.3) !important;
+        padding: 0.6rem 0.9rem !important;
+        border-radius: 1rem !important;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 0 20px rgba(192, 132, 252, 0.15) !important;
+        z-index: 99999 !important;
+        pointer-events: none !important;
+        min-width: 170px;
+        margin-top: -6px;
+    }
+
+    /* Tooltip Arrow */
+    :global(.mention-tooltip::after) {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translate(-50%, 100%);
+        border-width: 5px;
+        border-style: solid;
+        border-color: rgba(15, 23, 42, 0.95) transparent transparent transparent;
     }
 </style>

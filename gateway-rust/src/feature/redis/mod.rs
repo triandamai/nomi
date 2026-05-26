@@ -76,6 +76,12 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
         text = text.replace("@42078516064356", "Nomi");
         msg.is_mentioned = true;
     }
+    let mut resolved_external_chat_id = if msg.is_group {
+        msg.sender_id.clone()
+    } else {
+        msg.conversation_id.clone()
+    };
+
     // ======== WhatsApp ID Strategy Refinement ===========//
     if msg.channel.starts_with("whatsapp") {
         // 1. Clean LID/JID (remove :xx if present)
@@ -103,6 +109,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
 
         // 3. For private chats, use phone_id as conversation_id for outbound
         if let Some(pid) = phone_id {
+            resolved_external_chat_id = pid.clone();
             if !msg.is_group {
                 msg.conversation_id = pid;
             }
@@ -279,7 +286,7 @@ async fn handle_inbound_message(state: AppState, mut msg: InboundMessage) -> any
     let user_id = identity::resolve_identity(
         &state,
         &msg.sender_id,
-        &msg.conversation_id,
+        &resolved_external_chat_id,
         &msg.channel,
         msg.is_group,
         display_name.clone(),

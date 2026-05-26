@@ -136,8 +136,8 @@ pub async fn resolve_identity(
                  RETURNING id
                 ",
                 channel_type,
-                external_sender_id, // Stable LID/JID
-                external_sender_id, // For groups, we map the person to their private ID in this table
+                external_sender_id, // Stable LID/JID (save to external_id)
+                external_chat_id,   // Reachable chat ID (save to external_chat_id)
                 new_convo.id,
                 new_user.id
             )
