@@ -29,6 +29,7 @@
     import RedisTestPopUp from './RedisTestPopUp.svelte';
     import AvailableToolsPopUp from './AvailableToolsPopUp.svelte';
     import GuardrailPatternsPopUp from './GuardrailPatternsPopUp.svelte';
+    import AutonomousTasksPopUp from './AutonomousTasksPopUp.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
 
     import {profileStore} from '$lib/stores/profile.svelte';
@@ -233,6 +234,15 @@
             width: 'max-w-md',
             contentSnippet: modelInfoContent,
             footerSnippet: remindersFooter
+        });
+    }
+
+    function handleShowAutonomousTasks() {
+        sidebarStore.showUserMenu = false;
+        popupStore.open({
+            title: 'Autonomous Agent Tasks',
+            width: 'max-w-3xl',
+            contentSnippet: autonomousTasksSnippet
         });
     }
 
@@ -967,6 +977,10 @@
     <ProfileSettingsPopUp />
 {/snippet}
 
+{#snippet autonomousTasksSnippet()}
+    <AutonomousTasksPopUp />
+{/snippet}
+
 {#snippet utilityContent()}
     <div class="grid grid-cols-2 md:grid-cols-3 gap-4 py-4 pb-12">
         <button onclick={() => { popupStore.closeLast(); handleShowReminders(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group">
@@ -974,6 +988,13 @@
                 <Bell size={24} />
             </div>
             <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Reminders</span>
+        </button>
+
+        <button onclick={() => { popupStore.closeLast(); handleShowAutonomousTasks(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-purple-500/50 hover:bg-purple-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-purple-500/20 text-slate-400 group-hover:text-purple-400 transition-colors">
+                <Brain size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Autonomous Tasks</span>
         </button>
 
         <button onclick={() => { popupStore.closeLast(); openMoneyTracking(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all group">

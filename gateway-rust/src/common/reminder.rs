@@ -53,6 +53,7 @@ pub async fn start_schedule_worker(state: AppState) {
                         "REMINDER" => handle_reminder_task(&state, &task).await,
                         "SEND_DM" => handle_send_dm_task(&state, &task).await,
                         "TRIGGER_AGENT" => handle_trigger_agent_task(&state, &task).await,
+                        "AUTONOMOUS_TASK" => handle_autonomous_task(&state, &task).await,
                         _ => {
                             error!("Unknown task type: {}", task.task_type);
                             Ok(())
@@ -269,6 +270,100 @@ pub async fn handle_trigger_agent_task(state: &AppState, task: &TaskData) -> any
                     .await;
                 }
             });
+        }
+    }
+    Ok(())
+}
+
+pub async fn handle_autonomous_task(state: &AppState, task: &TaskData) -> anyhow::Result<()> {
+    if let Some(payload) = &task.payload {
+        let title = payload
+            .get("task_title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Scheduled Task");
+        let goal = payload
+            .get("global_goal")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Scheduled Goal");
+        let checkpoints = payload
+            .get("checkpoints")
+            .cloned()
+            .unwrap_or_else(|| json!([]));
+
+        if let Some(conversation_id) = task.conversation_id {
+            // 1. Insert autonomous task to ledger database
+            let task_uuid = sqlx::query_scalar::<_, Uuid>(
+                "INSERT INTO autonomous_tasks (conversation_id, title, global_goal, status, current_step_index, checkpoints) \
+                 VALUES ($1, $2, $3, 'running', 0, $4) RETURNING id"
+            )
+            .bind(conversation_id)
+            .bind(title)
+            .bind(goal)
+            .bind(checkpoints.clone())
+            .fetch_one(&state.pool)
+            .await?;
+
+            // 2. Log 'step_start' timeline entry
+            let _ = sqlx::query(
+                "INSERT INTO autonomous_task_logs (task_id, step_index, event_type, log_content, raw_payload) \
+                 VALUES ($1, 0, 'step_start', $2, $3)"
+            )
+            .bind(task_uuid)
+            .bind(format!("Scheduled task auto-ignited: {}", title))
+            .bind(json!({ "checkpoints": checkpoints }))
+            .execute(&state.pool)
+            .await;
+
+            // 3. Send message informing user in the conversation dynamically with Nomi persona
+            let slang_prompt = format!(
+                "You are Nomi. Inform your friend Trian in a warm, highly casual Indonesian/English slang update that you have successfully launched/auto-ignited a scheduled autonomous task: '{}'. Explain the global goal: '{}' and remind him he can watch live updates in the timeline side-panel. Keep it casual, fun, and teammate-oriented (e.g. 'aman', 'otw', 'sip', 'gua').",
+                title, goal
+            );
+
+            let outbound_text = if let Ok(res) = state.gemini.generate_content().with_user_message(slang_prompt).with_temperature(0.7).execute().await {
+                res.text().trim().to_string()
+            } else {
+                format!(
+                    "🚀 *SCHEDULED TASK AUTO-IGNITED*\nI have successfully launched your scheduled autonomous task: *{}*.\n\n*Goal:* {}\n\nYou can watch its live timeline progress in the side-panel! ✨",
+                    title, goal
+                )
+            };
+
+            let msg_metadata = Some(json!({
+                "tool_ref_ids": [
+                    {
+                        "tool": "instantiate_autonomous_task",
+                        "ref_id": task_uuid.to_string()
+                    }
+                ]
+            }));
+
+            if let Ok(m) = save_message(
+                &state.pool,
+                conversation_id,
+                "assistant",
+                outbound_text.as_str(),
+                None,
+                Some(task.user_id),
+                0, 0, 0, None, None, None, None, None, msg_metadata, None,
+                Some(&state.redis)
+            )
+            .await
+            {
+                let _ = state
+                    .dispatch(AppEvent::user(
+                        task.user_id.to_string().as_str(),
+                        "message",
+                        json!(m),
+                    ))
+                    .await;
+            }
+
+            // Stream MQTT realtime event so front-end displays immediately
+            let _ = crate::services::task_orchestrator::dispatch_task_update(task_uuid, conversation_id, state, &state.pool).await;
+
+            // 4. Spawn background thread loop
+            crate::services::task_orchestrator::spawn_task_loop(state.clone(), task_uuid);
         }
     }
     Ok(())

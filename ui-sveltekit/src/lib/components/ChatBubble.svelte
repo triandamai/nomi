@@ -20,7 +20,10 @@
     import ReminderCard from './ReminderCard.svelte';
     import FinanceCard from './FinanceCard.svelte';
     import PluginProposalCard from './PluginProposalCard.svelte';
+    import TaskCard from './TaskCard.svelte';
+    import { chatStore } from '$lib/stores/chat.svelte';
     import {mentionStore} from '$lib/stores/mentions.svelte';
+
 
     let {
         content = '',
@@ -45,10 +48,48 @@
     let thoughtExpanded = $state(false);
     let contextExpanded = $state(false);
 
+    let formValues = $state<Record<string, string>>({});
+    let formSubmitted = $state(false);
+
+    let requiredFields = $derived.by(() => {
+        const fields: any[] = [];
+        const regex = /<\s*RequiredField\s+name="([^"]+)"\s+label="([^"]+)"\s+type="([^"]+)"(?:\s+options="([^"]+)")?\s*\/>/gi;
+        let match;
+        while ((match = regex.exec(content)) !== null) {
+            fields.push({
+                name: match[1],
+                label: match[2],
+                type: match[3],
+                options: match[4] ? match[4].split(',') : []
+            });
+        }
+        return fields;
+    });
+
+    async function submitForm(key?: string, value?: string) {
+        if (formSubmitted) return;
+
+        let replyText = "";
+        if (key && value) {
+            formValues[key] = value;
+            replyText = `${value}`;
+        } else {
+            replyText = Object.entries(formValues)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(', ');
+        }
+
+        if (!replyText) return;
+
+        formSubmitted = true;
+        await chatStore.sendMessage(replyText);
+    }
+
     function toggleThought() {
         thoughtExpanded = !thoughtExpanded;
         onToggleThought(thoughtExpanded);
     }
+
 
     async function init() {
         render();
@@ -58,7 +99,7 @@
 
     async function render() {
         if (mdIt) {
-            let displayContent = content;
+            let displayContent = content.replace(/<\s*RequiredField[^>]*\/>/gi, '');
             
             // Extract [Media Context: ...]
             const mediaContextRegex = /\[Media Context: (.*?)\] /s;
@@ -390,6 +431,8 @@
                     <div class="animate-in fade-in slide-in-from-bottom-2 duration-300">
                         {#if ref.tool?.toLowerCase().includes('reminder') || ref.tool?.toLowerCase().includes('schedule_task')}
                             <ReminderCard ref_id={ref.ref_id} />
+                        {:else if ref.tool?.toLowerCase().includes('autonomous') || ref.tool?.toLowerCase().includes('task')}
+                            <TaskCard ref_id={ref.ref_id} />
                         {:else if ref.tool?.toLowerCase().includes('finance') || ref.tool?.toLowerCase().includes('expense') || ref.tool?.toLowerCase().includes('money') || ref.tool?.toLowerCase().includes('manage_finance')}
                             <FinanceCard ref_id={ref.ref_id} />
                         {:else if ref.tool?.toLowerCase().includes('skill') || ref.tool?.toLowerCase().includes('proposal') || ref.tool?.toLowerCase().includes('suggest')}
@@ -416,8 +459,70 @@
         {/if}
 
         {@html renderedContent}
+
+        {#if requiredFields.length > 0 && !formSubmitted}
+            <div class="mt-4 p-4 bg-slate-900/50 border border-slate-800/80 rounded-2xl flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-sm">
+                <div class="flex items-center gap-2 border-b border-white/5 pb-2 text-[9px] font-black uppercase tracking-widest text-amber-400">
+                    <Cpu class="w-3.5 h-3.5 animate-pulse" />
+                    <span>Interactive Clarification</span>
+                </div>
+
+                {#each requiredFields as field}
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{field.label}</label>
+                        
+                        {#if field.type === 'text'}
+                            <input 
+                                type="text" 
+                                bind:value={formValues[field.name]}
+                                placeholder="Type answer here..."
+                                class="px-3.5 py-2 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-white placeholder-slate-600 focus:border-amber-500/50 focus:outline-none transition-all"
+                            />
+                        {:else if field.type === 'select'}
+                            <div class="flex flex-wrap gap-2">
+                                {#each field.options as opt}
+                                    <button
+                                        onclick={() => formValues[field.name] = opt}
+                                        class="px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all duration-300
+                                            {formValues[field.name] === opt ? 
+                                             'bg-amber-500/10 border-amber-500 text-amber-400' : 
+                                             'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'}"
+                                    >
+                                        {opt}
+                                    </button>
+                                {/each}
+                            </div>
+                        {:else if field.type === 'button' || field.type === 'approval'}
+                            <button
+                                onclick={() => submitForm(field.name, 'Approved')}
+                                class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-xs font-bold text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                            >
+                                <UserCheck class="w-4 h-4" />
+                                {field.label}
+                            </button>
+                        {/if}
+                    </div>
+                {/each}
+
+                {#if requiredFields.some(f => f.type !== 'button' && f.type !== 'approval')}
+                    <button
+                        onclick={() => submitForm()}
+                        class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-xs font-bold text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                    >
+                        <UserCheck class="w-4 h-4" />
+                        Submit Answer
+                    </button>
+                {/if}
+            </div>
+        {:else if requiredFields.length > 0 && formSubmitted}
+            <div class="mt-4 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl flex items-center gap-2 text-emerald-400 text-xs font-semibold">
+                <CheckCircle2 class="w-4 h-4 shrink-0" />
+                <span>Response submitted successfully!</span>
+            </div>
+        {/if}
     </div>
 </div>
+
 
 {#if hoverTooltip.visible}
     <div 

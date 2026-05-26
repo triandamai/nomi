@@ -27,3 +27,5 @@ pub mod manage_proposals;
 pub mod srp_summary;
 pub mod adjust_deb;
 pub mod get_workspace_summary;
+pub mod instantiate_autonomous_task;
+

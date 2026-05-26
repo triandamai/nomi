@@ -170,7 +170,61 @@ pub async fn process_v2_message(
             ))
             .await;
     }
+
+    // ======== HTO Task Input Interception Check ======== //
+    #[derive(sqlx::FromRow)]
+    struct PausedTask {
+        id: Uuid,
+        current_step_index: i32,
+    }
+    
+    let paused_task_opt = sqlx::query_as::<_, PausedTask>(
+        "SELECT id, current_step_index FROM autonomous_tasks \
+         WHERE conversation_id = $1 AND status = 'paused_for_input' \
+         ORDER BY created_at DESC LIMIT 1"
+    )
+    .bind(conversation_id)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None);
+
+
+    if let Some(task) = paused_task_opt {
+        info!("HTO Interceptor: Intercepted human reply in conversation [{}] for paused task [{}]", conversation_id, task.id);
+
+        // 1. Log the human response event in timeline logs using non-macro sqlx query
+        let _ = sqlx::query(
+            "INSERT INTO autonomous_task_logs (task_id, step_index, event_type, log_content, raw_payload) \
+             VALUES ($1, $2, 'human_response', $3, $4)"
+        )
+        .bind(task.id)
+        .bind(task.current_step_index)
+        .bind(format!("User provided input: '{}'", text_content))
+        .bind(json!({
+            "message_id": saved_message.id,
+            "content": text_content
+        }))
+        .execute(&state.pool)
+        .await;
+
+        // 2. Set task status back to 'running'
+        let _ = sqlx::query(
+            "UPDATE autonomous_tasks SET status = 'running' WHERE id = $1"
+        )
+        .bind(task.id)
+        .execute(&state.pool)
+        .await;
+
+        // 3. Re-spawn the background HTO worker thread loop to resume execution
+        crate::services::task_orchestrator::spawn_task_loop(state.clone(), task.id);
+
+        // 4. Return early with the saved message to bypass intent classification and prevent dual agent turns
+        return Ok(saved_message.into());
+    }
+
+
     // ======== Interaction Gate (Pre-Filtering for Groups) ========//
+
     if msg.is_group && !msg.is_mentioned {
         let gate = crate::services::interaction_gate::InteractionGateService::new(
             state.pool.clone(),
@@ -238,12 +292,29 @@ pub async fn process_v2_message(
         .await
         .unwrap_or_else(|_| false);
 
+    let mut resolved_name = msg.display_name.clone().unwrap_or_default();
+    if resolved_name.is_empty() {
+        if let Some(uid) = msg.user_id {
+            resolved_name = sqlx::query_scalar::<_, String>(
+                "SELECT display_name FROM users WHERE id = $1 LIMIT 1"
+            )
+            .bind(uid)
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None)
+            .unwrap_or_default();
+        }
+    }
+    if resolved_name.is_empty() {
+        resolved_name = "Trian".to_string();
+    }
+
     let orchestrator = V2AgentOrchestrator::new(
         state.clone(),
         Some(convo),
         Some(UserIdentity {
             id: msg.user_id.unwrap_or(Uuid::nil()),
-            display_name: "".to_string(),
+            display_name: resolved_name,
         }),
         members.iter().map(|v| v.user_id.clone()).collect(),
     );

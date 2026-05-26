@@ -112,6 +112,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/skills/readme", get(handle_get_skills_readme))
         .route("/reminders", get(handle_get_reminders))
         .route("/reminders/{id}", get(handle_get_reminder_detail))
+        .route("/tasks", get(handle_get_all_tasks))
+        .route("/tasks/{id}/timeline", get(handle_get_task_timeline))
+
         .route("/readme", get(handle_get_readme))
         .route("/srp/available", get(handle_get_available_plugins))
         .route("/srp/test", post(handle_test_srp))
@@ -230,3 +233,115 @@ pub async fn method_not_allowed(req: Request, next: Next) -> impl IntoResponse {
         _ => Ok(resp),
     }
 }
+
+pub async fn handle_get_task_timeline(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path(task_id): axum::extract::Path<uuid::Uuid>,
+) -> impl axum::response::IntoResponse {
+    #[derive(sqlx::FromRow)]
+    struct TaskDetails {
+        title: String,
+        global_goal: String,
+        status: String,
+        current_step_index: i32,
+        checkpoints: serde_json::Value,
+    }
+
+    let task_res = sqlx::query_as::<_, TaskDetails>(
+        "SELECT title, global_goal, status, current_step_index, checkpoints \
+         FROM autonomous_tasks WHERE id = $1 LIMIT 1"
+    )
+    .bind(task_id)
+    .fetch_optional(&state.pool)
+    .await;
+
+    let task = match task_res {
+        Ok(Some(t)) => t,
+        Ok(None) => return axum::Json(ApiResponse::not_found("Task not found")),
+        Err(e) => {
+            tracing::error!("Failed to fetch task: {}", e);
+            return axum::Json(ApiResponse::failed("Failed to fetch task details"));
+        }
+    };
+
+    #[derive(sqlx::FromRow)]
+    struct TimelineRouteLog {
+        step_index: i32,
+        event_type: String,
+        log_content: String,
+        raw_payload: serde_json::Value,
+        created_at: chrono::DateTime<chrono::Utc>,
+    }
+
+    let timeline_res = sqlx::query_as::<_, TimelineRouteLog>(
+        "SELECT step_index, event_type, log_content, raw_payload, created_at \
+         FROM autonomous_task_logs WHERE task_id = $1 ORDER BY created_at ASC"
+    )
+    .bind(task_id)
+    .fetch_all(&state.pool)
+    .await;
+
+    match timeline_res {
+        Ok(logs) => {
+            let json_logs: Vec<serde_json::Value> = logs
+                .into_iter()
+                .map(|log| {
+                    serde_json::json!({
+                        "step_index": log.step_index,
+                        "event_type": log.event_type,
+                        "log_content": log.log_content,
+                        "raw_payload": log.raw_payload,
+                        "created_at": log.created_at
+                    })
+                })
+                .collect();
+            
+            let combined = serde_json::json!({
+                "title": task.title,
+                "global_goal": task.global_goal,
+                "status": task.status,
+                "current_step_index": task.current_step_index,
+                "checkpoints": task.checkpoints,
+                "logs": json_logs
+            });
+
+            axum::Json(ApiResponse::ok(combined, "Success"))
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch task timeline: {}", e);
+            axum::Json(ApiResponse::failed("Failed to fetch task timeline"))
+        }
+    }
+}
+
+pub async fn handle_get_all_tasks(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> impl axum::response::IntoResponse {
+    #[derive(sqlx::FromRow, serde::Serialize)]
+    struct TaskItem {
+        id: uuid::Uuid,
+        conversation_id: uuid::Uuid,
+        title: String,
+        global_goal: String,
+        status: String,
+        current_step_index: i32,
+        created_at: chrono::DateTime<chrono::Utc>,
+    }
+
+    let tasks_res = sqlx::query_as::<_, TaskItem>(
+        "SELECT id, conversation_id, title, global_goal, status, current_step_index, created_at \
+         FROM autonomous_tasks ORDER BY created_at DESC"
+    )
+    .fetch_all(&state.pool)
+    .await;
+
+    match tasks_res {
+        Ok(tasks) => axum::Json(ApiResponse::ok(tasks, "Success")),
+        Err(e) => {
+            tracing::error!("Failed to fetch tasks: {}", e);
+            axum::Json(ApiResponse::failed("Failed to fetch tasks"))
+        }
+    }
+}
+
+

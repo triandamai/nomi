@@ -103,6 +103,8 @@ impl ToolDispatcher {
         plugins.insert("parse_to_json", Arc::new(ParseStringToJsonPlugin));
         plugins.insert("create_sticker", Arc::new(StickerGeneratorPlugin));
         plugins.insert("get_current_weather", Arc::new(WeatherFallbackPlugin));
+        plugins.insert("instantiate_autonomous_task", Arc::new(crate::common::tools::plugins::instantiate_autonomous_task::InstantiateAutonomousTaskPlugin));
+
 
         Self {
             pool,

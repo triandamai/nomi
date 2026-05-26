@@ -329,19 +329,21 @@ pub async fn execute_tools(
                 "executing function call"
             );
 
-            // Send tool_start SSE event
-            let _ = send_tool_update(
-                &dispatcher.app_state,
-                vec![dispatcher.user_id.unwrap()],
-                dispatcher.conversation_id.unwrap(),
-                MessageSource::Multiple {
-                    source: vec!["web".to_string(), "mobile".to_string()],
-                },
-                false,
-                "tool_start".to_string(),
-                call_name.clone(),
-            )
-            .await;
+            // Send tool_start SSE event if both user_id and conversation_id are present
+            if let (Some(uid), Some(cid)) = (dispatcher.user_id, dispatcher.conversation_id) {
+                let _ = send_tool_update(
+                    &dispatcher.app_state,
+                    vec![uid],
+                    cid,
+                    MessageSource::Multiple {
+                        source: vec!["web".to_string(), "mobile".to_string()],
+                    },
+                    false,
+                    "tool_start".to_string(),
+                    call_name.clone(),
+                )
+                .await;
+            }
 
             // 1. Check Static Plugins
             if let Some(plugin) = dispatcher.plugins.get(call_name.as_str()) {
@@ -365,18 +367,20 @@ pub async fn execute_tools(
                     },
                 };
 
-                let _ = send_tool_update(
-                    &dispatcher.app_state,
-                    vec![dispatcher.user_id.unwrap()],
-                    dispatcher.conversation_id.unwrap(),
-                    MessageSource::Multiple {
-                        source: vec!["web".to_string(), "mobile".to_string()],
-                    },
-                    false,
-                    "tool_end".to_string(),
-                    call_name.clone(),
-                )
-                .await;
+                if let (Some(uid), Some(cid)) = (dispatcher.user_id, dispatcher.conversation_id) {
+                    let _ = send_tool_update(
+                        &dispatcher.app_state,
+                        vec![uid],
+                        cid,
+                        MessageSource::Multiple {
+                            source: vec!["web".to_string(), "mobile".to_string()],
+                        },
+                        false,
+                        "tool_end".to_string(),
+                        call_name.clone(),
+                    )
+                    .await;
+                }
 
                 return (call_name, result);
             }
@@ -436,35 +440,38 @@ pub async fn execute_tools(
                     },
                 };
 
+                if let (Some(uid), Some(cid)) = (dispatcher.user_id, dispatcher.conversation_id) {
+                    let _ = send_tool_update(
+                        &dispatcher.app_state,
+                        vec![uid],
+                        cid,
+                        MessageSource::Multiple {
+                            source: vec!["web".to_string(), "mobile".to_string()],
+                        },
+                        false,
+                        "tool_end".to_string(),
+                        call_name.clone(),
+                    )
+                    .await;
+                }
+
+                return (call_name, result);
+            }
+
+            if let (Some(uid), Some(cid)) = (dispatcher.user_id, dispatcher.conversation_id) {
                 let _ = send_tool_update(
                     &dispatcher.app_state,
-                    vec![dispatcher.user_id.unwrap()],
-                    dispatcher.conversation_id.unwrap(),
+                    vec![uid],
+                    cid,
                     MessageSource::Multiple {
                         source: vec!["web".to_string(), "mobile".to_string()],
                     },
                     false,
                     "tool_end".to_string(),
-                    call_name.clone(),
+                    StatusRegistry::random_action_phrase(call_name.clone().as_str()),
                 )
                 .await;
-
-                return (call_name, result);
             }
-
-            // Fallback for missing tools
-            let _ = send_tool_update(
-                &dispatcher.app_state,
-                vec![dispatcher.user_id.unwrap()],
-                dispatcher.conversation_id.unwrap(),
-                MessageSource::Multiple {
-                    source: vec!["web".to_string(), "mobile".to_string()],
-                },
-                false,
-                "tool_end".to_string(),
-                StatusRegistry::random_action_phrase(call_name.clone().as_str()),
-            )
-            .await;
 
             (call_name.clone(), ToolResult{
                 error: format!("Plugin : {} Failed because is not exist or you calling old deprecated tool", call_name),
