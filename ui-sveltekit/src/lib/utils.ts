@@ -102,7 +102,7 @@ export const mdIt = new MarkdownIt({
 	typographer: true,
 	highlight: (code, lang):string => {
 		if (lang === 'mermaid') {
-			return `<pre class="mermaid m-4 p-4">${code}</pre>`;
+			return `<div class="mermaid-container"><pre class="mermaid">${code}</pre></div>`;
 		}
 
 		// @ts-ignore

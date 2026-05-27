@@ -7,38 +7,77 @@
     let content = $state('');
     let renderedContent = $state('');
     let isLoading = $state(true);
+    let debugLogs = $state<string[]>([]);
+
+    function logDebug(msg: string) {
+        debugLogs = [...debugLogs, `${new Date().toLocaleTimeString()}: ${msg}`];
+    }
 
     async function fetchDoc() {
         isLoading = true;
+        logDebug("Initializing fetchDoc()...");
         try {
             const res = await chatApi.getDocumentation();
             content = res.data;
+            logDebug(`Fetched README successfully. Length: ${content.length} chars.`);
+            
             if (mdIt) {
                 renderedContent = mdIt.render(content);
+                logDebug("Rendered markdown to HTML successfully.");
+                
+                // Toggle isLoading to false immediately so Svelte mounts the raw HTML DOM container
+                isLoading = false;
                 
                 // Initialize mermaid after rendering
                 await tick();
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                const nodes = document.querySelectorAll('.mermaid');
+                logDebug(`DOM tick complete. Found ${nodes.length} elements with class '.mermaid'.`);
+                
                 try {
                     const mermaid = (await import('mermaid')).default;
+                    logDebug("Successfully imported mermaid library.");
+                    
                     mermaid.initialize({
                         startOnLoad: false,
                         theme: 'dark',
                         securityLevel: 'loose',
                         fontFamily: 'inherit',
                     });
+                    logDebug("Initialized mermaid config.");
                     
-                    const nodes = document.querySelectorAll('.mermaid');
-                    if (nodes.length > 0) {
-                        await mermaid.run({
-                            nodes: Array.from(nodes) as HTMLElement[],
-                        });
+                    // Render each mermaid node individually inside a try-catch to prevent a single broken diagram from crashing the page
+                    for (const [idx, node] of Array.from(nodes).entries()) {
+                        try {
+                            // Clear any data-processed attribute so Mermaid doesn't skip it
+                            node.removeAttribute('data-processed');
+                            
+                            // Safe decode HTML entities that might have been escaped during parsing
+                            let txt = node.textContent || '';
+                            txt = txt
+                                .replace(/&gt;/g, '>')
+                                .replace(/&lt;/g, '<')
+                                .replace(/&amp;/g, '&');
+                            node.textContent = txt;
+
+                            logDebug(`Rendering diagram #${idx + 1} (text length: ${txt.length})...`);
+                            await mermaid.run({
+                                nodes: [node as HTMLElement],
+                            });
+                            logDebug(`Successfully rendered diagram #${idx + 1}.`);
+                        } catch (err: any) {
+                            logDebug(`Error rendering diagram #${idx + 1}: ${err.message || err}`);
+                        }
                     }
-                } catch (err) {
-                    console.error("Mermaid initialization failed:", err);
+                } catch (err: any) {
+                    logDebug(`Mermaid library error: ${err.message || err}`);
                 }
+            } else {
+                logDebug("Error: mdIt markdown parser is undefined.");
             }
-        } catch (e) {
-            console.error(e);
+        } catch (e: any) {
+            logDebug(`API Fetch Error: ${e.message || e}`);
         } finally {
             isLoading = false;
         }
@@ -83,6 +122,19 @@
                 <div class="mt-8 flex items-center justify-between text-[10px] text-slate-600 font-mono uppercase tracking-widest px-4">
                     <span>Generated from root/README.md</span>
                     <span>System Version 2.0.0-FLASH</span>
+                </div>
+
+                <!-- Developer Diagnostic Drawer -->
+                <div class="mt-6 bg-slate-900/60 border border-amber-500/20 rounded-2xl p-5 shadow-xl backdrop-blur-sm">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-amber-500 font-bold uppercase tracking-wider text-[10px]">Client Diagnostics</span>
+                        <span class="text-[9px] font-mono text-slate-600 font-bold">docs_mermaid_flow</span>
+                    </div>
+                    <div class="space-y-1 font-mono text-[10px] text-slate-400 max-h-40 overflow-y-auto">
+                        {#each debugLogs as log}
+                            <div class="border-l border-amber-500/20 pl-2 py-0.5">{log}</div>
+                        {/each}
+                    </div>
                 </div>
             {/if}
         </div>

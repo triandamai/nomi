@@ -124,7 +124,6 @@ pub fn create_router(state: AppState) -> Router {
         .route("/tasks/{id}/timeline", get(handle_get_task_timeline))
         .route("/tasks/{id}/cancel", post(handle_cancel_task))
 
-        .route("/readme", get(handle_get_readme))
         .route("/srp/available", get(handle_get_available_plugins))
         .route("/srp/test", post(handle_test_srp))
         .route("/srp/learn", post(handle_learn_srp))
@@ -213,6 +212,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/files/{path}/{filename}", get(handle_get_path_file))
         .route("/internal/rpc/retrieve-knowledge", post(handle_internal_retrieve_knowledge))
         .route("/internal/rpc/incoming-history", post(handle_internal_incoming_history))
+        .route("/readme", get(handle_get_readme))
         .nest("/v1/admin", admin_routes)
         .nest("/v1/money", money_routes)
         .merge(protected_routes)

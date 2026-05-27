@@ -243,7 +243,6 @@ pub async fn handle_get_skill_schemas(
 
 pub async fn handle_get_readme(
     State(_state): State<AppState>,
-    axum::extract::Extension(_claims): axum::extract::Extension<auth::Claims>,
 ) -> ApiResponse<String> {
     // Try current directory first (Docker/Prod), then parent (Local Dev)
     let paths = ["./README.md", "../README.md"];

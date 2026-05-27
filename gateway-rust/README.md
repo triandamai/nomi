@@ -162,7 +162,52 @@ graph TD
 - **Recursive Correction**: If a response is truncated or a tool fails, the orchestrator detects the error and injects a system-level "self-correction" prompt.
 - **Memory Consolidation**: Once the turn is finished, a background task summarizes the interaction and updates the `knowledge_base` with new facts.
 
-### 8. Self-Reinforcement Engine (SRP)
+### 8. Universal HTO Multi-Resurrection & Dynamic Bridging
+Nomi operates a sophisticated Human-in-the-Loop (HITL) coordination and resurrection engine for background workflow steps, bridging context dynamically between distinct conversation channels.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Owner as Owner (Parent Chat)
+    participant Gateway as v2_orchestrator
+    participant DB as Postgres Ledger
+    participant Nomi as Nomi HTO Loop
+    actor Target as Target Person (WhatsApp JID)
+
+    Owner->>Gateway: "Ask Triandamai to meet tomorrow."
+    Gateway->>DB: Spawn sub_conversation_id & task
+    Gateway->>Nomi: Wake up loop
+    Nomi->>Target: Outbound: "Hi Triandamai, Trian wants to meet tomorrow. What time works?"
+    Nomi->>DB: Set status = 'waiting_external_feedback' & sleep
+    
+    Target->>Gateway: Reply: "How about tomorrow at 2 PM?"
+    Gateway->>DB: Intercept (Target JID -> Sub-Chat)
+    Gateway->>DB: Set status = 'running'
+    Gateway->>Nomi: Wake up loop
+    Nomi->>Owner: Outbound: "He suggested 2 PM tomorrow. Does that work?"
+    Nomi->>DB: Set status = 'paused_for_input' & sleep
+    
+    Owner->>Gateway: Reply: "No, suggest 4 PM instead."
+    Gateway->>DB: Intercept (Owner -> Parent Chat)
+    Gateway->>DB: Set status = 'running'
+    Gateway->>Nomi: Wake up loop
+    Nomi->>Target: Outbound: "He is busy at 2 PM. How about 4 PM tomorrow?"
+    Nomi->>DB: Set status = 'waiting_external_feedback' & sleep
+
+    Target->>Gateway: Reply: "4 PM works perfectly!"
+    Gateway->>DB: Intercept (Target JID -> Sub-Chat)
+    Gateway->>DB: Set status = 'running'
+    Gateway->>Nomi: Wake up loop
+    Nomi->>Nomi: Schedule Google Calendar meeting
+    Nomi->>Owner: Report: "Done! Scheduled meeting for 4 PM tomorrow."
+```
+
+#### Key Technical Principles:
+1. **Dynamic Twin-History Hydration:** The HTO background worker prompt dynamically constructs context from **both** the parent room (Owner chat) and the sub-chat room (Target chat), allowing the LLM planner to act as a conversational bridge across channels without hardcoded routing rules.
+2. **Dual-Interception Gateway Hooks:** The ingestion engine (`v2_orchestrator.rs`) contains dynamic interception hooks that intercept signals coming into target or parent conversations when in suspended states (`waiting_external_feedback` or `paused_for_input`).
+3. **Universal Workflow Adaptability:** The same state machine handles both conversational sub-chat workflows and system integration tasks (like Google Docs or expense logs requesting parameter updates).
+
+### 9. Self-Reinforcement Engine (SRP)
 Nomi autonomously evolves her core tool-handling logic and architects new capabilities from scratch, transitioning from a static assistant into a self-expanding Operating System.
 
 #### 🧠 Autonomous Evolution

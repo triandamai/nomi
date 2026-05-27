@@ -20,8 +20,8 @@
 	let opening = false;
 
 	async function open() {
-		const [token] = getSession()
-		const isPublicRoute = page.url.pathname === '/' || page.url.pathname === '/login';
+		const [token] = getSession();
+		const isPublicRoute = page.url.pathname === '/' || page.url.pathname === '/login' || page.url.pathname.startsWith('/docs');
 
 		if (!token && !isPublicRoute) {
 			goto('/login');
