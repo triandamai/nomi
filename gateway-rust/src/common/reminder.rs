@@ -315,16 +315,27 @@ pub async fn handle_autonomous_task(state: &AppState, task: &TaskData) -> anyhow
             .await;
 
             // 3. Send message informing user in the conversation dynamically with Nomi persona
-            let slang_prompt = format!(
-                "You are Nomi. Inform your friend Trian in a warm, highly casual Indonesian/English slang update that you have successfully launched/auto-ignited a scheduled autonomous task: '{}'. Explain the global goal: '{}' and remind him he can watch live updates in the timeline side-panel. Keep it casual, fun, and teammate-oriented (e.g. 'aman', 'otw', 'sip', 'gua').",
-                title, goal
+            let soul_res = sqlx::query_scalar::<_, Option<String>>(
+                "SELECT soul_content FROM conversations WHERE id = $1"
+            )
+            .bind(conversation_id)
+            .fetch_one(&state.pool)
+            .await;
+            let soul_content = soul_res.ok().flatten().unwrap_or_else(|| "You are Nomi, a helpful AI teammate.".to_string());
+
+            let system_prompt = format!(
+                "Your persona/soul instructions:\n=== START PERSONA ===\n{}\n=== END PERSONA ===\n\n\
+                 Please inform the user that you have successfully launched/auto-ignited a scheduled workflow: '{}'. \
+                 Explain the global goal: '{}' and remind them that they can watch its live timeline progress in the side-panel. \
+                 Adopt the exact tone, style, and language guidelines defined in your soul instructions above.",
+                soul_content, title, goal
             );
 
-            let outbound_text = if let Ok(res) = state.gemini.generate_content().with_user_message(slang_prompt).with_temperature(0.7).execute().await {
+            let outbound_text = if let Ok(res) = state.gemini.generate_content().with_user_message(system_prompt).with_temperature(0.7).execute().await {
                 res.text().trim().to_string()
             } else {
                 format!(
-                    "🚀 *SCHEDULED TASK AUTO-IGNITED*\nI have successfully launched your scheduled autonomous task: *{}*.\n\n*Goal:* {}\n\nYou can watch its live timeline progress in the side-panel! ✨",
+                    "🚀 *SCHEDULED WORKFLOW AUTO-IGNITED*\nI have successfully launched your scheduled workflow: *{}*.\n\n*Goal:* {}\n\nYou can watch its live timeline progress in the side-panel! ✨",
                     title, goal
                 )
             };

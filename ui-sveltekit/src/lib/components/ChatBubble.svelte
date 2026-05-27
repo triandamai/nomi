@@ -432,7 +432,7 @@
                         {#if ref.tool?.toLowerCase().includes('reminder') || ref.tool?.toLowerCase().includes('schedule_task')}
                             <ReminderCard ref_id={ref.ref_id} />
                         {:else if ref.tool?.toLowerCase().includes('autonomous') || ref.tool?.toLowerCase().includes('task')}
-                            <TaskCard ref_id={ref.ref_id} />
+                            <TaskCard ref_id={ref.ref_id} collapsed={true} />
                         {:else if ref.tool?.toLowerCase().includes('finance') || ref.tool?.toLowerCase().includes('expense') || ref.tool?.toLowerCase().includes('money') || ref.tool?.toLowerCase().includes('manage_finance')}
                             <FinanceCard ref_id={ref.ref_id} />
                         {:else if ref.tool?.toLowerCase().includes('skill') || ref.tool?.toLowerCase().includes('proposal') || ref.tool?.toLowerCase().includes('suggest')}

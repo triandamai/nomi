@@ -105,7 +105,7 @@ impl NomiToolPlugin for InstantiateAutonomousTaskPlugin {
                 error: "".to_string(),
                 success: true,
                 content: res_content,
-                follow_up_prompt: format!("Inform Trian in a warm, highly casual Indonesian/English slang update that the background autonomous task for '{}' has been launched, and they can watch live progress in the timeline side-panel. Keep it fun and teammate-oriented (e.g. 'aman', 'otw', 'sip', 'gua').", title),
+                follow_up_prompt: format!("Inform the user that the background Nomi Workflow for '{}' has been launched, and they can watch live progress in the Nomi Workflow timeline side-panel.", title),
                 ref_id: task_uuid.to_string(), // Triggers orchestrator metadata hook
             })
         }

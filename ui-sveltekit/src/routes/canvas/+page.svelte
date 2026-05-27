@@ -20,7 +20,8 @@
         Settings,
         Lock,
         Share2,
-        Cpu
+        Cpu,
+        Server
     } from 'lucide-svelte';
     import AutonomousTasksPopUp from '$lib/components/AutonomousTasksPopUp.svelte';
     import ProfileSettingsPopUp from '$lib/components/ProfileSettingsPopUp.svelte';
@@ -29,7 +30,7 @@
     interface WorkspaceNode {
         id: string;
         label: string;
-        node_type: 'USER' | 'CONVERSATION' | 'REMINDER' | 'SCHEDULED_TASK' | 'AUTONOMOUS_TASK' | 'MONEY' | 'HEALTH' | 'CHANNEL' | 'SRP_PROPOSAL';
+        node_type: 'USER' | 'SYSTEM' | 'LOAD_MORE' | 'CONVERSATION' | 'REMINDER' | 'SCHEDULED_TASK' | 'AUTONOMOUS_TASK' | 'MONEY' | 'HEALTH' | 'CHANNEL' | 'SRP_PROPOSAL';
         status: string;
         subtitle?: string;
         info?: string;
@@ -58,6 +59,8 @@
     let isFetchingCategories = $state(false);
     let isFetchingItems = $state(false);
     let searchQuery = $state('');
+    let usersOffset = $state(0);
+    let isFetchingMoreUsers = $state(false);
 
     // Zoom & Pan Canvas Transform State
     let zoom = $state(0.9);
@@ -72,17 +75,34 @@
     let selectedUserId = $state<string | null>(null);
     let selectedCategoryType = $state<string | null>(null);
 
-    // 1. Position USER nodes (always visible, Level 1)
+    // 1. Position USER and SYSTEM nodes (always visible, Level 1)
     let positionedUserNodes = $derived.by(() => {
-        const userNodes = nodes.filter(n => n.node_type === 'USER');
+        const rootNodes = nodes.filter(n => n.node_type === 'USER' || n.node_type === 'SYSTEM');
         let userY = 150;
-        return userNodes.map(node => {
+        const mapped = rootNodes.map(node => {
             const copy = { ...node };
             copy.x = 80;
             copy.y = userY;
             userY += 130;
             return copy;
         });
+
+        // Add a "Load More" node at the bottom of the list if there are at least 10 users in the workspace
+        const userNodesCount = nodes.filter(n => n.node_type === 'USER').length;
+        if (userNodesCount >= 10 && userNodesCount % 10 === 0) {
+            mapped.push({
+                id: 'load-more-users-node',
+                label: 'Load More Users',
+                node_type: 'LOAD_MORE' as any,
+                status: 'active',
+                subtitle: 'Expand Directory',
+                info: 'Click to load additional workspace profiles',
+                x: 80,
+                y: userY
+            });
+        }
+
+        return mapped;
     });
 
     // 2. Position Category nodes (revealed on user click, Level 2)
@@ -193,6 +213,26 @@
         }
     }
 
+    // Paginated load more users
+    async function loadMoreUsers() {
+        if (isFetchingMoreUsers) return;
+        isFetchingMoreUsers = true;
+        usersOffset += 10;
+        try {
+            const res = await api.get<GraphData>(`/graph/workspace?offset=${usersOffset}`);
+            if (res.data) {
+                const newNodes = res.data.nodes.filter(n => !nodes.some(existing => existing.id === n.id));
+                const newEdges = res.data.edges.filter(e => !edges.some(existing => existing.source === e.source && existing.target === e.target));
+                nodes = [...nodes, ...newNodes];
+                edges = [...edges, ...newEdges];
+            }
+        } catch (e) {
+            console.error('Failed to load more users:', e);
+        } finally {
+            isFetchingMoreUsers = false;
+        }
+    }
+
     // Fetch Categories for a given user (Level 2: Fetch Categories)
     async function loadCategories(userId: string) {
         isFetchingCategories = true;
@@ -236,9 +276,6 @@
     // Canvas Zoom & Pan Mouse Listeners
     function handleMouseDown(e: MouseEvent) {
         if ((e.target as HTMLElement).closest('.node-card')) return;
-        selectedNodeId = null;
-        selectedUserId = null;
-        selectedCategoryType = null;
         isDragging = true;
         startX = e.clientX - panX;
         startY = e.clientY - panY;
@@ -271,9 +308,6 @@
 
     function handleTouchStart(e: TouchEvent) {
         if ((e.target as HTMLElement).closest('.node-card')) return;
-        selectedNodeId = null;
-        selectedUserId = null;
-        selectedCategoryType = null;
         isTouching = true;
         
         if (e.touches.length === 1) {
@@ -347,6 +381,24 @@
         }
 
         switch (type) {
+            case 'LOAD_MORE': 
+                return {
+                    border: 'border-slate-700/60 hover:border-slate-500 hover:scale-102 border-dashed shadow-[0_0_10px_rgba(255,255,255,0.02)]',
+                    text: 'text-slate-400 group-hover:text-slate-200',
+                    bg: 'bg-slate-950/20 hover:bg-slate-900/40',
+                    glow: '',
+                    accent: '#475569',
+                    icon: RefreshCw
+                };
+            case 'SYSTEM': 
+                return {
+                    border: 'border-fuchsia-500/40 hover:border-fuchsia-500 shadow-fuchsia-500/10',
+                    text: 'text-fuchsia-400',
+                    bg: 'bg-fuchsia-500/5',
+                    glow: 'shadow-[0_0_20px_rgba(217,70,239,0.15)]',
+                    accent: '#d946ef',
+                    icon: Server
+                };
             case 'USER': 
                 return {
                     border: 'border-blue-500/40 hover:border-blue-500 shadow-blue-500/10',
@@ -484,10 +536,11 @@
         }
     }
 
-    // Contextual Click Action (Spawning specialized Svelte Popups!)
     function handleNodeClick(node: any) {
-        if (node.node_type === 'USER') {
-            // Clicked a user: expand categories
+        if (node.node_type === 'LOAD_MORE') {
+            loadMoreUsers();
+        } else if (node.node_type === 'USER' || node.node_type === 'SYSTEM') {
+            // Clicked a user or system node: expand categories
             selectedUserId = node.id;
             selectedCategoryType = null; // reset category
             loadCategories(node.id);
@@ -814,9 +867,11 @@
 
                 <!-- HTML Nodes Layer -->
                 {#if isFetchingCategories}
+                    {@const clickedUserNode = positionedUserNodes.find(u => u.id === selectedUserId)}
+                    {@const loaderTop = clickedUserNode ? clickedUserNode.y : 200}
                     <div 
                         class="absolute w-[250px] min-h-[90px] rounded-2xl bg-slate-950/40 border border-slate-900 border-dashed p-4 flex items-center justify-center gap-3 animate-pulse pointer-events-none"
-                        style="left: 420px; top: 200px;"
+                        style="left: 420px; top: {loaderTop}px;"
                     >
                         <RefreshCw class="w-4 h-4 text-sky-500 animate-spin" />
                         <span class="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Hydrating Folders...</span>
@@ -824,9 +879,11 @@
                 {/if}
 
                 {#if isFetchingItems}
+                    {@const clickedCatNode = visibleCategoryNodes.find(c => c.categoryType === selectedCategoryType)}
+                    {@const loaderTop = clickedCatNode ? clickedCatNode.y : 200}
                     <div 
                         class="absolute w-[250px] min-h-[90px] rounded-2xl bg-slate-950/40 border border-slate-900 border-dashed p-4 flex items-center justify-center gap-3 animate-pulse pointer-events-none"
-                        style="left: 760px; top: 200px;"
+                        style="left: 760px; top: {loaderTop}px;"
                     >
                         <RefreshCw class="w-4 h-4 text-emerald-500 animate-spin" />
                         <span class="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Hydrating Leaves...</span>
@@ -849,7 +906,7 @@
                     >
                         <!-- n8n Port Anchors (Circle Ports) -->
                         <!-- Input Port (Left side on desktop, Top side on mobile) -->
-                        {#if node.node_type !== 'USER'}
+                        {#if node.node_type !== 'USER' && node.node_type !== 'SYSTEM' && node.node_type !== 'LOAD_MORE'}
                             <div 
                                 class="absolute w-3 h-3 rounded-full bg-slate-950 border flex items-center justify-center z-10 group-hover:scale-110 transition-transform {isMobile ? 'top-0 left-1/2 -translate-x-1/2 -translate-y-1.5' : 'top-1/2 -left-1.5 -translate-y-1/2'}"
                                 style="border-color: {theme.accent};"
@@ -859,7 +916,7 @@
                         {/if}
 
                         <!-- Output Port (Right side on desktop, Bottom side on mobile) -->
-                        {#if node.node_type === 'USER' || node.node_type === 'CONVERSATION' || node.node_type.startsWith('CATEGORY_')}
+                        {#if node.node_type === 'USER' || node.node_type === 'SYSTEM' || node.node_type === 'CONVERSATION' || node.node_type.startsWith('CATEGORY_')}
                             <div 
                                 class="absolute w-3 h-3 rounded-full bg-slate-950 border flex items-center justify-center z-10 group-hover:scale-110 transition-transform {isMobile ? 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1.5' : 'top-1/2 -right-1.5 -translate-y-1/2'}"
                                 style="border-color: {theme.accent};"

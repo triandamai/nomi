@@ -170,7 +170,7 @@ pub async fn advanced_orchestrate_task_step(
         }
 
         // 5. Build HTO Operational System Prompt
-        let soul_text = task.soul_content.unwrap_or_else(|| "You are Nomi, a helpful AI teammate.".to_string());
+        let soul_text = task.soul_content.clone().unwrap_or_else(|| "You are Nomi, a helpful AI teammate.".to_string());
         let bootstrap_text = task.bootstrap_content.unwrap_or_default();
 
         let hto_prompt = format!(
@@ -434,10 +434,13 @@ pub async fn advanced_orchestrate_task_step(
                 let _ = dispatch_task_update(task_id, conversation_id, &state, &pool).await;
 
                 // Send teammate-style error/cancellation explanation to the chat room
+                let soul_content = task.soul_content.clone().unwrap_or_else(|| "You are Nomi, a helpful AI teammate.".to_string());
                 let error_prompt = format!(
-                    "You are Nomi. Inform your friend Trian in a warm, casual Indonesian/English slang update that the autonomous task '{}' has been cancelled/failed because step {} encountered too many execution errors (failed 5 times). Tell him you stopped it to save resources and that he might need to check contact details or lookups.",
-                    task.title,
-                    current_step_index
+                    "Your persona/soul instructions:\n=== START PERSONA ===\n{}\n=== END PERSONA ===\n\n\
+                     Inform the user that the background workflow '{}' has failed or was cancelled because step {} encountered too many execution errors (failed 5 times). \
+                     Explain that you stopped it to save resources, and suggest they check lookup details or parameters. \
+                     Adopt the exact tone, style, and language guidelines defined in your soul instructions above.",
+                    soul_content, task.title, current_step_index
                 );
 
                 if let Ok(err_res) = state.gemini.generate_content().with_user_message(error_prompt).with_temperature(0.7).execute().await {
@@ -668,9 +671,13 @@ pub async fn advanced_orchestrate_task_step(
                 let _ = dispatch_task_update(task_id, conversation_id, &state, &pool).await;
 
                 // Broadcast victory natural slang to user
+                let soul_content = task.soul_content.clone().unwrap_or_else(|| "You are Nomi, a helpful AI teammate.".to_string());
                 let victory_prompt = format!(
-                    "You are Nomi. Inform your friend Trian in highly casual, warm Indonesian/English slang that you've fully completed the global goal: '{}'. Celebrate with teammate vibes!",
-                    global_goal
+                    "Your persona/soul instructions:\n=== START PERSONA ===\n{}\n=== END PERSONA ===\n\n\
+                     Inform the user that you have fully completed the global goal: '{}'. \
+                     Celebrate this milestone! \
+                     Adopt the exact tone, style, and language guidelines defined in your soul instructions above.",
+                    soul_content, global_goal
                 );
                 
                 if let Ok(vic_res) = state.gemini.generate_content().with_user_message(victory_prompt).with_temperature(0.7).execute().await {

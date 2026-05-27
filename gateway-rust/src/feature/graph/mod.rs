@@ -191,6 +191,8 @@ pub struct WorkspaceGraphData {
 pub struct WorkspaceQuery {
     pub user_id: Option<String>,
     pub category: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 pub async fn handle_get_workspace_graph(
@@ -212,7 +214,11 @@ pub async fn handle_get_workspace_graph(
         // --- LEVEL 1: Fetch Users Only ---
         (None, _) => {
             let users_res = if is_admin {
-                sqlx::query("SELECT id, display_name, role FROM users LIMIT 10")
+                let limit = query.limit.unwrap_or(10);
+                let offset = query.offset.unwrap_or(0);
+                sqlx::query("SELECT id, display_name, role FROM users LIMIT $1 OFFSET $2")
+                    .bind(limit)
+                    .bind(offset)
                     .fetch_all(&state.pool)
                     .await
             } else {
@@ -244,97 +250,129 @@ pub async fn handle_get_workspace_graph(
                     info: None,
                 });
             }
+
+            // Add static independent "Nomi System" node
+            nodes.push(WorkspaceNode {
+                id: "system-node".to_string(),
+                label: "Nomi System".to_string(),
+                node_type: "SYSTEM".to_string(),
+                status: Some("active".to_string()),
+                subtitle: Some("Core Platform".to_string()),
+                info: Some("Autonomous intelligence orchestrator".to_string()),
+            });
         }
 
         // --- LEVEL 2: Fetch Categories for specific User ---
         (Some(query_user_id), None) => {
-            let user_uuid = Uuid::parse_str(&query_user_id).unwrap_or_default();
-            let mut categories = Vec::new();
-
-            // 1. HEALTH
-            if sqlx::query("SELECT 1 FROM user_health_metrics WHERE user_id = $1 LIMIT 1")
-                .bind(user_uuid)
-                .fetch_optional(&state.pool)
-                .await
-                .map(|opt| opt.is_some())
-                .unwrap_or(false)
-            {
-                categories.push("HEALTH");
-            }
-
-            // 2. CONVERSATION
-            if sqlx::query("SELECT 1 FROM conversations WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1) LIMIT 1")
-                .bind(user_uuid)
-                .fetch_optional(&state.pool)
-                .await
-                .map(|opt| opt.is_some())
-                .unwrap_or(false)
-            {
-                categories.push("CONVERSATION");
-            }
-
-            // 3. SRP_PROPOSAL
-            if sqlx::query("SELECT 1 FROM plugin_creation_suggestions LIMIT 1")
-                .fetch_optional(&state.pool)
-                .await
-                .map(|opt| opt.is_some())
-                .unwrap_or(false)
-            {
-                categories.push("SRP_PROPOSAL");
-            }
-
-            // 4. CHANNEL
-            if sqlx::query("SELECT 1 FROM channels WHERE conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1 UNION SELECT id FROM conversations WHERE user_id = $1) LIMIT 1")
-                .bind(user_uuid)
-                .fetch_optional(&state.pool)
-                .await
-                .map(|opt| opt.is_some())
-                .unwrap_or(false)
-            {
-                categories.push("CHANNEL");
-            }
-
-            // 5. AUTONOMOUS_TASK
-            categories.push("AUTONOMOUS_TASK");
-
-            // 6. REMINDER / SCHEDULED_TASK
-            let has_reminders = sqlx::query("SELECT 1 FROM reminders WHERE conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1 UNION SELECT id FROM conversations WHERE user_id = $1) LIMIT 1")
-                .bind(user_uuid)
-                .fetch_optional(&state.pool)
-                .await
-                .map(|opt| opt.is_some())
-                .unwrap_or(false);
-            if has_reminders {
-                categories.push("REMINDER");
-                categories.push("SCHEDULED_TASK");
-            }
-
-            // 7. MONEY
-            if sqlx::query("SELECT 1 FROM money_tracking WHERE conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1 UNION SELECT id FROM conversations WHERE user_id = $1) LIMIT 1")
-                .bind(user_uuid)
-                .fetch_optional(&state.pool)
-                .await
-                .map(|opt| opt.is_some())
-                .unwrap_or(false)
-            {
-                categories.push("MONEY");
-            }
-
-            for cat in categories {
+            if query_user_id == "system-node" {
+                // The Nomi System node contains independent SRP proposals!
                 nodes.push(WorkspaceNode {
-                    id: format!("category-{}-{}", query_user_id, cat),
-                    label: format!("{}s", cat.replace('_', " ")),
-                    node_type: format!("CATEGORY_{}", cat),
+                    id: "category-system-node-SRP_PROPOSAL".to_string(),
+                    label: "SRP Proposals".to_string(),
+                    node_type: "CATEGORY_SRP_PROPOSAL".to_string(),
                     status: Some("expanded".to_string()),
                     subtitle: Some("Folder".to_string()),
                     info: None,
                 });
 
                 edges.push(WorkspaceEdge {
-                    source: query_user_id.clone(),
-                    target: format!("category-{}-{}", query_user_id, cat),
+                    source: "system-node".to_string(),
+                    target: "category-system-node-SRP_PROPOSAL".to_string(),
                     relation: "contains".to_string(),
                 });
+            } else {
+                let user_uuid = Uuid::parse_str(&query_user_id).unwrap_or_default();
+                let mut categories = Vec::new();
+
+                // 1. HEALTH
+                if sqlx::query("SELECT 1 FROM user_health_metrics WHERE user_id = $1 LIMIT 1")
+                    .bind(user_uuid)
+                    .fetch_optional(&state.pool)
+                    .await
+                    .map(|opt| opt.is_some())
+                    .unwrap_or(false)
+                {
+                    categories.push("HEALTH");
+                }
+
+                // 2. CONVERSATION
+                if sqlx::query("SELECT 1 FROM conversations WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1) LIMIT 1")
+                    .bind(user_uuid)
+                    .fetch_optional(&state.pool)
+                    .await
+                    .map(|opt| opt.is_some())
+                    .unwrap_or(false)
+                {
+                    categories.push("CONVERSATION");
+                }
+
+                // 3. CHANNEL
+                if sqlx::query("SELECT 1 FROM channels WHERE conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1 UNION SELECT id FROM conversations WHERE user_id = $1) LIMIT 1")
+                    .bind(user_uuid)
+                    .fetch_optional(&state.pool)
+                    .await
+                    .map(|opt| opt.is_some())
+                    .unwrap_or(false)
+                {
+                    categories.push("CHANNEL");
+                }
+
+                // 4. AUTONOMOUS_TASK
+                let has_tasks = sqlx::query(
+                    "SELECT 1 FROM autonomous_tasks WHERE conversation_id IN ( \
+                     SELECT conversation_id FROM conversation_members WHERE user_id = $1 \
+                     UNION \
+                     SELECT id FROM conversations WHERE user_id = $1 \
+                     ) LIMIT 1"
+                )
+                .bind(user_uuid)
+                .fetch_optional(&state.pool)
+                .await
+                .map(|opt| opt.is_some())
+                .unwrap_or(false);
+                if has_tasks {
+                    categories.push("AUTONOMOUS_TASK");
+                }
+
+                // 5. REMINDER / SCHEDULED_TASK
+                let has_reminders = sqlx::query("SELECT 1 FROM reminders WHERE conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1 UNION SELECT id FROM conversations WHERE user_id = $1) LIMIT 1")
+                    .bind(user_uuid)
+                    .fetch_optional(&state.pool)
+                    .await
+                    .map(|opt| opt.is_some())
+                    .unwrap_or(false);
+                if has_reminders {
+                    categories.push("REMINDER");
+                    categories.push("SCHEDULED_TASK");
+                }
+
+                // 6. MONEY
+                if sqlx::query("SELECT 1 FROM money_tracking WHERE conversation_id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1 UNION SELECT id FROM conversations WHERE user_id = $1) LIMIT 1")
+                    .bind(user_uuid)
+                    .fetch_optional(&state.pool)
+                    .await
+                    .map(|opt| opt.is_some())
+                    .unwrap_or(false)
+                {
+                    categories.push("MONEY");
+                }
+
+                for cat in categories {
+                    nodes.push(WorkspaceNode {
+                        id: format!("category-{}-{}", query_user_id, cat),
+                        label: format!("{}s", cat.replace('_', " ")),
+                        node_type: format!("CATEGORY_{}", cat),
+                        status: Some("expanded".to_string()),
+                        subtitle: Some("Folder".to_string()),
+                        info: None,
+                    });
+
+                    edges.push(WorkspaceEdge {
+                        source: query_user_id.clone(),
+                        target: format!("category-{}-{}", query_user_id, cat),
+                        relation: "contains".to_string(),
+                    });
+                }
             }
         }
 
@@ -376,19 +414,13 @@ pub async fn handle_get_workspace_graph(
                     });
                 }
             } else if query_category == "CONVERSATION" {
-                let convs_res = if is_admin {
-                    sqlx::query("SELECT id, title, conversation_type FROM conversations LIMIT 20")
-                        .fetch_all(&state.pool)
-                        .await
-                } else {
-                    sqlx::query(
-                        "SELECT id, title, conversation_type FROM conversations \
-                         WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1) LIMIT 20"
-                    )
-                    .bind(user_uuid)
-                    .fetch_all(&state.pool)
-                    .await
-                };
+                let convs_res = sqlx::query(
+                    "SELECT id, title, conversation_type FROM conversations \
+                     WHERE user_id = $1 OR id IN (SELECT conversation_id FROM conversation_members WHERE user_id = $1) LIMIT 20"
+                )
+                .bind(user_uuid)
+                .fetch_all(&state.pool)
+                .await;
 
                 if let Ok(convs) = convs_res {
                     for conv in convs {
@@ -451,7 +483,6 @@ pub async fn handle_get_workspace_graph(
                 .fetch_all(&state.pool)
                 .await;
 
-                let mut has_tasks = false;
                 if let Ok(convs) = conv_ids_res {
                     for conv in convs {
                         let conv_id = conv.get::<uuid::Uuid, _>("id");
@@ -464,7 +495,6 @@ pub async fn handle_get_workspace_graph(
 
                         if let Ok(tasks) = tasks_res {
                             for task in tasks {
-                                has_tasks = true;
                                 let task_id = task.get::<uuid::Uuid, _>("id").to_string();
                                 let title = task.get::<Option<String>, _>("title").unwrap_or_else(|| "Autonomous Task".to_string());
                                 let status = task.get::<Option<String>, _>("status").unwrap_or_else(|| "running".to_string());
@@ -487,24 +517,6 @@ pub async fn handle_get_workspace_graph(
                             }
                         }
                     }
-                }
-
-                if !has_tasks {
-                    let mock_id = format!("mock-task-{}", query_user_id);
-                    nodes.push(WorkspaceNode {
-                        id: mock_id.clone(),
-                        label: "Autonomous Research Agent".to_string(),
-                        node_type: "AUTONOMOUS_TASK".to_string(),
-                        status: Some("running".to_string()),
-                        subtitle: Some("HTO Loop".to_string()),
-                        info: Some("Ingesting multi-channel memory to synthesize market trends".to_string()),
-                    });
-
-                    edges.push(WorkspaceEdge {
-                        source: format!("category-{}-AUTONOMOUS_TASK", query_user_id),
-                        target: mock_id,
-                        relation: "item".to_string(),
-                    });
                 }
             } else if query_category == "REMINDER" || query_category == "SCHEDULED_TASK" {
                 let conv_ids_res = sqlx::query(

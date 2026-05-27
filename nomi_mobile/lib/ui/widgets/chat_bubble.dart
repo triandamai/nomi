@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/ui/widgets/reminder_card.dart';
 import 'package:nomi_mobile/ui/widgets/finance_card.dart';
 import 'package:nomi_mobile/ui/widgets/proposal_card.dart';
+import 'package:nomi_mobile/ui/widgets/task_card.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/core/utils/formatter.dart';
@@ -481,6 +482,8 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
 
       if (tool.contains('reminder') || tool.contains('schedule_task')) {
         return ReminderCard(refId: refId);
+      } else if (tool.contains('autonomous') || tool.contains('task')) {
+        return TaskCard(refId: refId, collapsed: true);
       } else if (tool.contains('finance') || tool.contains('expense')) {
         return FinanceCard(refId: refId);
       } else if (tool.contains('skill') || tool.contains('proposal')) {

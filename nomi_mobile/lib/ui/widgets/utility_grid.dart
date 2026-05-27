@@ -11,6 +11,7 @@ import 'package:nomi_mobile/ui/widgets/blueprint_viewer.dart';
 import 'package:nomi_mobile/ui/widgets/plugin_console.dart';
 import 'package:nomi_mobile/ui/widgets/factory_console.dart';
 import 'package:nomi_mobile/ui/widgets/user_directory.dart';
+import 'package:nomi_mobile/ui/widgets/autonomous_history.dart';
 
 class UtilityGridSheet extends ConsumerWidget {
   const UtilityGridSheet({super.key});
@@ -79,6 +80,16 @@ class UtilityGridSheet extends ConsumerWidget {
                         onTap: () {
                           Navigator.pop(context);
                           showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => const ReminderHistorySheet());
+                        },
+                      ),
+                      _UtilityButton(
+                        icon: LucideIcons.activity,
+                        label: 'Nomi Workflows',
+                        color: const Color(AppConfig.indigo),
+                        isLargeScreen: isLargeScreen,
+                        onTap: () {
+                          Navigator.pop(context);
+                          showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => const AutonomousHistorySheet());
                         },
                       ),
                       _UtilityButton(
