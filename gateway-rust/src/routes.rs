@@ -74,6 +74,14 @@ pub fn create_router(state: AppState) -> Router {
             "/redis/publish/outbound",
             post(crate::feature::admin::handle_outbound_redis),
         )
+        .route(
+            "/tasks/simulation/seed",
+            post(crate::feature::admin::handle_seed_simulation),
+        )
+        .route(
+            "/tasks/simulation/messages/{conversation_id}",
+            get(crate::feature::admin::handle_get_simulation_messages),
+        )
         .route("/guardrails/patterns", get(handle_get_guardrail_patterns))
         .route("/guardrails/patterns", post(handle_insert_guardrail_pattern))
         .route("/guardrails/patterns/{id}", delete(handle_delete_guardrail_pattern))
@@ -114,6 +122,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/reminders/{id}", get(handle_get_reminder_detail))
         .route("/tasks", get(handle_get_all_tasks))
         .route("/tasks/{id}/timeline", get(handle_get_task_timeline))
+        .route("/tasks/{id}/cancel", post(handle_cancel_task))
 
         .route("/readme", get(handle_get_readme))
         .route("/srp/available", get(handle_get_available_plugins))
@@ -343,6 +352,72 @@ pub async fn handle_get_all_tasks(
             axum::Json(ApiResponse::failed("Failed to fetch tasks"))
         }
     }
+}
+
+pub async fn handle_cancel_task(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path(task_id): axum::extract::Path<uuid::Uuid>,
+) -> impl axum::response::IntoResponse {
+    // 1. Fetch current status & conversation_id of the task
+    let task_row = sqlx::query!(
+        "SELECT conversation_id, status, current_step_index FROM autonomous_tasks WHERE id = $1 LIMIT 1",
+        task_id
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    let (conversation_id, current_status, current_step_index) = match task_row {
+        Ok(Some(row)) => (row.conversation_id, row.status, row.current_step_index),
+        Ok(None) => return axum::Json(ApiResponse::not_found("Task not found")),
+        Err(e) => {
+            tracing::error!("Failed to fetch task for cancellation: {}", e);
+            return axum::Json(ApiResponse::failed("Failed to check task status"));
+        }
+    };
+
+    if current_status == "completed" || current_status == "failed" {
+        return axum::Json(ApiResponse::failed("Task is already in a terminal state"));
+    }
+
+    // 2. Update task status to 'failed' (cancel state) in DB
+    let update_res = sqlx::query!(
+        "UPDATE autonomous_tasks SET status = 'failed', updated_at = NOW() WHERE id = $1",
+        task_id
+    )
+    .execute(&state.pool)
+    .await;
+
+    if let Err(e) = update_res {
+        tracing::error!("Failed to update task to failed: {}", e);
+        return axum::Json(ApiResponse::failed("Failed to update task status"));
+    }
+
+    // 3. Write 'system_error' timeline audit log
+    let log_res = sqlx::query!(
+        "INSERT INTO autonomous_task_logs (task_id, step_index, event_type, log_content, raw_payload) \
+         VALUES ($1, $2, 'system_error', $3, $4)",
+        task_id,
+        current_step_index,
+        "Task was forcefully cancelled by the user.",
+        serde_json::json!({ "cancelled_by": "user", "reason": "forced_cancellation" })
+    )
+    .execute(&state.pool)
+    .await;
+
+    if let Err(e) = log_res {
+        tracing::error!("Failed to insert cancellation timeline log: {}", e);
+    }
+
+    // 4. Dispatch task update via MQTT eventBus so the UI updates in sub-second real-time!
+    let _ = crate::services::task_orchestrator::dispatch_task_update(
+        task_id,
+        conversation_id,
+        &state,
+        &state.pool
+    )
+    .await;
+
+    axum::Json(ApiResponse::ok((), "Autonomous task cancelled successfully!"))
 }
 
 

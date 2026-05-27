@@ -997,6 +997,13 @@
             <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">Autonomous Tasks</span>
         </button>
 
+        <button onclick={() => { popupStore.closeLast(); goto('/simulation'); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group">
+            <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-blue-500/20 text-slate-400 group-hover:text-blue-400 transition-colors">
+                <Terminal size={24} />
+            </div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-slate-200">HTO Simulation</span>
+        </button>
+
         <button onclick={() => { popupStore.closeLast(); openMoneyTracking(); }} class="flex flex-col items-center gap-3 p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all group">
             <div class="p-3 rounded-xl bg-slate-800 group-hover:bg-emerald-500/20 text-slate-400 group-hover:text-emerald-400 transition-colors">
                 <DollarSign size={24} />

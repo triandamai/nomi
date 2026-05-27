@@ -658,3 +658,120 @@ pub async fn handle_inbound_redis(
         }
     }
 }
+
+pub async fn handle_seed_simulation(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let sql = match std::fs::read_to_string("seed_simulation.sql") {
+        Ok(content) => content,
+        Err(e) => {
+            error!("Failed to read seed_simulation.sql: {}", e);
+            return Json(ApiResponse::create(500, None::<()>, "Failed to read seed script")).into_response();
+        }
+    };
+
+    for statement in sql.split(';') {
+        let stmt = statement.trim();
+        if !stmt.is_empty() {
+            if let Err(e) = sqlx::query(stmt).execute(&state.pool).await {
+                error!("Failed to execute seed statement: {}", e);
+                return Json(ApiResponse::create(500, None::<()>, &format!("DB execution failed: {}", e))).into_response();
+            }
+        }
+    }
+
+    // Invalidate conversation cache so Nomi picks up new soul and details
+    let parent_id = Uuid::parse_str("99999999-8888-7777-6666-555555555555").unwrap();
+    let sub_id = Uuid::parse_str("88888888-7777-6666-5555-444444444444").unwrap();
+    crate::common::repository::conversation_repo::invalidate_conversation_cache(&state.redis, parent_id).await;
+    crate::common::repository::conversation_repo::invalidate_conversation_cache(&state.redis, sub_id).await;
+
+    Json(ApiResponse::ok((), "Simulation environment seeded successfully! 🏁")).into_response()
+}
+
+pub async fn handle_get_simulation_messages(
+    State(state): State<AppState>,
+    Path(conversation_id): Path<Uuid>,
+) -> impl IntoResponse {
+    let rows = sqlx::query(
+        r#"
+        SELECT m.id,
+               m.conversation_id as conversation_id,
+               u.display_name,
+               m.role,
+               m.content,
+               m.thought,
+               m.user_id,
+               m.created_at as created_at,
+               m.total_tokens,
+               m.answer_tokens,
+               m.prompt_tokens,
+               m.image_url,
+               m.video_url,
+               m.audio_url,
+               m.document_url,
+               m.sticker_url,
+               m.metadata,
+               m.reply_to_id,
+               CASE WHEN m.reply_to_id IS NOT NULL THEN
+                 jsonb_build_object(
+                   'id', rm.id,
+                   'role', rm.role,
+                   'content', rm.content,
+                   'display_name', ru.display_name
+                 )
+               ELSE NULL END as replied_message
+        FROM messages as m
+        LEFT JOIN users AS u ON u.id = m.user_id
+        LEFT JOIN messages AS rm ON rm.id = m.reply_to_id
+        LEFT JOIN users AS ru ON ru.id = rm.user_id
+        WHERE m.conversation_id = $1
+        ORDER BY m.created_at DESC
+        LIMIT 30
+        "#,
+    )
+    .bind(conversation_id)
+    .fetch_all(&state.pool)
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            use sqlx::Row;
+            let messages: Vec<MessageItem> = rows.into_iter().map(|r| {
+                let replied: Option<serde_json::Value> = r.get("replied_message");
+                let replied_message = replied.and_then(|v| serde_json::from_value(v).ok());
+                
+                MessageItem {
+                    id: r.get("id"),
+                    conversation_id: r.get("conversation_id"),
+                    display_name: r.get("display_name"),
+                    role: r.get("role"),
+                    content: r.get("content"),
+                    thought: r.get("thought"),
+                    user_id: r.get("user_id"),
+                    created_at: r.get("created_at"),
+                    total_tokens: r.get("total_tokens"),
+                    answer_tokens: r.get("answer_tokens"),
+                    prompt_tokens: r.get("prompt_tokens"),
+                    image_url: r.get("image_url"),
+                    video_url: r.get("video_url"),
+                    audio_url: r.get("audio_url"),
+                    document_url: r.get("document_url"),
+                    sticker_url: r.get("sticker_url"),
+                    metadata: r.get("metadata"),
+                    reply_to_id: r.get("reply_to_id"),
+                    replied_message,
+                }
+            }).collect();
+
+            Json(ApiResponse::ok(
+                json!({ "messages": messages }),
+                "Success"
+            )).into_response()
+        }
+        Err(e) => {
+            error!("Failed to fetch simulation messages: {}", e);
+            Json(ApiResponse::create(500, None::<()>, &e.to_string())).into_response()
+        }
+    }
+}

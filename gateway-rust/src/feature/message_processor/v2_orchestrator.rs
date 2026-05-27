@@ -171,16 +171,18 @@ pub async fn process_v2_message(
             .await;
     }
 
-    // ======== HTO Task Input Interception Check ======== //
+    // ======== HTO Task Input & Dynamic External Feedback Interception Check ======== //
     #[derive(sqlx::FromRow)]
-    struct PausedTask {
+    struct InterceptedTask {
         id: Uuid,
         current_step_index: i32,
+        status: String,
     }
     
-    let paused_task_opt = sqlx::query_as::<_, PausedTask>(
-        "SELECT id, current_step_index FROM autonomous_tasks \
-         WHERE conversation_id = $1 AND status = 'paused_for_input' \
+    let intercepted_task_opt = sqlx::query_as::<_, InterceptedTask>(
+        "SELECT id, current_step_index, status FROM autonomous_tasks \
+         WHERE (conversation_id = $1 AND status = 'paused_for_input') \
+            OR (sub_conversation_id = $1 AND status = 'waiting_external_feedback') \
          ORDER BY created_at DESC LIMIT 1"
     )
     .bind(conversation_id)
@@ -189,20 +191,27 @@ pub async fn process_v2_message(
     .unwrap_or(None);
 
 
-    if let Some(task) = paused_task_opt {
-        info!("HTO Interceptor: Intercepted human reply in conversation [{}] for paused task [{}]", conversation_id, task.id);
+    if let Some(task) = intercepted_task_opt {
+        info!("HTO Interceptor: Intercepted input signal in conversation [{}] for suspended task [{}] in state '{}'", conversation_id, task.id, task.status);
 
-        // 1. Log the human response event in timeline logs using non-macro sqlx query
+        let event_log_msg = if task.status == "waiting_external_feedback" {
+            format!("External response received: '{}'", text_content)
+        } else {
+            format!("User provided input: '{}'", text_content)
+        };
+
+        // 1. Log the feedback event in timeline logs using non-macro sqlx query
         let _ = sqlx::query(
             "INSERT INTO autonomous_task_logs (task_id, step_index, event_type, log_content, raw_payload) \
              VALUES ($1, $2, 'human_response', $3, $4)"
         )
         .bind(task.id)
         .bind(task.current_step_index)
-        .bind(format!("User provided input: '{}'", text_content))
+        .bind(event_log_msg)
         .bind(json!({
             "message_id": saved_message.id,
-            "content": text_content
+            "content": text_content,
+            "original_state": task.status
         }))
         .execute(&state.pool)
         .await;

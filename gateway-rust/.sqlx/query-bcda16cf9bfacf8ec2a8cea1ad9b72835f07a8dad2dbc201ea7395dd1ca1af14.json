@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE autonomous_tasks SET status = 'failed', updated_at = NOW() WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bcda16cf9bfacf8ec2a8cea1ad9b72835f07a8dad2dbc201ea7395dd1ca1af14"
+}

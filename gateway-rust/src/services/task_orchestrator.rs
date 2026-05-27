@@ -15,7 +15,6 @@ struct TaskInfo {
     global_goal: String,
     checkpoints: Value,
     status: String,
-    source_message_id: Option<Uuid>,
     current_step_index: i32,
     sub_conversation_id: Option<Uuid>,
     soul_content: Option<String>,
@@ -68,7 +67,7 @@ pub async fn advanced_orchestrate_task_step(
 
         // 1. Fetch live task coordinates along with room configuration and active persona using non-macro query_as
         let task_row = sqlx::query_as::<_, TaskInfo>(
-            "SELECT t.conversation_id, t.title, t.global_goal, t.checkpoints, t.status, t.source_message_id, t.current_step_index, \
+            "SELECT t.conversation_id, t.title, t.global_goal, t.checkpoints, t.status, t.current_step_index, \
                     t.sub_conversation_id, c.soul_content, c.bootstrap_content \
              FROM autonomous_tasks t \
              JOIN conversations c ON t.conversation_id = c.id \
@@ -93,30 +92,47 @@ pub async fn advanced_orchestrate_task_step(
         let global_goal = task.global_goal;
         let current_step_index = task.current_step_index;
         let checkpoints = task.checkpoints;
-        let source_message_id = task.source_message_id.unwrap_or(Uuid::nil());
         let mut sub_conversation_id = task.sub_conversation_id;
 
-        // 2. Fetch chronological message context leading up to task initiation using non-macro query_as
-        let historical_turns = if source_message_id != Uuid::nil() {
-            let turns = sqlx::query_as::<_, HistoricalTurn>(
+        // 2. Fetch Twin chronological conversation history contexts (Step 3)
+        // A. Fetch last 15 messages from Parent Conversation (Owner)
+        let parent_turns = sqlx::query_as::<_, HistoricalTurn>(
+            "SELECT role, content FROM ( \
+                 SELECT role, content, created_at FROM messages \
+                 WHERE conversation_id = $1 \
+                 ORDER BY created_at DESC LIMIT 15 \
+             ) sub ORDER BY created_at ASC"
+        )
+        .bind(conversation_id)
+        .fetch_all(&pool)
+        .await?;
+
+        let parent_history = parent_turns
+            .into_iter()
+            .map(|m| format!("[{}]: {}", m.role, m.content))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        // B. Fetch last 15 messages from Sub-Conversation (Target) if exists
+        let sub_history = if let Some(sub_convo_id) = sub_conversation_id {
+            let sub_turns = sqlx::query_as::<_, HistoricalTurn>(
                 "SELECT role, content FROM ( \
                      SELECT role, content, created_at FROM messages \
-                     WHERE conversation_id = $1 AND created_at <= (SELECT created_at FROM messages WHERE id = $2) \
-                     ORDER BY created_at DESC LIMIT 10 \
+                     WHERE conversation_id = $1 \
+                     ORDER BY created_at DESC LIMIT 15 \
                  ) sub ORDER BY created_at ASC"
             )
-            .bind(conversation_id)
-            .bind(source_message_id)
+            .bind(sub_convo_id)
             .fetch_all(&pool)
             .await?;
 
-            turns
+            sub_turns
                 .into_iter()
                 .map(|m| format!("[{}]: {}", m.role, m.content))
                 .collect::<Vec<String>>()
                 .join("\n")
         } else {
-            "".to_string()
+            "No active sub-conversation mapped yet.".to_string()
         };
 
         // 3. Contextual Timeline Log Rehydration (Scratchpad Memory) using non-macro query_as
@@ -182,8 +198,13 @@ pub async fn advanced_orchestrate_task_step(
              - User Primary Name: \"{}\"\n\
              - User Email: \"{}\"\n\
              - Inferred Preferences from Memory (RAG):\n{}\n\n\
-             HISTORICAL CONTEXT LEADING UP TO THIS TASK:\n\
+             ===================================================\n\
+             TWIN-CHANNEL CHAT HISTORY CONTEXT:\n\n\
+             [A] OWNER CONVERSATION HISTORY (Parent Chat):\n\
              {}\n\n\
+             [B] TARGET CONVERSATION HISTORY (Sub-Chat with Target Person):\n\
+             {}\n\n\
+             ===================================================\n\
              TASK PARAMETERS:\n\
              - Global Task Goal: \"{}\"\n\
              - Current Step Index: {}\n\
@@ -195,17 +216,19 @@ pub async fn advanced_orchestrate_task_step(
              1. Evaluate the completed logs on the scratchpad carefully to understand exactly what you have done and what data was resolved.\n\
              2. Determine what action is required next to satisfy the goal of step index {}.\n\
              3. You have full access to Nomi's plugin toolset. If you need to perform an action (e.g. check stock, search web, manage finance, send message, retrieve knowledge), you MUST respond with a structured tool call. If you don't know the exact tool, invoke 'discover_tools(query)'.\n\
-             4. If you need input from the user (such as a missing parameter like timing, or explicit approval for payments), transition the task status by outputting a status update with status=\"paused_for_input\" and detailing the required form inputs using `<RequiredField>` tags.\n\
-             5. When the current step index is completed, output a JSON structure explaining the progress updates to update checkpoints.\n\
-             6. If ALL steps in the HTO plan are fully completed and the global goal is satisfied, mark the final task status as \"completed\".\n\
-             7. MANDATORY RULE: Never guess, hallucinate, or pass phone numbers, handles, JIDs or numeric strings (like '@2297908166856') to the 'user_id' parameter of `send_message`. You MUST always invoke the search tool (`manage_user` with action='search') first to find the user's database UUID, then pass that UUID directly into the 'user_id' parameter of `send_message`. Any target parameter that is not a valid 36-character UUID will fail instantly.\n\n\
+             4. SUSPENSION RULE A: If you need dynamic input or clarification from the OWNER (Trian) to proceed with your workflow (e.g. confirming choices, or asking questions), transition the task status by outputting a status update with status=\"paused_for_input\" and detail the questions. This suspends your thread until the Owner replies.\n\
+             5. SUSPENSION RULE B: If you have sent a message to the target external person and need their response before you can proceed with the next step, transition the task status by outputting a status update with status=\"waiting_external_feedback\". This suspends your thread until the target person replies.\n\
+             6. When the current step index is completed, output a JSON structure explaining the progress updates to update checkpoints.\n\
+             7. If ALL steps in the HTO plan are fully completed and the global goal is satisfied, mark the final task status as \"completed\".\n\
+             8. MANDATORY RULE: Never guess, hallucinate, or pass phone numbers, handles, JIDs or numeric strings (like '@2297908166856') to the 'user_id' parameter of `send_message`. You MUST always invoke the search tool (`manage_user` with action='search') first to find the user's database UUID, then pass that UUID directly into the 'user_id' parameter of `send_message`. Any target parameter that is not a valid 36-character UUID will fail instantly.\n\n\
              Respond in a highly structured manner.",
             soul_text,
             bootstrap_text,
             user_display_name,
             user_email,
             rag_context,
-            historical_turns,
+            parent_history,
+            sub_history,
             global_goal,
             current_step_index,
             checkpoints,
@@ -482,19 +505,31 @@ pub async fn advanced_orchestrate_task_step(
             continue;
         }
 
-        // B. Handle Interactive Input Pauses / Clarifications
-        if response_text.contains("status=\"paused_for_input\"") || response_text.contains("<RequiredField") {
-            info!("HTO loop: background planner requests input clarification/approval. Pausing.");
+        // B. Handle Interactive Input Pauses / Clarifications / External Feedback Pauses
+        let is_external_feedback = response_text.contains("status=\"waiting_external_feedback\"");
+        let is_paused_input = response_text.contains("status=\"paused_for_input\"") || response_text.contains("<RequiredField");
+
+        if is_external_feedback || is_paused_input {
+            let target_status = if is_external_feedback { "waiting_external_feedback" } else { "paused_for_input" };
+            info!("HTO loop: background planner suspends execution. Target state: '{}'.", target_status);
             
-            // Extract natural message text to show Trian Damai
+            // Extract natural message text to show Owner (Trian Damai)
             let cleaned_xml = response_text.clone();
             
             // Refine conversational text to Nomi slang style
-            let slang_prompt = format!(
-                "You are Nomi chatting casually with your friend Trian in a messaging thread. Convert this raw planning text into a natural human update explaining what you need confirmation/input for: \"{}\". \
-                 Keep it casual—Indonesian/English teammate slang style is highly encouraged (e.g. 'aman', 'otw', 'sip', 'gua').",
-                cleaned_xml
-            );
+            let slang_prompt = if is_external_feedback {
+                format!(
+                    "You are Nomi chatting casually with your friend Trian in a messaging thread. Convert this raw planning text into a natural human update explaining that you are waiting for external feedback/target reply: \"{}\". \
+                     Keep it casual—Indonesian/English teammate slang style is highly encouraged (e.g. 'aman', 'otw', 'sip', 'gua').",
+                    cleaned_xml
+                )
+            } else {
+                format!(
+                    "You are Nomi chatting casually with your friend Trian in a messaging thread. Convert this raw planning text into a natural human update explaining what you need confirmation/input for: \"{}\". \
+                     Keep it casual—Indonesian/English teammate slang style is highly encouraged (e.g. 'aman', 'otw', 'sip', 'gua').",
+                    cleaned_xml
+                )
+            };
             
             let slang_res = state.gemini.generate_content()
                 .with_user_message(slang_prompt)
@@ -540,21 +575,28 @@ pub async fn advanced_orchestrate_task_step(
             .await;
 
             // Log timeline event
+            let log_msg = if is_external_feedback {
+                format!("Task suspended waiting for external feedback: {}", natural_text)
+            } else {
+                format!("Task paused for input: {}", natural_text)
+            };
+
             let _ = sqlx::query(
                 "INSERT INTO autonomous_task_logs (task_id, step_index, event_type, log_content, raw_payload) \
                  VALUES ($1, $2, 'outbound_msg', $3, $4)"
             )
             .bind(task_id)
             .bind(current_step_index)
-            .bind(format!("Task paused for input: {}", natural_text))
+            .bind(log_msg)
             .bind(json!({ "raw_xml": cleaned_xml }))
             .execute(&pool)
             .await;
 
-            // Set task status in DB to 'paused_for_input'
+            // Set task status in DB
             let _ = sqlx::query(
-                "UPDATE autonomous_tasks SET status = 'paused_for_input' WHERE id = $1"
+                "UPDATE autonomous_tasks SET status = $1 WHERE id = $2"
             )
+            .bind(target_status)
             .bind(task_id)
             .execute(&pool)
             .await;
