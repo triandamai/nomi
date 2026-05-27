@@ -722,7 +722,7 @@
     {/if}
 {/snippet}
 
-<svelte:window bind:innerWidth={windowWidth} onresize={calculateLayout} />
+<svelte:window bind:innerWidth={windowWidth} onresize={resetTransform} />
 
 <!-- Full-Screen Interactive Canvas Wrapper -->
 <div class="relative w-full h-[100dvh] bg-[#030712] text-slate-100 overflow-hidden font-sans select-none">
