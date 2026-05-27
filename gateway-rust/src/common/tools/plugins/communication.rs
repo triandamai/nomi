@@ -25,8 +25,8 @@ impl NomiToolPlugin for CommunicationPlugin {
                     },
                     "channel_type": {
                         "type": "string",
-                        "enum": ["whatsapp", "telegram", "both"],
-                        "description": "Optional. The communication channel to use. Required if the user has multiple registered channels."
+                        "enum": ["whatsapp", "telegram", "web", "mobile", "both"],
+                        "description": "Optional. The communication channel to use. Required if the user has multiple registered database channels."
                     }
                 },
                 "required": ["user_id", "message_body"]
@@ -78,7 +78,7 @@ impl NomiToolPlugin for CommunicationPlugin {
                 conversation_id: Option<uuid::Uuid>,
             }
 
-            let channels = sqlx::query_as::<_, ChannelRow>(
+            let db_channels = sqlx::query_as::<_, ChannelRow>(
                 "SELECT channel_type, external_id, conversation_id \
                  FROM channels WHERE user_id = $1"
             )
@@ -86,14 +86,56 @@ impl NomiToolPlugin for CommunicationPlugin {
             .fetch_all(&dispatcher.pool)
             .await?;
 
+            let mut channels = db_channels.clone();
+
             if channels.is_empty() {
-                return Ok(ToolResult {
-                    error: format!("No communication channels (WhatsApp/Telegram) registered for user UUID '{}'.", parsed_uuid),
-                    success: false,
-                    content: "".to_string(),
-                    follow_up_prompt: format!("There are no active communication channels mapped to this user in the system database. Please ask the human user for the target JID/LID/external ID and update the user's communication channels."),
-                    ref_id: "".to_string(),
-                });
+                info!("Communication: Target user has no WhatsApp/Telegram channels. Falling back to web/mobile virtual channels.");
+                
+                // Resolve active private/sub-chat conversation between Nomi and the target user
+                let conversation_id = match sqlx::query_scalar::<_, uuid::Uuid>(
+                    "SELECT c.id FROM conversations c \
+                     INNER JOIN conversation_members cm ON c.id = cm.conversation_id \
+                     WHERE cm.user_id = $1 AND (c.conversation_type = 'private' OR c.conversation_type = 'channel_subchat') \
+                     LIMIT 1"
+                )
+                .bind(parsed_uuid)
+                .fetch_optional(&dispatcher.pool)
+                .await? {
+                    Some(cid) => cid,
+                    None => {
+                        // Spawn a new private conversation if none exists
+                        let new_cid = uuid::Uuid::new_v4();
+                        let _ = sqlx::query(
+                            "INSERT INTO conversations (id, title, conversation_type) VALUES ($1, 'Private Chat', 'private')"
+                        )
+                        .bind(new_cid)
+                        .execute(&dispatcher.pool)
+                        .await;
+                        
+                        let _ = sqlx::query(
+                            "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2)"
+                        )
+                        .bind(new_cid)
+                        .bind(parsed_uuid)
+                        .execute(&dispatcher.pool)
+                        .await;
+                        
+                        new_cid
+                    }
+                };
+
+                channels = vec![
+                    ChannelRow {
+                        channel_type: "web".to_string(),
+                        external_id: "web".to_string(),
+                        conversation_id: Some(conversation_id),
+                    },
+                    ChannelRow {
+                        channel_type: "mobile".to_string(),
+                        external_id: "mobile".to_string(),
+                        conversation_id: Some(conversation_id),
+                    },
+                ];
             }
 
             // Identify candidate channels
@@ -117,9 +159,9 @@ impl NomiToolPlugin for CommunicationPlugin {
                 }
                 filtered
             } else {
-                // If there's more than one channel, and they didn't specify which, ask for clarification!
-                if channels.len() > 1 {
-                    let available_types: Vec<String> = channels.iter().map(|c| c.channel_type.clone()).collect();
+                // If there's more than one active database communication channel (WhatsApp/Telegram), ask for clarification!
+                if db_channels.len() > 1 {
+                    let available_types: Vec<String> = db_channels.iter().map(|c| c.channel_type.clone()).collect();
                     return Ok(ToolResult {
                         error: "Multiple communication channels available".to_string(),
                         success: false,

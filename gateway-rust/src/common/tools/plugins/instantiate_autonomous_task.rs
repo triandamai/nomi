@@ -70,7 +70,35 @@ impl NomiToolPlugin for InstantiateAutonomousTaskPlugin {
             let checkpoints = args["checkpoints"].clone();
 
             let conversation_id = dispatcher.conversation_id.ok_or_else(|| anyhow::anyhow!("No active conversation context"))?;
-            let parsed_source_msg = Uuid::parse_str(source_msg_str)?;
+
+            // Robust validation of source_message_id: Check existence and fallback to prevent foreign key violations
+            let mut parsed_source_msg: Option<Uuid> = None;
+            if let Ok(parsed_uuid) = Uuid::parse_str(source_msg_str) {
+                let exists: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM messages WHERE id = $1)"
+                )
+                .bind(parsed_uuid)
+                .fetch_one(&dispatcher.pool)
+                .await
+                .unwrap_or(false);
+
+                if exists {
+                    parsed_source_msg = Some(parsed_uuid);
+                }
+            }
+
+            // Fallback to the most recent message in this conversation if not found
+            if parsed_source_msg.is_none() {
+                let latest_msg_id: Option<Uuid> = sqlx::query_scalar(
+                    "SELECT id FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1"
+                )
+                .bind(conversation_id)
+                .fetch_optional(&dispatcher.pool)
+                .await
+                .unwrap_or(None);
+
+                parsed_source_msg = latest_msg_id;
+            }
 
             // 1. Write the new task to the main ledger database using non-macro query_scalar
             let task_uuid = sqlx::query_scalar::<_, Uuid>(

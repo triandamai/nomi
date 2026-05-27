@@ -176,13 +176,55 @@ pub async fn get_user_conversations(
                c.max_token_usage, c.cumulative_tokens, c.metadata, c.conversation_type, c.gateway_thresholds
         FROM conversations c
         INNER JOIN conversation_members cm ON c.id = cm.conversation_id
-        WHERE cm.user_id = $1
+        WHERE cm.user_id = $1 AND (c.conversation_type IS NULL OR c.conversation_type != 'channel_subchat')
         ORDER BY c.updated_at DESC
         LIMIT $2
         "#
     )
     .bind(user_id)
     .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let mut conversations = Vec::new();
+    for r in rows {
+        conversations.push(ConversationCache {
+            id: r.get("id"),
+            title: r.get("title"),
+            user_id: r.get("user_id"),
+            soul_content: r.get("soul_content"),
+            bootstrap_content: r.get("bootstrap_content"),
+            created_at: r.get::<Option<DateTime<Utc>>, _>("created_at").unwrap_or_else(Utc::now),
+            updated_at: r.get::<Option<DateTime<Utc>>, _>("updated_at").unwrap_or_else(Utc::now),
+            max_token_usage: r.get::<Option<i32>, _>("max_token_usage").unwrap_or(700000),
+            cumulative_tokens: r.get::<Option<i32>, _>("cumulative_tokens").unwrap_or(0),
+            conversation_type: r.get::<Option<String>, _>("conversation_type").unwrap_or_else(|| "private".to_string()),
+            metadata: r.get("metadata"),
+            gateway_thresholds: r.get::<Option<Value>, _>("gateway_thresholds").unwrap_or_else(|| json!({
+                "interaction_gate": 0.6,
+                "intent_classification": 0.4,
+                "guardrails": 0.65
+            })),
+        });
+    }
+
+    Ok(conversations)
+}
+
+pub async fn get_sub_conversations(
+    pool: &Pool<Postgres>,
+    parent_id: Uuid,
+) -> anyhow::Result<Vec<ConversationCache>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, title, user_id, soul_content, bootstrap_content, created_at, updated_at, 
+               max_token_usage, cumulative_tokens, metadata, conversation_type, gateway_thresholds
+        FROM conversations
+        WHERE parent_id = $1
+        ORDER BY updated_at DESC
+        "#
+    )
+    .bind(parent_id)
     .fetch_all(pool)
     .await?;
 

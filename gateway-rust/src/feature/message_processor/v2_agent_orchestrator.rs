@@ -887,6 +887,13 @@ impl V2AgentOrchestrator {
                 Err(e) => {
                     error!("V2 Agentic loop error: {}", e);
 
+                    let err_str = e.to_string();
+                    let custom_error_msg = if err_str.contains("429") || err_str.contains("spending cap") || err_str.contains("RESOURCE_EXHAUSTED") {
+                        "⚠️ *GEMINI API SPENDING LIMIT EXCEEDED (429)*\n\nOops! It looks like our Gemini API key has exceeded its monthly spending cap or hit a rate limit.\n\nPlease visit AI Studio at https://ai.studio/spend to check your billing and manage your project's spend cap. Once updated, I'll be ready to pick right back up! 🚀".to_string()
+                    } else {
+                        format!("⚠️ *AGENT TURN ERROR*\n\nOops, I ran into a system error while processing your request: `{}`\n\nPlease try again or check the system logs.", err_str)
+                    };
+
                     let _ = send_status_update(
                         &state,
                         self.conversation_member_ids
@@ -899,9 +906,35 @@ impl V2AgentOrchestrator {
                         },
                         false,
                         "error".to_string(),
-                        "Oops, something went wrong.".to_string(),
+                        custom_error_msg.clone(),
                     )
                     .await;
+
+                    // Also save the message to the conversation history so the user sees it immediately in their thread!
+                    let save_res = save_message(
+                        &state.pool,
+                        conversation_id,
+                        "assistant",
+                        &custom_error_msg,
+                        None,
+                        None,
+                        0, 0, 0,
+                        None, None, None, None, None, None, None,
+                        Some(&state.redis)
+                    ).await;
+
+                    if let Ok(saved_msg) = save_res {
+                        let member_ids = self.conversation_member_ids.iter().map(|v| v.clone()).collect();
+                        let _ = send_message_to_subscriber(
+                            &state,
+                            member_ids,
+                            conversation_id,
+                            msg.source.clone(),
+                            saved_msg.to_sse_json(0),
+                            saved_msg.into()
+                        ).await;
+                    }
+
                     break;
                 }
             }

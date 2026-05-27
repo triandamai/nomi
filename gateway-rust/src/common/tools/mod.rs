@@ -150,7 +150,13 @@ impl ToolDispatcher {
             }
             let plugin_intents = plugin.matching_intents();
             let is_matched = intents.iter().any(|i| plugin_intents.contains(&i.as_str()))
-                || intents.contains(&"FULL_REGISTRY".to_string());
+                || intents.contains(&"FULL_REGISTRY".to_string())
+                || intents.contains(&"HTO_WORKFLOW_REGISTRY".to_string());
+
+            // ⚠️ RECURSION BLACKLIST: Never allow an autonomous workflow task to recursively spawn another autonomous task
+            if is_matched && intents.contains(&"HTO_WORKFLOW_REGISTRY".to_string()) && *name == "instantiate_autonomous_task" {
+                continue;
+            }
 
             if is_matched {
                 let mut schema = plugin.schema();
@@ -187,7 +193,7 @@ impl ToolDispatcher {
             schema_json: serde_json::Value,
         }
 
-        let dynamic_plugins = if intents.contains(&"FULL_REGISTRY".to_string()) {
+        let dynamic_plugins = if intents.contains(&"FULL_REGISTRY".to_string()) || intents.contains(&"HTO_WORKFLOW_REGISTRY".to_string()) {
             sqlx::query_as::<_, EdgeFnRow>(
                 "SELECT slug, description, schema_json FROM edge_functions"
             )

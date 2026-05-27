@@ -883,6 +883,29 @@ pub async fn handle_get_conversations(
     }
 }
 
+pub async fn handle_get_sub_conversations(
+    State(state): State<AppState>,
+    axum::extract::Path(parent_id_str): axum::extract::Path<String>,
+) -> ApiResponse<Vec<ConversationResponse>> {
+    let parent_id = match Uuid::parse_str(&parent_id_str) {
+        Ok(id) => id,
+        Err(_) => return ApiResponse::failed("Invalid parent conversation ID"),
+    };
+
+    info!(parent_id = %parent_id, "Fetching sub-conversations");
+
+    match crate::common::repository::conversation_repo::get_sub_conversations(&state.pool, parent_id).await {
+        Ok(items) => {
+            let convs = items.into_iter().map(ConversationResponse::from).collect();
+            ApiResponse::ok(convs, "Sub-conversations retrieved")
+        }
+        Err(e) => {
+            error!("Failed to fetch sub-conversations: {}", e);
+            ApiResponse::failed("Failed to fetch sub-conversations")
+        }
+    }
+}
+
 pub async fn handle_create_conversation(
     State(state): State<AppState>,
     axum::extract::Extension(claims): axum::extract::Extension<auth::Claims>,

@@ -291,14 +291,28 @@ pub async fn handle_autonomous_task(state: &AppState, task: &TaskData) -> anyhow
             .unwrap_or_else(|| json!([]));
 
         if let Some(conversation_id) = task.conversation_id {
+            // Compute the correct starting step index based on the first non-completed checkpoint
+            let mut current_step_index = 0;
+            if let Some(arr) = checkpoints.as_array() {
+                for cp in arr {
+                    if cp.get("status").and_then(|s| s.as_str()) != Some("completed") {
+                        if let Some(idx) = cp.get("index").and_then(|i| i.as_i64()) {
+                            current_step_index = idx as i32;
+                            break;
+                        }
+                    }
+                }
+            }
+
             // 1. Insert autonomous task to ledger database
             let task_uuid = sqlx::query_scalar::<_, Uuid>(
                 "INSERT INTO autonomous_tasks (conversation_id, title, global_goal, status, current_step_index, checkpoints) \
-                 VALUES ($1, $2, $3, 'running', 0, $4) RETURNING id"
+                 VALUES ($1, $2, $3, 'running', $4, $5) RETURNING id"
             )
             .bind(conversation_id)
             .bind(title)
             .bind(goal)
+            .bind(current_step_index)
             .bind(checkpoints.clone())
             .fetch_one(&state.pool)
             .await?;
@@ -306,9 +320,10 @@ pub async fn handle_autonomous_task(state: &AppState, task: &TaskData) -> anyhow
             // 2. Log 'step_start' timeline entry
             let _ = sqlx::query(
                 "INSERT INTO autonomous_task_logs (task_id, step_index, event_type, log_content, raw_payload) \
-                 VALUES ($1, 0, 'step_start', $2, $3)"
+                 VALUES ($1, $2, 'step_start', $3, $4)"
             )
             .bind(task_uuid)
+            .bind(current_step_index)
             .bind(format!("Scheduled task auto-ignited: {}", title))
             .bind(json!({ "checkpoints": checkpoints }))
             .execute(&state.pool)
@@ -332,7 +347,10 @@ pub async fn handle_autonomous_task(state: &AppState, task: &TaskData) -> anyhow
             );
 
             let outbound_text = if let Ok(res) = state.gemini.generate_content().with_user_message(system_prompt).with_temperature(0.7).execute().await {
-                res.text().trim().to_string()
+                let raw_res = res.text().trim().to_string();
+                let healed_res = crate::common::format::heal_thinking_tags(&raw_res);
+                let parsed_res = crate::common::agent::parse_llm_output(&healed_res);
+                parsed_res.response.trim().to_string()
             } else {
                 format!(
                     "🚀 *SCHEDULED WORKFLOW AUTO-IGNITED*\nI have successfully launched your scheduled workflow: *{}*.\n\n*Goal:* {}\n\nYou can watch its live timeline progress in the side-panel! ✨",

@@ -5,7 +5,7 @@ use crate::feature::conversation::{
     auth::{handle_get_profile, handle_update_profile, handle_logout, handle_request_otp, handle_verify_otp},
     handle_chat_stream, handle_create_conversation, handle_create_pairing, handle_pairing_handshake,
     handle_delete_conversation,
-    handle_get_conversations, handle_get_file, handle_get_messages, handle_get_model_info,
+    handle_get_conversations, handle_get_sub_conversations, handle_get_file, handle_get_messages, handle_get_model_info,
     handle_get_path_file, handle_get_soul_history, handle_get_user_channels, handle_get_conversation_members,
     handle_restore_conversation_soul, handle_update_conversation, handle_upload_file,
     handle_get_available_tools, handle_get_guardrail_patterns, handle_insert_guardrail_pattern,
@@ -169,6 +169,10 @@ pub fn create_router(state: AppState) -> Router {
             post(handle_restore_conversation_soul),
         )
         .route("/conversations/{id}/pairing", post(handle_create_pairing))
+        .route(
+            "/conversations/{id}/sub-conversations",
+            get(handle_get_sub_conversations),
+        )
         .route("/graph", get(handle_get_graph))
         .route("/graph/search", get(handle_search_graph))
         .route("/graph/workspace", get(handle_get_workspace_graph))

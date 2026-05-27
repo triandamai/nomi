@@ -217,10 +217,12 @@ pub async fn advanced_orchestrate_task_step(
              2. Determine what action is required next to satisfy the goal of step index {}.\n\
              3. You have full access to Nomi's plugin toolset. If you need to perform an action (e.g. check stock, search web, manage finance, send message, retrieve knowledge), you MUST respond with a structured tool call. If you don't know the exact tool, invoke 'discover_tools(query)'.\n\
              4. SUSPENSION RULE A: If you need dynamic input or clarification from the OWNER (Trian) to proceed with your workflow (e.g. confirming choices, or asking questions), transition the task status by outputting a status update with status=\"paused_for_input\" and detail the questions. This suspends your thread until the Owner replies.\n\
-             5. SUSPENSION RULE B: If you have sent a message to the target external person and need their response before you can proceed with the next step, transition the task status by outputting a status update with status=\"waiting_external_feedback\". This suspends your thread until the target person replies.\n\
+             5. SUSPENSION RULE B: Once you have successfully called `send_message` to the target external person, you MUST IMMEDIATELY transition the task status by outputting a status update with status=\"waiting_external_feedback\" in the exact same turn or the very next turn. This suspends your thread until they reply. You MUST NOT call `schedule_task` or other tools to wait or check in; the system event bus will automatically wake you up when their reply arrives.\n\
              6. When the current step index is completed, output a JSON structure explaining the progress updates to update checkpoints.\n\
              7. If ALL steps in the HTO plan are fully completed and the global goal is satisfied, mark the final task status as \"completed\".\n\
-             8. MANDATORY RULE: Never guess, hallucinate, or pass phone numbers, handles, JIDs or numeric strings (like '@2297908166856') to the 'user_id' parameter of `send_message`. You MUST always invoke the search tool (`manage_user` with action='search') first to find the user's database UUID, then pass that UUID directly into the 'user_id' parameter of `send_message`. Any target parameter that is not a valid 36-character UUID will fail instantly.\n\n\
+             8. CANCELLATION RULE: If the OWNER (Trian) explicitly asks you in their input message to \"cancel\", \"stop\", \"abort\", or \"cancel dulu\" the task, you MUST IMMEDIATELY transition the task status by outputting a status update with status=\"failed\" and explain in natural language that you have cancelled the task per their request. You MUST NOT execute any more tools or perform any more actions. This will stop the task execution cleanly.\n\
+             9. MANDATORY RULE: Never guess, hallucinate, or pass phone numbers, handles, JIDs or numeric strings (like '@2297908166856') to the 'user_id' parameter of `send_message`. You MUST always invoke the search tool (`manage_user` with action='search') first to find the user's database UUID, then pass that UUID directly into the 'user_id' parameter of `send_message`. Any target parameter that is not a valid 36-character UUID will fail instantly.\n\
+             10. SCHEDULING RULE: If you invoke the `schedule_task` tool, you MUST pass the `due_at` parameter in the exact format 'YYYY-MM-DD HH:MM'. You MUST NOT pass text like 'tonight', 'tomorrow', 'now', or '3 hours' as these are invalid and will cause immediate tool execution failures. If you don't know the exact date/time, calculate it based on the WIB system time anchor provided in the tool results or ask the OWNER for clarification.\n\n\
              Respond in a highly structured manner.",
             soul_text,
             bootstrap_text,
@@ -248,9 +250,7 @@ pub async fn advanced_orchestrate_task_step(
             state.clone(),
         );
 
-        info!("Sending operational prompt to background LLM loop via common::agent::send_prompt...");
-        
-        let (response, _) = crate::common::agent::send_prompt(
+        let send_res = crate::common::agent::send_prompt(
             &dispatcher,
             crate::common::agent::agent_model::PromptActor::User {
                 history: "".to_string(),
@@ -259,10 +259,68 @@ pub async fn advanced_orchestrate_task_step(
                 system_prompt: hto_prompt,
                 media: None,
             },
-            &["FULL_REGISTRY".to_string()],
+            &["HTO_WORKFLOW_REGISTRY".to_string()],
         )
-        .await
-        .map_err(|e| anyhow::anyhow!("LLM error: {}", e))?;
+        .await;
+
+        let (response, _) = match send_res {
+            Ok(val) => val,
+            Err(e) => {
+                let err_str = e.to_string();
+                error!("HTO Loop Error for task [{}]: {}", task_id, err_str);
+
+                let custom_error_msg = if err_str.contains("429") || err_str.contains("spending cap") || err_str.contains("RESOURCE_EXHAUSTED") {
+                    "⚠️ *GEMINI API SPENDING LIMIT EXCEEDED (429)*\n\nOops! It looks like our Gemini API key has exceeded its monthly spending cap or hit a rate limit.\n\nPlease visit AI Studio at https://ai.studio/spend to check your billing and manage your project's spend cap. Once updated, I'll be ready to pick right back up! 🚀".to_string()
+                } else {
+                    format!("⚠️ *HTO WORKFLOW ERROR*\n\nOops, I ran into a system error while executing the background workflow step: `{}`", err_str)
+                };
+
+                // Save message to conversation
+                let save_res = save_message(
+                    &pool,
+                    conversation_id,
+                    "assistant",
+                    &custom_error_msg,
+                    None,
+                    None,
+                    0, 0, 0,
+                    None, None, None, None, None, None, None,
+                    Some(&state.redis)
+                ).await;
+
+                if let Ok(saved_msg) = save_res {
+                    let members: Vec<Uuid> = sqlx::query_scalar(
+                        "SELECT user_id FROM conversation_members WHERE conversation_id = $1"
+                    )
+                    .bind(conversation_id)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+
+                    send_message_to_subscriber(
+                        &state,
+                        members,
+                        conversation_id,
+                        MessageSource::Web { name: "web".to_string() },
+                        saved_msg.to_sse_json(0),
+                        saved_msg.into()
+                    )
+                    .await;
+                }
+
+                // Update task status in DB to 'failed'
+                let _ = sqlx::query(
+                    "UPDATE autonomous_tasks SET status = 'failed' WHERE id = $1"
+                )
+                .bind(task_id)
+                .execute(&pool)
+                .await;
+
+                let _ = dispatch_task_update(task_id, conversation_id, &state, &pool).await;
+
+                return Err(anyhow::anyhow!("HTO Loop Error: {}", err_str));
+            }
+        };
 
         // Extract token usage metadata from the operational Gemini turn
         let mut input_tokens = 0;
@@ -300,8 +358,15 @@ pub async fn advanced_orchestrate_task_step(
             .await;
         }
 
-        let response_text = response.text().trim().to_string();
-        info!("Background LLM response: {}", response_text);
+        let raw_text = response.text().trim().to_string();
+        let healed_text = crate::common::format::heal_thinking_tags(&raw_text);
+        let parsed = crate::common::agent::parse_llm_output(&healed_text);
+        let response_text = healed_text.clone();
+        
+        info!("Background LLM response (raw): {}", raw_text);
+        info!("Background LLM response (healed): {}", response_text);
+        info!("Extracted Cleaned Response: {}", parsed.response);
+        info!("Extracted Thought: {}", parsed.thought);
 
         // Compute suspension flags robustly to catch single/double/no quotes and dash/underscore variations
         let lower_res = response_text.to_lowercase();
@@ -355,6 +420,12 @@ pub async fn advanced_orchestrate_task_step(
             for (name, result) in tool_results {
                 info!("Tool [{}] execute result: success={}, content={}", name, result.success, result.content);
                 
+                let log_detail = if result.success {
+                    format!("Tool [{}] executed. Result success: true. Response: {}", name, result.content)
+                } else {
+                    format!("Tool [{}] executed. Result success: false. Error: {}. Response: {}", name, result.error, result.content)
+                };
+
                 // Write 'tool_execution' timeline event
                 let _ = sqlx::query(
                     "INSERT INTO autonomous_task_logs (task_id, step_index, event_type, log_content, raw_payload) \
@@ -362,7 +433,7 @@ pub async fn advanced_orchestrate_task_step(
                 )
                 .bind(task_id)
                 .bind(current_step_index)
-                .bind(format!("Tool [{}] executed. Result success: {}. Response: {}", name, result.success, result.content))
+                .bind(log_detail)
                 .bind(json!({
                     "tool": name,
                     "success": result.success,
@@ -404,17 +475,68 @@ pub async fn advanced_orchestrate_task_step(
                     if !target_jid.is_empty() && sub_conversation_id.is_none() {
                         info!("Dynamic isolation: spawning a new sub-chat room for JID: {}", target_jid);
                         
-                        // Spawn isolated conversation row using non-macro query_scalar
+                        let mut target_user_id: Option<Uuid> = None;
+                        
+                        // Try to find the target user ID from send_message arguments
+                        for call in &function_calls {
+                            if call.name == "send_message" {
+                                if let Some(uid_val) = call.args.get("user_id") {
+                                    if let Some(uid_str) = uid_val.as_str() {
+                                        if let Ok(parsed) = Uuid::parse_str(uid_str) {
+                                            target_user_id = Some(parsed);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // If not found in arguments, look up via target_jid in the users table
+                        if target_user_id.is_none() {
+                            if let Ok(opt_id) = sqlx::query_scalar::<_, Uuid>(
+                                "SELECT id FROM users WHERE external_id = $1"
+                            )
+                            .bind(&target_jid)
+                            .fetch_optional(&pool)
+                            .await {
+                                target_user_id = opt_id;
+                            }
+                        }
+                        
+                        // Spawn isolated conversation row using non-macro query_scalar (tie to parent_id and user_id/target)
                         let sub_title = format!("{} (Sub-chat for Task)", task.title);
                         let sub_convo_id = sqlx::query_scalar::<_, Uuid>(
-                            "INSERT INTO conversations (title, conversation_type, soul_content, bootstrap_content) \
-                             VALUES ($1, 'channel_subchat', $2, $3) RETURNING id"
+                            "INSERT INTO conversations (title, conversation_type, soul_content, bootstrap_content, parent_id, user_id) \
+                             VALUES ($1, 'channel_subchat', $2, $3, $4, $5) RETURNING id"
                         )
                         .bind(sub_title)
                         .bind(soul_text.clone())
                         .bind(bootstrap_text.clone())
+                        .bind(conversation_id) // parent conversation ID
+                        .bind(target_user_id)  // target user database UUID
                         .fetch_one(&pool)
                         .await?;
+
+                        // Insert target user to conversation members of the sub-conversation
+                        if let Some(target_uid) = target_user_id {
+                            let _ = sqlx::query(
+                                "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING"
+                            )
+                            .bind(sub_convo_id)
+                            .bind(target_uid)
+                            .execute(&pool)
+                            .await;
+                        }
+
+                        // Insert actor (owner/initiator) to conversation members of the sub-conversation
+                        if let Some(actor_uid) = dispatcher.user_id {
+                            let _ = sqlx::query(
+                                "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING"
+                            )
+                            .bind(sub_convo_id)
+                            .bind(actor_uid)
+                            .execute(&pool)
+                            .await;
+                        }
 
                         // Insert channel mapping using non-macro query
                         let _ = sqlx::query(
@@ -482,13 +604,18 @@ pub async fn advanced_orchestrate_task_step(
                 let error_prompt = format!(
                     "Your persona/soul instructions:\n=== START PERSONA ===\n{}\n=== END PERSONA ===\n\n\
                      Inform the user that the background workflow '{}' has failed or was cancelled because step {} encountered too many execution errors (failed 5 times). \
-                     Explain that you stopped it to save resources, and suggest they check lookup details or parameters. \
-                     Adopt the exact tone, style, and language guidelines defined in your soul instructions above.",
+                     Explain that you stopped it to save resources, and suggest they check lookup details or parameters.\n\
+                     Guidelines:\n\
+                     1. Output STRLCTLY the direct casual teammate response. Do NOT prefix with any planning tags, headers, bullet points, 'Action', 'Status', or thoughts.\n\
+                     2. Adopt the exact tone, style, and language guidelines defined in your soul instructions above.",
                     soul_content, task.title, current_step_index
                 );
 
                 if let Ok(err_res) = state.gemini.generate_content().with_user_message(error_prompt).with_temperature(0.7).execute().await {
-                    let err_msg = err_res.text().trim().to_string();
+                    let raw_err_msg = err_res.text().trim().to_string();
+                    let healed_err = crate::common::format::heal_thinking_tags(&raw_err_msg);
+                    let parsed_err = crate::common::agent::parse_llm_output(&healed_err);
+                    let err_msg = parsed_err.response.trim().to_string();
                     
                     let saved = save_message(
                         &pool,
@@ -536,23 +663,22 @@ pub async fn advanced_orchestrate_task_step(
             let target_status = if is_external_feedback { "waiting_external_feedback" } else { "paused_for_input" };
             info!("HTO loop: background planner suspends execution. Target state: '{}'.", target_status);
             
-            // Extract natural message text to show Owner (Trian Damai)
-            let cleaned_xml = response_text.clone();
+            // Extract natural message text to show Owner (Trian Damai) - strictly stripped of thoughts/thinking tags
+            let cleaned_xml = parsed.response.trim().to_string();
             
-            // Refine conversational text to Nomi slang style
-            let slang_prompt = if is_external_feedback {
-                format!(
-                    "You are Nomi chatting casually with your friend Trian in a messaging thread. Convert this raw planning text into a natural human update explaining that you are waiting for external feedback/target reply: \"{}\". \
-                     Keep it casual—Indonesian/English teammate slang style is highly encouraged (e.g. 'aman', 'otw', 'sip', 'gua').",
-                    cleaned_xml
-                )
-            } else {
-                format!(
-                    "You are Nomi chatting casually with your friend Trian in a messaging thread. Convert this raw planning text into a natural human update explaining what you need confirmation/input for: \"{}\". \
-                     Keep it casual—Indonesian/English teammate slang style is highly encouraged (e.g. 'aman', 'otw', 'sip', 'gua').",
-                    cleaned_xml
-                )
-            };
+            // Refine conversational text to Nomi's casual persona/slang style
+            let soul_content = task.soul_content.clone().unwrap_or_else(|| "You are Nomi, a helpful AI teammate.".to_string());
+            let slang_prompt = format!(
+                "Your persona guidelines:\n=== START PERSONA ===\n{}\n=== END PERSONA ===\n\n\
+                 You are Nomi chatting casually with Trian. Convert this raw internal planner output into a clean, brief, natural update to him: \"{}\". \
+                 Guidelines:\n\
+                 1. DO NOT mention raw technical terms like 'Step 0', 'Step 1', database UUIDs, JIDs, or internal tools.\n\
+                 2. Just tell the user what you are doing or what you need, casually.\n\
+                 3. Strictly adopt your natural persona, slang style (Indonesian/English mix, using casual words like 'aman', 'otw', 'sip', 'gua', 'lu'), and tone as defined in the persona guidelines above.\n\
+                 4. Output STRICTLY the direct casual teammate response. Do NOT prefix with any planning tags, headers, bullet points, 'Action', 'Status', or thoughts.\n\
+                 5. Keep the output short and highly conversational.",
+                soul_content, cleaned_xml
+            );
             
             let slang_res = state.gemini.generate_content()
                 .with_user_message(slang_prompt)
@@ -562,12 +688,12 @@ pub async fn advanced_orchestrate_task_step(
                 
             let natural_text = slang_res.text().trim().to_string();
 
-            // Save telemetry message with XML details to primary room
+            // Save telemetry message (only the friendly, natural text is saved to the chat room)
             let saved = save_message(
                 &pool,
                 conversation_id,
                 "assistant",
-                &format!("{}\n\n{}", natural_text, cleaned_xml),
+                &natural_text,
                 None, // thought
                 None, // user_id
                 0, 0, 0, // tokens
@@ -739,14 +865,18 @@ pub async fn advanced_orchestrate_task_step(
                 let soul_content = task.soul_content.clone().unwrap_or_else(|| "You are Nomi, a helpful AI teammate.".to_string());
                 let victory_prompt = format!(
                     "Your persona/soul instructions:\n=== START PERSONA ===\n{}\n=== END PERSONA ===\n\n\
-                     Inform the user that you have fully completed the global goal: '{}'. \
-                     Celebrate this milestone! \
-                     Adopt the exact tone, style, and language guidelines defined in your soul instructions above.",
+                     Inform the user that you have fully completed the global goal: '{}'. Celebrate this milestone!\n\
+                     Guidelines:\n\
+                     1. Output STRICTLY the direct casual teammate response. Do NOT prefix with any planning tags, headers, bullet points, 'Action', 'Status', or thoughts.\n\
+                     2. Adopt the exact tone, style, and language guidelines defined in your soul instructions above.",
                     soul_content, global_goal
                 );
                 
                 if let Ok(vic_res) = state.gemini.generate_content().with_user_message(victory_prompt).with_temperature(0.7).execute().await {
-                    let victory_msg = vic_res.text().trim().to_string();
+                    let raw_victory_msg = vic_res.text().trim().to_string();
+                    let healed_victory = crate::common::format::heal_thinking_tags(&raw_victory_msg);
+                    let parsed_victory = crate::common::agent::parse_llm_output(&healed_victory);
+                    let victory_msg = parsed_victory.response.trim().to_string();
                     
                     let saved = save_message(
                         &pool,
