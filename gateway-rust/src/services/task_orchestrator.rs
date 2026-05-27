@@ -303,6 +303,27 @@ pub async fn advanced_orchestrate_task_step(
         let response_text = response.text().trim().to_string();
         info!("Background LLM response: {}", response_text);
 
+        // Compute suspension flags robustly to catch single/double/no quotes and dash/underscore variations
+        let lower_res = response_text.to_lowercase();
+        let is_external_feedback = lower_res.contains("status=\"waiting_external_feedback\"") 
+            || lower_res.contains("status='waiting_external_feedback'")
+            || lower_res.contains("status=waiting_external_feedback")
+            || lower_res.contains("status=\"waiting-external-feedback\"")
+            || lower_res.contains("status='waiting-external-feedback'")
+            || lower_res.contains("status=waiting-external-feedback")
+            || lower_res.contains("waiting_external_feedback")
+            || lower_res.contains("waiting-external-feedback");
+
+        let is_paused_input = lower_res.contains("status=\"paused_for_input\"")
+            || lower_res.contains("status='paused_for_input'")
+            || lower_res.contains("status=paused_for_input")
+            || lower_res.contains("<requiredfield")
+            || lower_res.contains("status=\"paused-for-input\"")
+            || lower_res.contains("status='paused-for-input'")
+            || lower_res.contains("status=paused-for-input")
+            || lower_res.contains("paused_for_input")
+            || lower_res.contains("paused-for-input");
+
         // A. Handle Tool Call Detections
         let function_calls = response.function_calls();
         if !function_calls.is_empty() {
@@ -501,14 +522,16 @@ pub async fn advanced_orchestrate_task_step(
                 return Ok(());
             }
 
-            // Continue the loop to evaluate the tool outcomes immediately
-            continue;
+            // If the LLM requested a suspension/pause in this turn, do NOT continue to evaluate tools; fall through to suspension block
+            if is_external_feedback || is_paused_input {
+                info!("HTO: Tool executed in this turn, but LLM requested suspension. Breaking tool block to suspend.");
+            } else {
+                // Continue the loop to evaluate the tool outcomes immediately
+                continue;
+            }
         }
 
         // B. Handle Interactive Input Pauses / Clarifications / External Feedback Pauses
-        let is_external_feedback = response_text.contains("status=\"waiting_external_feedback\"");
-        let is_paused_input = response_text.contains("status=\"paused_for_input\"") || response_text.contains("<RequiredField");
-
         if is_external_feedback || is_paused_input {
             let target_status = if is_external_feedback { "waiting_external_feedback" } else { "paused_for_input" };
             info!("HTO loop: background planner suspends execution. Target state: '{}'.", target_status);
