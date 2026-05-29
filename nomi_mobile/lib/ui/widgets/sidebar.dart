@@ -5,11 +5,13 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/providers/chat_provider.dart';
 import 'package:nomi_mobile/providers/auth_provider.dart';
 import 'package:nomi_mobile/providers/navigation_provider.dart';
-import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/ui/widgets/utility_grid.dart';
 import 'package:nomi_mobile/ui/widgets/profile_settings.dart';
 import 'package:nomi_mobile/ui/widgets/avatar.dart';
 import 'package:nomi_mobile/core/db/database.dart' as db;
+import 'package:nomi_mobile/core/localization/i18n.dart';
 
 class NomiSidebar extends ConsumerWidget {
   final bool isDrawer;
@@ -18,6 +20,7 @@ class NomiSidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chatState = ref.watch(chatProvider);
+    final themeState = ref.watch(themeProvider);
     final conversationsAsync = ref.watch(conversationsStreamProvider);
     final authState = ref.watch(authProvider);
     final bool isAdmin = authState.user?.role == 'admin';
@@ -32,35 +35,30 @@ class NomiSidebar extends ConsumerWidget {
 
     return Row(
       children: [
-        _buildNavigationRail(context, ref, isAdmin, authState, chatState),
+        _buildNavigationRail(context, ref, isAdmin, authState, chatState, themeState),
         if (chatState.isSidebarExpanded)
           ClipRRect(
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
               child: Container(
                 width: 248,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      const Color(0xFF1e293b).withValues(alpha: 0.4),
-                      const Color(0xFF0f172a).withValues(alpha: 0.2),
-                    ],
-                  ),
-                  border: const Border(
-                    left: BorderSide(color: Colors.white10),
-                    right: BorderSide(color: Colors.white10),
+                  color: themeState.isDark 
+                    ? Color(themeState.slate950).withValues(alpha: 0.6) 
+                    : Color(themeState.textMain).withValues(alpha: 0.08),
+                  border: Border(
+                    left: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
+                    right: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      blurRadius: 50,
-                      offset: const Offset(10, 0),
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 30,
+                      offset: const Offset(5, 0),
                     )
                   ],
                 ),
-                child: _buildConversationPane(context, ref, chatState, conversationsAsync, withBackground: false),
+                child: _buildConversationPane(context, ref, chatState, conversationsAsync, themeState, withBackground: false),
               ),
             ),
           ),
@@ -69,50 +67,60 @@ class NomiSidebar extends ConsumerWidget {
   }
 
   Widget _buildFullSidebar(BuildContext context, WidgetRef ref, ChatState chatState, AsyncValue<List<db.Conversation>> conversationsAsync, bool isAdmin, AuthState authState) {
+    final themeState = ref.watch(themeProvider);
     return ClipRRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Row(
           children: [
-            _buildNavigationRail(context, ref, isAdmin, authState, chatState),
-            _buildConversationPane(context, ref, chatState, conversationsAsync),
+            _buildNavigationRail(context, ref, isAdmin, authState, chatState, themeState),
+            _buildConversationPane(context, ref, chatState, conversationsAsync, themeState),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildNavigationRail(BuildContext context, WidgetRef ref, bool isAdmin, AuthState authState, ChatState chatState) {
+  Widget _buildNavigationRail(BuildContext context, WidgetRef ref, bool isAdmin, AuthState authState, ChatState chatState, NomiTheme themeState) {
     final Widget rail = Container(
       width: 72,
       decoration: BoxDecoration(
-        color: isDrawer ? const Color(0xFF0f172a).withValues(alpha: 0.45) : Colors.transparent,
+        color: isDrawer 
+          ? (themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.6) 
+              : Color(themeState.textMain).withValues(alpha: 0.08))
+          : Colors.transparent,
         gradient: isDrawer ? null : LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            const Color(0xFF0f172a).withValues(alpha: 0.5),
-            const Color(0xFF020617).withValues(alpha: 0.3),
+            Color(themeState.bgHeader).withValues(alpha: 0.5),
+            Color(themeState.bgMain).withValues(alpha: 0.3),
           ],
         ),
-        border: const Border(right: BorderSide(color: Colors.white10)),
+        border: Border(right: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
       ),
       padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Column(
-        children: [
-          _buildLogo(ref),
-          const SizedBox(height: 8),
-          _buildSeparator(),
-          const SizedBox(height: 12),
-          if (!isDrawer)
-            _SidebarActionIcon(
-              icon: LucideIcons.messageSquare,
-              color: chatState.isSidebarExpanded ? const Color(AppConfig.blue) : Colors.white24,
-              onTap: () => ref.read(chatProvider.notifier).toggleSidebar(),
-            ),
-          const Spacer(),
-          _buildBottomActions(context, ref, isAdmin, authState),
-        ],
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _buildLogo(ref, themeState),
+            const SizedBox(height: 8),
+            _buildSeparator(themeState),
+            const SizedBox(height: 12),
+            if (!isDrawer)
+              _SidebarActionIcon(
+                icon: LucideIcons.messageSquare,
+                color: chatState.isSidebarExpanded 
+                  ? Color(themeState.primaryColor) 
+                  : Color(themeState.textMuted),
+                onTap: () => ref.read(chatProvider.notifier).toggleSidebar(),
+              ),
+            const Spacer(),
+            _buildBottomActions(context, ref, isAdmin, authState, themeState),
+          ],
+        ),
       ),
     );
 
@@ -120,27 +128,33 @@ class NomiSidebar extends ConsumerWidget {
 
     return ClipRRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: rail,
       ),
     );
   }
 
-  Widget _buildConversationPane(BuildContext context, WidgetRef ref, ChatState chatState, AsyncValue<List<db.Conversation>> conversationsAsync, {bool withBackground = true}) {
+  Widget _buildConversationPane(BuildContext context, WidgetRef ref, ChatState chatState, AsyncValue<List<db.Conversation>> conversationsAsync, NomiTheme themeState, {bool withBackground = true}) {
     return Container(
       width: 248,
-      color: withBackground ? const Color(0xFF111b21).withValues(alpha: 0.45) : Colors.transparent,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: conversationsAsync.when(
-              data: (conversations) => ListView.builder(
-                padding: const EdgeInsets.fromLTRB(12, 48, 12, 12),
-                itemCount: conversations.length,
-                itemBuilder: (context, index) {
-                  final conv = conversations[index];
-                  final isActive = chatState.activeConversationId == conv.id;
+      color: withBackground 
+        ? (themeState.isDark 
+            ? Color(themeState.slate950).withValues(alpha: 0.6) 
+            : Color(themeState.textMain).withValues(alpha: 0.08))
+        : Colors.transparent,
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: conversationsAsync.when(
+                data: (conversations) => ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  itemCount: conversations.length,
+                  itemBuilder: (context, index) {
+                    final conv = conversations[index];
+                    final isActive = chatState.activeConversationId == conv.id;
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Material(
@@ -156,31 +170,33 @@ class NomiSidebar extends ConsumerWidget {
                           }
                         },
                         selected: isActive,
-                        selectedTileColor: Colors.blue.withValues(alpha: 0.1),
+                        selectedTileColor: Color(themeState.primaryColor).withValues(alpha: 0.1),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         leading: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: isActive ? Colors.blue : Colors.white.withValues(alpha: 0.05),
+                            color: isActive 
+                              ? Color(themeState.primaryColor) 
+                              : Color(themeState.textMain).withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
                             LucideIcons.hash,
                             size: 16,
-                            color: isActive ? Colors.white : Colors.white24,
+                            color: isActive ? Colors.white : Color(themeState.textMuted),
                           ),
                         ),
                         title: Text(
-                          conv.name ?? 'Private Sandbox',
+                          conv.name ?? 'private_sandbox'.tr(ref),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: isActive ? Colors.white : Colors.white70,
+                            color: isActive ? Color(themeState.primaryColor) : Color(themeState.textMain),
                             fontSize: 13,
-                            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: isActive ? FontWeight.w900 : FontWeight.w500,
                           ),
                         ),
-                        trailing: isActive ? const Icon(LucideIcons.messageSquare, size: 14, color: Colors.blue) : null,
+                        trailing: isActive ? Icon(LucideIcons.messageSquare, size: 14, color: Color(themeState.primaryColor)) : null,
                       ),
                     ),
                   );
@@ -192,21 +208,22 @@ class NomiSidebar extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
-  Widget _buildLogo(WidgetRef ref) {
+  Widget _buildLogo(WidgetRef ref, NomiTheme themeState) {
     return GestureDetector(
       onTap: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
       child: Container(
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: const Color(0xFF3b82f6),
+          color: Color(themeState.primaryColor),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF3b82f6).withValues(alpha: 0.2),
+              color: Color(themeState.primaryColor).withValues(alpha: 0.2),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )
@@ -222,18 +239,18 @@ class NomiSidebar extends ConsumerWidget {
     );
   }
 
-  Widget _buildSeparator() {
+  Widget _buildSeparator(NomiTheme themeState) {
     return Container(
       width: 32,
       height: 2,
       decoration: BoxDecoration(
-        color: Colors.white10,
+        color: Color(themeState.borderMain),
         borderRadius: BorderRadius.circular(1),
       ),
     );
   }
 
-  Widget _buildBottomActions(BuildContext context, WidgetRef ref, bool isAdmin, AuthState authState) {
+  Widget _buildBottomActions(BuildContext context, WidgetRef ref, bool isAdmin, AuthState authState, NomiTheme themeState) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -242,13 +259,13 @@ class NomiSidebar extends ConsumerWidget {
           if (isAdmin)
             _SidebarActionIcon(
               icon: LucideIcons.plus,
-              color: Colors.blue,
+              color: Color(themeState.primaryColor),
               onTap: () {},
             ),
           const SizedBox(height: 12),
           _SidebarActionIcon(
             icon: LucideIcons.layoutGrid,
-            color: const Color(AppConfig.emerald),
+            color: Color(themeState.accentColor),
             onTap: () {
               if (isDrawer) Navigator.pop(context);
               showModalBottomSheet(
@@ -278,7 +295,7 @@ class NomiSidebar extends ConsumerWidget {
   }
 }
 
-class _SidebarActionIcon extends StatelessWidget {
+class _SidebarActionIcon extends ConsumerWidget {
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
@@ -290,7 +307,8 @@ class _SidebarActionIcon extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(24),
@@ -298,10 +316,12 @@ class _SidebarActionIcon extends StatelessWidget {
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: const Color(0xFF1e293b).withValues(alpha: 0.5),
+          color: themeState.isDark 
+            ? Color(themeState.slate900).withValues(alpha: 0.5)
+            : Color(themeState.textMain).withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(24),
         ),
-        child: Icon(icon, size: 24, color: color.withValues(alpha: 0.8)),
+        child: Icon(icon, size: 24, color: color),
       ),
     );
   }

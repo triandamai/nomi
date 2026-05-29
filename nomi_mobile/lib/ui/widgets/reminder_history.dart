@@ -1,7 +1,8 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/data/models/reminder.dart';
 import 'package:nomi_mobile/core/db/database.dart' as db;
@@ -25,21 +26,37 @@ class _ReminderHistorySheetState extends ConsumerState<ReminderHistorySheet> {
 
   @override
   Widget build(BuildContext context) {
-    // Actually, I should create a dedicated provider for this to be cleaner
+    final themeState = ref.watch(themeProvider);
     final remindersStream = ref.watch(remindersStreamProvider);
     final size = MediaQuery.of(context).size;
     final bool isLargeScreen = size.width >= 700;
 
-    return Container(
-      width: double.infinity,
-      constraints: BoxConstraints(
-        maxHeight: size.height * 0.85,
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
       ),
-      decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate),
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
-      ),
-      child: Column(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(
+            maxHeight: size.height * 0.85,
+          ),
+          decoration: BoxDecoration(
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
         children: [
           // Header
           Padding(
@@ -50,10 +67,10 @@ class _ReminderHistorySheetState extends ConsumerState<ReminderHistorySheet> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'TECHNICAL TASKS',
                       style: TextStyle(
-                        color: Color(AppConfig.emerald),
+                        color: Color(themeState.accentColor),
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
@@ -63,7 +80,7 @@ class _ReminderHistorySheetState extends ConsumerState<ReminderHistorySheet> {
                     Text(
                       'Your Reminders',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: Color(themeState.textMain),
                         fontSize: isLargeScreen ? 24 : 20,
                         fontWeight: FontWeight.bold,
                       ),
@@ -72,7 +89,7 @@ class _ReminderHistorySheetState extends ConsumerState<ReminderHistorySheet> {
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(LucideIcons.x, color: Colors.white38),
+                  icon: Icon(LucideIcons.x, color: Color(themeState.textMuted)),
                 ),
               ],
             ),
@@ -87,11 +104,11 @@ class _ReminderHistorySheetState extends ConsumerState<ReminderHistorySheet> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(LucideIcons.bell, size: 48, color: Colors.white.withValues(alpha: 0.05)),
+                        Icon(LucideIcons.bell, size: 48, color: Color(themeState.textMuted).withValues(alpha: 0.1)),
                         const SizedBox(height: 16),
                         Text(
                           'No upcoming reminders',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 14, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.4), fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -112,16 +129,19 @@ class _ReminderHistorySheetState extends ConsumerState<ReminderHistorySheet> {
           const SizedBox(height: 24),
         ],
       ),
+    ),
+    ),
     );
   }
 }
 
-class _ReminderItem extends StatelessWidget {
+class _ReminderItem extends ConsumerWidget {
   final Reminder reminder;
   const _ReminderItem({required this.reminder});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     final due = DateTime.parse(reminder.dueAt);
     final isCompleted = reminder.status == 'completed';
     
@@ -129,9 +149,9 @@ class _ReminderItem extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: Color(themeState.textMain).withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,7 +163,7 @@ class _ReminderItem extends StatelessWidget {
               Text(
                 reminder.taskType ?? 'REMINDER',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.3),
+                  color: Color(themeState.textMuted).withValues(alpha: 0.6),
                   fontSize: 8,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1.5,
@@ -154,12 +174,12 @@ class _ReminderItem extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
+                    color: Color(themeState.textMain).withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     reminder.frequency!.toUpperCase(),
-                    style: const TextStyle(color: Colors.white38, fontSize: 7, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: Color(themeState.textMuted), fontSize: 7, fontWeight: FontWeight.bold),
                   ),
                 ),
             ],
@@ -167,7 +187,7 @@ class _ReminderItem extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             reminder.content,
-            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600, height: 1.4),
+            style: TextStyle(color: Color(themeState.textMain), fontSize: 14, fontWeight: FontWeight.w600, height: 1.4),
           ),
           const SizedBox(height: 16),
           Row(
@@ -176,16 +196,16 @@ class _ReminderItem extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.black26,
+                  color: themeState.isDark ? Colors.black26 : Color(themeState.textMain).withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(
                   children: [
-                    const Icon(LucideIcons.calendar, size: 10, color: Colors.blue),
+                    Icon(LucideIcons.calendar, size: 10, color: Color(themeState.primaryColor)),
                     const SizedBox(width: 6),
                     Text(
                       '${DateFormat('MMM d').format(due)} · ${DateFormat('HH:mm').format(due)}',
-                      style: const TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                      style: TextStyle(color: Color(themeState.primaryColor), fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
                     ),
                   ],
                 ),
@@ -193,7 +213,7 @@ class _ReminderItem extends StatelessWidget {
               Text(
                 reminder.status.toUpperCase(),
                 style: TextStyle(
-                  color: isCompleted ? const Color(AppConfig.emerald) : Colors.amber,
+                  color: isCompleted ? Color(themeState.accentColor) : Colors.amber,
                   fontSize: 8,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1,

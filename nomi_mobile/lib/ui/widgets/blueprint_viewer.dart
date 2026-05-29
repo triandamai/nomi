@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
 import 'package:nomi_mobile/providers/auth_provider.dart';
 import 'dart:ui';
 
@@ -58,16 +59,33 @@ class _BlueprintViewerSheetState extends ConsumerState<BlueprintViewerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final size = MediaQuery.of(context).size;
 
-    return Container(
-      width: double.infinity,
-      constraints: BoxConstraints(maxHeight: size.height * 0.9),
-      decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate).withValues(alpha: 0.95),
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
       ),
-      child: Column(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(maxHeight: size.height * 0.9),
+          decoration: BoxDecoration(
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
         children: [
           // Header with Liquid Glass Feel
           ClipRRect(
@@ -140,6 +158,8 @@ class _BlueprintViewerSheetState extends ConsumerState<BlueprintViewerSheet> {
           ),
         ],
       ),
+    ),
+    ),
     );
   }
 }

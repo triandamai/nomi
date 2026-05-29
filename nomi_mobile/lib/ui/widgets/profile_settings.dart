@@ -1,9 +1,12 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/providers/auth_provider.dart';
 import 'package:nomi_mobile/providers/chat_provider.dart';
-import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
+import 'package:nomi_mobile/core/localization/i18n.dart';
 
 class ProfileSettingsDialog extends ConsumerStatefulWidget {
   const ProfileSettingsDialog({super.key});
@@ -32,13 +35,26 @@ class _ProfileSettingsDialogState extends ConsumerState<ProfileSettingsDialog> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final conversationsAsync = ref.watch(conversationsStreamProvider);
+    final themeState = ref.watch(themeProvider);
 
     return Dialog(
-      backgroundColor: const Color(AppConfig.deepSlate).withAlpha(242),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32), side: const BorderSide(color: Colors.white10)),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: themeState.isDark
+                  ? Color(themeState.slate950).withAlpha(190)
+                  : Color(themeState.bgHeader).withAlpha(220),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Color(themeState.borderMain).withAlpha(100)),
+            ),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -51,14 +67,14 @@ class _ProfileSettingsDialogState extends ConsumerState<ProfileSettingsDialog> {
                     width: 64,
                     height: 64,
                     decoration: BoxDecoration(
-                      color: Colors.blue.withAlpha(25),
+                      color: Color(themeState.primaryColor).withAlpha(25),
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.blue.withAlpha(51)),
+                      border: Border.all(color: Color(themeState.primaryColor).withAlpha(51)),
                     ),
                     child: Center(
                       child: Text(
                         (authState.user?.displayName ?? 'U').substring(0, 1).toUpperCase(),
-                        style: const TextStyle(color: Colors.blue, fontSize: 24, fontWeight: FontWeight.w900),
+                        style: TextStyle(color: Color(themeState.primaryColor), fontSize: 24, fontWeight: FontWeight.w900),
                       ),
                     ),
                   ),
@@ -69,45 +85,45 @@ class _ProfileSettingsDialogState extends ConsumerState<ProfileSettingsDialog> {
                       children: [
                         Text(
                           authState.user?.displayName ?? 'Anonymous User',
-                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Color(themeState.textMain), fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         Text(
                           authState.user?.role?.toUpperCase() ?? 'USER',
-                          style: const TextStyle(color: Colors.blue, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1),
+                          style: TextStyle(color: Color(themeState.primaryColor), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(LucideIcons.x, color: Colors.white24, size: 18),
+                    icon: Icon(LucideIcons.x, color: Color(themeState.textMuted).withAlpha(80), size: 18),
                   ),
                 ],
               ),
               const SizedBox(height: 32),
 
               // Display Identity Section
-              _buildSectionLabel(LucideIcons.user, 'Display Identity'),
+              _buildSectionLabel(themeState, LucideIcons.user, 'display_name'.tr(ref)),
               const SizedBox(height: 12),
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(13),
+                  color: Color(themeState.textMain).withAlpha(13),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withAlpha(25)),
+                  border: Border.all(color: Color(themeState.textMain).withAlpha(25)),
                 ),
                 child: TextField(
                   controller: _nameController,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  style: TextStyle(color: Color(themeState.textMain), fontWeight: FontWeight.bold, fontSize: 14),
                   decoration: InputDecoration(
                     hintText: 'How should Nomi address you?',
-                    hintStyle: TextStyle(color: Colors.white.withAlpha(51)),
+                    hintStyle: TextStyle(color: Color(themeState.textMain).withAlpha(51)),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     suffixIcon: _nameController.text != authState.user?.displayName 
                       ? IconButton(
                           icon: _isUpdating 
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(LucideIcons.save, color: Colors.blue, size: 18),
+                            : Icon(LucideIcons.save, color: Color(themeState.primaryColor), size: 18),
                           onPressed: () async {
                              if (!mounted) return;
                              setState(() => _isUpdating = true);
@@ -129,19 +145,19 @@ class _ProfileSettingsDialogState extends ConsumerState<ProfileSettingsDialog> {
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
                   'Identity Source: ${authState.user?.externalId}',
-                  style: TextStyle(color: Colors.white.withAlpha(51), fontSize: 9, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: Color(themeState.textMuted), fontSize: 9, fontWeight: FontWeight.bold),
                 ),
               ),
 
               const SizedBox(height: 32),
 
               // Active Session Section
-              _buildSectionLabel(LucideIcons.messageSquare, 'Active Sessions'),
+              _buildSectionLabel(themeState, LucideIcons.messageSquare, 'Active Sessions'),
               const SizedBox(height: 12),
               Container(
-                constraints: const BoxConstraints(maxHeight: 200),
+                constraints: const BoxConstraints(maxHeight: 140),
                 decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(5),
+                  color: Color(themeState.textMain).withAlpha(5),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: conversationsAsync.when(
@@ -152,12 +168,12 @@ class _ProfileSettingsDialogState extends ConsumerState<ProfileSettingsDialog> {
                       final conv = conversations[index];
                       return ListTile(
                         dense: true,
-                        leading: const Icon(LucideIcons.hash, size: 14, color: Colors.purple),
-                        title: Text(conv.name ?? 'Private Sandbox', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                        leading: Icon(LucideIcons.hash, size: 14, color: Color(themeState.primaryColor)),
+                        title: Text(conv.name ?? 'Private Sandbox', style: TextStyle(color: Color(themeState.textMain).withAlpha(200), fontSize: 12, fontWeight: FontWeight.bold)),
                         trailing: Container(
                           width: 6,
                           height: 6,
-                          decoration: const BoxDecoration(color: Color(AppConfig.emerald), shape: BoxShape.circle),
+                          decoration: BoxDecoration(color: Color(themeState.accentColor), shape: BoxShape.circle),
                         ),
                       );
                     },
@@ -166,10 +182,171 @@ class _ProfileSettingsDialogState extends ConsumerState<ProfileSettingsDialog> {
                   error: (e, _) => const SizedBox.shrink(),
                 ),
               ),
+
+              const SizedBox(height: 32),
+
+              // Theme Settings Section
+              _buildSectionLabel(themeState, LucideIcons.palette, 'Interface Style & Themes'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Color(themeState.textMain).withAlpha(12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Color(themeState.borderMain).withAlpha(60)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButtonFormField<NomiTheme>(
+                    value: themeState,
+                    dropdownColor: themeState.isDark ? Color(themeState.slate950) : Color(themeState.bgHeader),
+                    borderRadius: BorderRadius.circular(24),
+                    icon: Icon(LucideIcons.chevronDown, color: Color(themeState.primaryColor), size: 18),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (newTheme) {
+                      if (newTheme != null) {
+                        ref.read(themeProvider.notifier).setTheme(newTheme);
+                      }
+                    },
+                    selectedItemBuilder: (BuildContext context) {
+                      return NomiTheme.values.map((theme) {
+                        return Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: Color(theme.primaryColor),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: Color(theme.accentColor),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              theme.name,
+                              style: TextStyle(
+                                color: Color(themeState.textMain),
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList();
+                    },
+                    items: NomiTheme.values.map((theme) {
+                      final isSelected = theme == themeState;
+                      return DropdownMenuItem<NomiTheme>(
+                        value: theme,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: Color(theme.primaryColor),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Color(theme.primaryColor).withAlpha(80),
+                                      blurRadius: 4,
+                                    )
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: Color(theme.accentColor),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  theme.name,
+                                  style: TextStyle(
+                                    color: isSelected ? Color(themeState.primaryColor) : Color(themeState.textMain),
+                                    fontSize: 13,
+                                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              if (isSelected)
+                                Icon(LucideIcons.check, color: Color(themeState.primaryColor), size: 14),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+
+              // Language Settings Section
+              const SizedBox(height: 24),
+              _buildSectionLabel(themeState, LucideIcons.languages, 'select_language'.tr(ref)),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Color(themeState.textMain).withAlpha(12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Color(themeState.borderMain).withAlpha(60)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButtonFormField<String>(
+                    value: ref.watch(localeProvider),
+                    dropdownColor: themeState.isDark ? Color(themeState.slate950) : Color(themeState.bgHeader),
+                    borderRadius: BorderRadius.circular(24),
+                    icon: Icon(LucideIcons.chevronDown, color: Color(themeState.primaryColor), size: 18),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (newLocale) {
+                      if (newLocale != null) {
+                        ref.read(localeProvider.notifier).state = newLocale;
+                      }
+                    },
+                    items: [
+                      DropdownMenuItem<String>(
+                        value: 'en',
+                        child: Text(
+                          'English (US)',
+                          style: TextStyle(color: Color(themeState.textMain), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      DropdownMenuItem<String>(
+                        value: 'id',
+                        child: Text(
+                          'Bahasa Indonesia',
+                          style: TextStyle(color: Color(themeState.textMain), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
               const SizedBox(height: 32),
 
               // Danger Zone / Logout
-              const Divider(color: Colors.white10),
+              Divider(color: Color(themeState.borderMain)),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -180,18 +357,18 @@ class _ProfileSettingsDialogState extends ConsumerState<ProfileSettingsDialog> {
                   },
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: const Color(AppConfig.rose).withValues(alpha: 0.1),
+                    backgroundColor: Color(themeState.accentColor).withAlpha(25),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(LucideIcons.logOut, size: 16, color: Color(AppConfig.rose)),
-                      SizedBox(width: 12),
+                      Icon(LucideIcons.logOut, size: 16, color: Color(themeState.accentColor)),
+                      const SizedBox(width: 12),
                       Text(
-                        'SIGN OUT SESSION',
+                        'logout'.tr(ref).toUpperCase(),
                         style: TextStyle(
-                          color: Color(AppConfig.rose),
+                          color: Color(themeState.accentColor),
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.5,
@@ -206,17 +383,19 @@ class _ProfileSettingsDialogState extends ConsumerState<ProfileSettingsDialog> {
           ),
         ),
       ),
+    ),
+    ),
     );
   }
 
-  Widget _buildSectionLabel(IconData icon, String label) {
+  Widget _buildSectionLabel(NomiTheme themeState, IconData icon, String label) {
     return Row(
       children: [
-        Icon(icon, size: 12, color: Colors.white38),
+        Icon(icon, size: 12, color: Color(themeState.textMuted)),
         const SizedBox(width: 8),
         Text(
           label.toUpperCase(),
-          style: const TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5),
+          style: TextStyle(color: Color(themeState.textMuted), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5),
         ),
       ],
     );

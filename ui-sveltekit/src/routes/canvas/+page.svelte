@@ -617,7 +617,7 @@
 {/snippet}
 
 {#snippet conversationDetailSnippet()}
-    <div class="p-6 bg-[#0b0f19] text-slate-100 rounded-2xl border border-slate-800 space-y-6">
+    <div class="p-6 bg-slate-950/45 text-slate-100 rounded-2xl border border-slate-800/30 space-y-6">
         <div class="space-y-2">
             <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 font-mono">Channel Node</span>
             <h3 class="text-lg font-black text-white uppercase tracking-wide">
@@ -649,7 +649,7 @@
 {#snippet srpProposalSnippet()}
     {@const selectedNode = nodes.find(n => n.id === selectedNodeId)}
     {#if selectedNode}
-        <div class="p-6 bg-[#0b0f19] text-slate-100 rounded-2xl border border-slate-800 space-y-6">
+        <div class="p-6 bg-slate-950/45 text-slate-100 rounded-2xl border border-slate-800/30 space-y-6">
             <div class="space-y-2">
                 <span class="text-[9px] font-black uppercase tracking-widest text-indigo-400 font-mono">Self-Refining Plugin Proposal</span>
                 <h3 class="text-xl font-black text-white uppercase tracking-wide">
@@ -692,7 +692,7 @@
 {#snippet defaultNodeSnippet()}
     {@const selectedNode = nodes.find(n => n.id === selectedNodeId)}
     {#if selectedNode}
-        <div class="p-6 bg-[#0b0f19] text-slate-100 rounded-2xl border border-slate-800 space-y-4">
+        <div class="p-6 bg-slate-950/45 text-slate-100 rounded-2xl border border-slate-800/30 space-y-4">
             <div class="flex items-start justify-between gap-4">
                 <div class="space-y-1">
                     <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 font-mono">{selectedNode.node_type} RECORD</span>
@@ -725,13 +725,13 @@
 <svelte:window bind:innerWidth={windowWidth} onresize={resetTransform} />
 
 <!-- Full-Screen Interactive Canvas Wrapper -->
-<div class="relative w-full h-[100dvh] bg-[#030712] text-slate-100 overflow-hidden font-sans select-none">
+<div class="relative w-full h-[100dvh] bg-transparent text-slate-100 overflow-hidden font-sans select-none">
     
     <!-- n8n Styled Dot Pattern Background -->
     <div 
         class="absolute inset-0 pointer-events-none transition-all duration-75"
         style="
-            background-image: radial-gradient(#1e293b 1px, transparent 1px);
+            background-image: radial-gradient(var(--slate-800) 1.5px, transparent 1.5px);
             background-size: {24 * zoom}px {24 * zoom}px;
             background-position: {panX}px {panY}px;
             opacity: 0.85;

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/data/models/plugin.dart';
 import 'package:nomi_mobile/providers/navigation_provider.dart';
@@ -19,16 +21,17 @@ class PluginEditorPage extends ConsumerStatefulWidget {
 class _PluginEditorPageState extends ConsumerState<PluginEditorPage> {
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Column(
         children: [
-          _buildHeader(),
+          _buildHeader(themeState),
           Expanded(
             child: Row(
               children: [
-                Expanded(flex: 3, child: _buildMetadataPane()),
-                Expanded(flex: 7, child: _buildEditorPane()),
+                Expanded(flex: 3, child: _buildMetadataPane(themeState)),
+                Expanded(flex: 7, child: _buildEditorPane(themeState)),
               ],
             ),
           ),
@@ -37,12 +40,12 @@ class _PluginEditorPageState extends ConsumerState<PluginEditorPage> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(NomiTheme themeState) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate),
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        color: Color(themeState.bgHeader),
+        border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -51,10 +54,10 @@ class _PluginEditorPageState extends ConsumerState<PluginEditorPage> {
             children: [
               IconButton(
                 onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
-                icon: const Icon(LucideIcons.chevronLeft, color: Colors.white),
+                icon: Icon(LucideIcons.chevronLeft, color: Color(themeState.textMain)),
               ),
               const SizedBox(width: 12),
-              Text(widget.plugin.name, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+              Text(widget.plugin.name, style: TextStyle(color: Color(themeState.textMain), fontSize: 20, fontWeight: FontWeight.w900)),
             ],
           ),
           Row(
@@ -67,41 +70,41 @@ class _PluginEditorPageState extends ConsumerState<PluginEditorPage> {
     );
   }
 
-  Widget _buildMetadataPane() {
+  Widget _buildMetadataPane(NomiTheme themeState) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.02),
-        border: const Border(right: BorderSide(color: Colors.white10)),
+        color: Color(themeState.textMain).withValues(alpha: 0.02),
+        border: Border(right: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
       ),
       child: ListView(
         children: [
-          _buildField('Slug', widget.plugin.slug),
-          _buildField('Description', widget.plugin.description ?? 'No description'),
-          _buildField('Intents', widget.plugin.intents?.join(', ') ?? 'None'),
-          _buildField('Schema', '{ "version": "1.0" }'),
+          _buildField(themeState, 'Slug', widget.plugin.slug),
+          _buildField(themeState, 'Description', widget.plugin.description ?? 'No description'),
+          _buildField(themeState, 'Intents', widget.plugin.intents?.join(', ') ?? 'None'),
+          _buildField(themeState, 'Schema', '{ "version": "1.0" }'),
         ],
       ),
     );
   }
 
-  Widget _buildField(String label, String value) {
+  Widget _buildField(NomiTheme themeState, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label.toUpperCase(), style: TextStyle(color: Colors.blue.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+          Text(label.toUpperCase(), style: TextStyle(color: Color(themeState.primaryColor).withValues(alpha: 0.8), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
           const SizedBox(height: 8),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, height: 1.4)),
+          Text(value, style: TextStyle(color: Color(themeState.textMain), fontSize: 13, fontWeight: FontWeight.bold, height: 1.4)),
         ],
       ),
     );
   }
 
-  Widget _buildEditorPane() {
+  Widget _buildEditorPane(NomiTheme themeState) {
     return Container(
-      color: const Color(0xFF282c34),
+      color: themeState.isDark ? const Color(0xFF282c34) : Color(themeState.bgHeader),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: HighlightView(

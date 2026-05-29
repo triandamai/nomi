@@ -1,20 +1,363 @@
 @import "tailwindcss";
 
 @theme {
-    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-sans: "Montserrat", "Poppins", ui-sans-serif, system-ui, sans-serif;
+    --font-poppins: "Poppins", sans-serif;
+    --font-bebas: "Bebas Neue", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    --color-bg-main: #0f172a;
-    --color-text-main: #f1f5f9;
-    --color-text-muted: #64748b;
-    --color-border-main: #1e293b;
-    --color-primary-blue: #3b82f6;
-    --color-accent-emerald: #10b981;
+    --color-bg-main: var(--bg-main);
+    --color-text-main: var(--text-main);
+    --color-text-muted: var(--text-muted);
+    --color-border-main: var(--border-main);
+    --color-primary-blue: var(--primary-blue);
+    --color-accent-emerald: var(--accent-emerald);
+
+    /* Dynamic Slate Overrides */
+    --color-slate-950: var(--slate-955);
+    --color-slate-900: var(--slate-900);
+    --color-slate-800: var(--slate-800);
+    --color-slate-700: var(--slate-700);
+    --color-slate-600: var(--slate-600);
+    --color-slate-500: var(--slate-500);
+    --color-slate-400: var(--slate-400);
+    --color-slate-300: var(--slate-300);
+    --color-slate-200: var(--slate-200);
+    --color-slate-100: var(--slate-100);
+    --color-slate-50: var(--slate-50);
+}
+
+/* 🎨 THEME CONFIGURATIONS 🎨 */
+:root, [data-theme="slate-dark"] {
+    --bg-main: #0b0f19;
+    --text-main: #f8fafc;
+    --text-muted: #64748b;
+    --border-main: #1e293b;
+    --primary-blue: #3b82f6;
+    --accent-emerald: #10b981;
+
+    /* Slate Default Shades */
+    --slate-955: #020617;
+    --slate-900: #0f172a;
+    --slate-800: #1e293b;
+    --slate-700: #334155;
+    --slate-600: #475569;
+    --slate-500: #64748b;
+    --slate-400: #94a3b8;
+    --slate-300: #cbd5e1;
+    --slate-200: #e2e8f0;
+    --slate-100: #f1f5f9;
+    --slate-50: #f8fafc;
+}
+
+[data-theme="nord-frost"] {
+    --bg-main: #20242c;
+    --text-main: #eceff4;
+    --text-muted: #64748b;
+    --border-main: #2e3440;
+    --primary-blue: #88c0d0;
+    --accent-emerald: #a3be8c;
+
+    /* Nord Shades Mapping */
+    --slate-955: #1a1c23;
+    --slate-900: #2e3440;
+    --slate-800: #3b4252;
+    --slate-700: #434c5e;
+    --slate-600: #4c566a;
+    --slate-500: #707e94;
+    --slate-400: #d8dee9;
+    --slate-300: #e5e9f0;
+    --slate-200: #eceff4;
+    --slate-100: #f3f5f9;
+    --slate-50: #f8fafc;
+}
+
+[data-theme="glass-purple"] {
+    --bg-main: #090616;
+    --text-main: #f5f3ff;
+    --text-muted: #8b79b8;
+    --border-main: #1c1435;
+    --primary-blue: #d8b4fe;
+    --accent-emerald: #f472b6;
+
+    /* Velvet Shades Mapping */
+    --slate-955: #04020a;
+    --slate-900: #0e0a22;
+    --slate-800: #1f173f;
+    --slate-700: #2e225a;
+    --slate-600: #3e2e77;
+    --slate-500: #8b79b8;
+    --slate-400: #c0b5e4;
+    --slate-300: #dcd7f2;
+    --slate-200: #eae6fa;
+    --slate-100: #f5f3ff;
+    --slate-50: #faf9fe;
+}
+
+[data-theme="cyberpunk-neon"] {
+    --bg-main: #050209;
+    --text-main: #00ff66;
+    --text-muted: #8e7b9b;
+    --border-main: #ff0055;
+    --primary-blue: #00ffff;
+    --accent-emerald: #ffff00;
+
+    /* Cyberpunk Shades Mapping */
+    --slate-955: #020104;
+    --slate-900: #0a0414;
+    --slate-800: #1d0933;
+    --slate-700: #ff0055;
+    --slate-600: #00ff66;
+    --slate-500: #00ffff;
+    --slate-400: #e2d9ec;
+    --slate-300: #f2edf9;
+    --slate-200: #00ff66;
+    --slate-100: #00ffff;
+    --slate-50: #ffffff;
+}
+
+[data-theme="monokai-pro"] {
+    --bg-main: #1d1e1a;
+    --text-main: #f8f8f2;
+    --text-muted: #75715e;
+    --border-main: #2e2f2b;
+    --primary-blue: #66d9ef;
+    --accent-emerald: #a6e22e;
+
+    /* Monokai Shades Mapping */
+    --slate-955: #141411;
+    --slate-900: #272822;
+    --slate-800: #3e3d32;
+    --slate-700: #49483e;
+    --slate-600: #75715e;
+    --slate-500: #a59f85;
+    --slate-400: #f8f8f2;
+    --slate-300: #f8f8f0;
+    --slate-200: #eaeaea;
+    --slate-100: #f4f4f4;
+    --slate-50: #ffffff;
+}
+
+[data-theme="emerald-forest"] {
+    --bg-main: #032119;
+    --text-main: #f0fdf4;
+    --text-muted: #6b7280;
+    --border-main: #064e3b;
+    --primary-blue: #10b981;
+    --accent-emerald: #fbbf24;
+
+    /* Forest Shades Mapping */
+    --slate-955: #02140f;
+    --slate-900: #062a21;
+    --slate-800: #0f3f33;
+    --slate-700: #145344;
+    --slate-600: #10b981;
+    --slate-500: #829a8a;
+    --slate-400: #bbf7d0;
+    --slate-300: #dcfce7;
+    --slate-200: #f0fdf4;
+    --slate-100: #f7fee7;
+    --slate-50: #ffffff;
+}
+
+[data-theme="crystal-light"] {
+    --bg-main: #f1f5f9;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --border-main: #cbd5e1;
+    --primary-blue: #3b82f6;
+    --accent-emerald: #10b981;
+
+    /* Apple Crystal Light inverted Slate Shades Mapping */
+    --slate-955: #ffffff; /* sidebar card base -> white */
+    --slate-900: #f8fafc; /* standard card bg -> off-white */
+    --slate-800: #e2e8f0; /* borders -> light border slate */
+    --slate-700: #cbd5e1;
+    --slate-600: #94a3b8;
+    --slate-500: #64748b;
+    --slate-400: #475569;
+    --slate-300: #334155;
+    --slate-200: #1e293b;
+    --slate-100: #0f172a;
+    --slate-50: #020617;
+}
+
+[data-theme="m3-expressive"] {
+    --bg-main: #140f1f;
+    --text-main: #f4eff4;
+    --text-muted: #9a8f9c;
+    --border-main: #352355;
+    --primary-blue: #d0bcff;
+    --accent-emerald: #ffb2be;
+
+    /* Material 3 Expressive Dark Shades Mapping */
+    --slate-955: #0a0410;
+    --slate-900: #140f1f;
+    --slate-800: #251c33;
+    --slate-700: #352355;
+    --slate-600: #4f378b;
+    --slate-500: #9a8f9c;
+    --slate-400: #cfbcff;
+    --slate-300: #efdbff;
+    --slate-200: #f4eff4;
+    --slate-100: #ffffff;
+    --slate-50: #ffffff;
+}
+
+[data-theme="sakura-blossom"] {
+    --bg-main: #fff5f7;
+    --text-main: #4c0519;
+    --text-muted: #be123c;
+    --border-main: #ffe4e6;
+    --primary-blue: #db2777;
+    --accent-emerald: #fb7185;
+
+    /* Inverted Sakura Pink Shades Mapping */
+    --slate-955: #ffffff; /* sidebar card base -> white */
+    --slate-900: #fff8fa; /* standard card bg -> soft cream blush */
+    --slate-800: #ffe4e6; /* borders -> rose blush border */
+    --slate-700: #fecdd3;
+    --slate-600: #fda4af;
+    --slate-500: #fb7185;
+    --slate-400: #f43f5e;
+    --slate-300: #db2777;
+    --slate-200: #be185d;
+    --slate-100: #9d174d;
+    --slate-50: #881337;
+}
+
+[data-theme="mint-matcha"] {
+    --bg-main: #f0fdf4;
+    --text-main: #042f2e;
+    --text-muted: #0d9488;
+    --border-main: #dcfce7;
+    --primary-blue: #0f766e;
+    --accent-emerald: #d97706;
+
+    /* Inverted Matcha Green Shades Mapping */
+    --slate-955: #ffffff; /* sidebar card base -> white */
+    --slate-900: #f4fdf8; /* standard card bg -> soft mint cream */
+    --slate-800: #e8f7ee; /* borders -> light mint border */
+    --slate-700: #d1fae5;
+    --slate-600: #a7f3d0;
+    --slate-500: #6ee7b7;
+    --slate-400: #34d399;
+    --slate-300: #059669;
+    --slate-200: #047857;
+    --slate-100: #065f46;
+    --slate-50: #064e3b;
 }
 
 :root {
     font-family: var(--font-sans);
-    background-color: var(--color-bg-main);
-    color: var(--color-text-main);
+    background-color: transparent;
+    color: var(--text-main);
+    transition: color 0.3s ease;
+}
+
+h1, h2, h3, .font-bebas {
+    font-family: var(--font-bebas);
+    letter-spacing: 0.04em;
+}
+
+button, input, select, textarea, .font-poppins {
+    font-family: var(--font-poppins);
+}
+
+/* 🔮 Apple Liquid Glass Core Styles 🔮 */
+.liquid-glass-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    background-color: var(--bg-main);
+    transition: background-color 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Pulsing soft Sonoma liquid glass lights */
+.liquid-glass-light-1 {
+    position: absolute;
+    top: -20%;
+    left: -10%;
+    width: 70%;
+    height: 80%;
+    border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--primary-blue) 12%, transparent) 0%, transparent 75%);
+    filter: blur(100px);
+    animation: liquid-drift-1 25s infinite alternate ease-in-out;
+}
+
+.liquid-glass-light-2 {
+    position: absolute;
+    bottom: -15%;
+    right: -10%;
+    width: 70%;
+    height: 80%;
+    border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent-emerald) 8%, transparent) 0%, transparent 75%);
+    filter: blur(110px);
+    animation: liquid-drift-2 30s infinite alternate ease-in-out;
+}
+
+@keyframes liquid-drift-1 {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(12%, 18%) scale(1.15); }
+}
+
+@keyframes liquid-drift-2 {
+    0% { transform: translate(0, 0) scale(1.05); }
+    100% { transform: translate(-18%, -12%) scale(0.92); }
+}
+
+/* Escape-override hardcoded Tailwind #0f172a classes globally */
+.bg-\[\#0f172a\] {
+    background-color: color-mix(in srgb, var(--slate-900) 65%, transparent) !important;
+    backdrop-filter: blur(28px) saturate(210%) !important;
+    border-color: color-mix(in srgb, var(--slate-800) 40%, transparent) !important;
+    transition: background-color 0.3s ease, border-color 0.3s ease !important;
+}
+.bg-\[\#0f172a\]\/80 {
+    background-color: color-mix(in srgb, var(--slate-900) 50%, transparent) !important;
+    backdrop-filter: blur(28px) saturate(210%) !important;
+    transition: background-color 0.3s ease !important;
+}
+.bg-\[\#0f172a\]\/50 {
+    background-color: color-mix(in srgb, var(--slate-900) 40%, transparent) !important;
+    backdrop-filter: blur(28px) saturate(210%) !important;
+    transition: background-color 0.3s ease !important;
+}
+.bg-\[\#0f172a\]\/30 {
+    background-color: color-mix(in srgb, var(--slate-900) 25%, transparent) !important;
+    backdrop-filter: blur(28px) saturate(210%) !important;
+    transition: background-color 0.3s ease !important;
+}
+
+/* Redefining standard Tailwind slate containers to look frosted glass */
+.bg-slate-900 {
+    background-color: color-mix(in srgb, var(--slate-900) 60%, transparent) !important;
+    backdrop-filter: blur(28px) saturate(210%) !important;
+    border-color: color-mix(in srgb, var(--slate-800) 40%, transparent) !important;
+    transition: background-color 0.3s ease !important;
+}
+
+.bg-slate-950 {
+    background-color: color-mix(in srgb, var(--slate-955) 55%, transparent) !important;
+    backdrop-filter: blur(36px) saturate(210%) !important;
+    border-color: color-mix(in srgb, var(--slate-800) 30%, transparent) !important;
+    transition: background-color 0.3s ease !important;
+}
+
+.bg-slate-800 {
+    background-color: color-mix(in srgb, var(--slate-800) 60%, transparent) !important;
+    backdrop-filter: blur(20px) saturate(210%) !important;
+    transition: background-color 0.3s ease !important;
+}
+
+/* Dynamic glowing border reflections for cards */
+.glass-glow-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1), 0 8px 32px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(28px) saturate(210%);
 }
 
 pre, code, .font-mono {

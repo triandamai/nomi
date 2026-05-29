@@ -1,6 +1,9 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/providers/navigation_provider.dart';
@@ -39,6 +42,7 @@ class _StoragePageState extends ConsumerState<StoragePage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final isLargeScreen = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
@@ -46,17 +50,17 @@ class _StoragePageState extends ConsumerState<StoragePage> {
       appBar: isLargeScreen 
         ? null 
         : AppBar(
-            backgroundColor: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
+            backgroundColor: Color(themeState.bgHeader).withValues(alpha: 0.8),
             elevation: 0,
             leading: IconButton(
               onPressed: () => Scaffold.of(context).openDrawer(),
-              icon: const Icon(LucideIcons.menu),
+              icon: Icon(LucideIcons.menu, color: Color(themeState.textMain)),
             ),
-            title: const Text('Storage Explorer', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            title: Text('Storage Explorer', style: TextStyle(color: Color(themeState.textMain), fontSize: 18, fontWeight: FontWeight.bold)),
           ),
       body: Column(
         children: [
-          _buildHeader(isLargeScreen),
+          _buildHeader(themeState, isLargeScreen),
           Expanded(
             child: _isLoading 
                 ? const Center(child: CircularProgressIndicator())
@@ -69,7 +73,7 @@ class _StoragePageState extends ConsumerState<StoragePage> {
                       childAspectRatio: 1.2,
                     ),
                     itemCount: _items.length,
-                    itemBuilder: (context, index) => _buildItem(_items[index]),
+                    itemBuilder: (context, index) => _buildItem(themeState, _items[index]),
                   ),
           ),
         ],
@@ -77,56 +81,60 @@ class _StoragePageState extends ConsumerState<StoragePage> {
     );
   }
 
-  Widget _buildHeader(bool isLargeScreen) {
+  Widget _buildHeader(NomiTheme themeState, bool isLargeScreen) {
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05)))),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5)))),
       child: Row(
         children: [
           IconButton(
             onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
-            icon: const Icon(LucideIcons.chevronLeft, color: Colors.white),
+            icon: Icon(LucideIcons.chevronLeft, color: Color(themeState.textMain)),
           ),
           const SizedBox(width: 16),
           if (isLargeScreen) ...[
-            const Icon(LucideIcons.database, color: Colors.purple, size: 24),
+            Icon(LucideIcons.database, color: Color(themeState.primaryColor), size: 24),
             const SizedBox(width: 16),
           ],
-          Text(_currentPrefix.isEmpty ? 'Storage Root' : _currentPrefix, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(_currentPrefix.isEmpty ? 'Storage Root' : _currentPrefix, style: TextStyle(color: Color(themeState.textMain), fontSize: 18, fontWeight: FontWeight.bold)),
           const Spacer(),
           if (_currentPrefix.isNotEmpty)
-             IconButton(onPressed: () => _loadStorage(prefix: ''), icon: const Icon(LucideIcons.home, color: Colors.white38)),
+             IconButton(onPressed: () => _loadStorage(prefix: ''), icon: Icon(LucideIcons.home, color: Color(themeState.textMuted))),
         ],
       ),
     );
   }
 
-  Widget _buildItem(StorageItem item) {
+  Widget _buildItem(NomiTheme themeState, StorageItem item) {
     final isFolder = item.type == 'folder' || item.type == 'bucket';
     return GestureDetector(
       onTap: () {
         if (isFolder) {
           _loadStorage(prefix: item.full_path);
         } else {
-          _showFilePreview(item);
+          _showFilePreview(themeState, item);
         }
       },
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
+          color: Color(themeState.textMain).withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(isFolder ? LucideIcons.folder : LucideIcons.file, size: 32, color: isFolder ? Colors.amber : Colors.blue),
+            Icon(
+              isFolder ? LucideIcons.folder : LucideIcons.file, 
+              size: 32, 
+              color: isFolder ? Colors.amber : Color(themeState.primaryColor)
+            ),
             const SizedBox(height: 12),
             Text(
               item.name ?? item.displayPath.split('/').last, 
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+              style: TextStyle(color: Color(themeState.textMain), fontSize: 12, fontWeight: FontWeight.bold),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -136,18 +144,37 @@ class _StoragePageState extends ConsumerState<StoragePage> {
     );
   }
 
-  void _showFilePreview(StorageItem item) {
+  void _showFilePreview(NomiTheme themeState, StorageItem item) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(color: Color(AppConfig.deepSlate), borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-        child: Column(
+      builder: (_) => ClipRRect(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: themeState.isDark 
+                ? Color(themeState.slate950).withValues(alpha: 0.85) 
+                : Color(themeState.bgHeader).withValues(alpha: 0.92),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+              border: Border.all(
+                color: Color(themeState.borderMain).withValues(alpha: 0.25),
+                width: 1.2,
+              ),
+            ),
+            child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(item.name ?? item.displayPath.split('/').last, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(item.name ?? item.displayPath.split('/').last, style: TextStyle(color: Color(themeState.textMain), fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             SizedBox(
               height: 300,
@@ -160,7 +187,7 @@ class _StoragePageState extends ConsumerState<StoragePage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _actionButton(LucideIcons.download, 'Download', Colors.blue, () {}),
+                _actionButton(LucideIcons.download, 'Download', Color(themeState.primaryColor), () {}),
                 _actionButton(LucideIcons.trash2, 'Delete', Colors.red, () {
                   Navigator.pop(context);
                 }),
@@ -168,6 +195,8 @@ class _StoragePageState extends ConsumerState<StoragePage> {
             ),
           ],
         ),
+      ),
+      ),
       ),
     );
   }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:nomi_mobile/core/config.dart';
 
 class FilePreviewWidget extends StatefulWidget {
   final String url;

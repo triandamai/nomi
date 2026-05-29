@@ -11,6 +11,7 @@ class AuthState {
   final bool isAuthenticated;
   final bool otpSent;
   final String? identity;
+  final bool isInitialChecked;
 
   AuthState({
     this.user,
@@ -20,6 +21,7 @@ class AuthState {
     this.isAuthenticated = false,
     this.otpSent = false,
     this.identity,
+    this.isInitialChecked = false,
   });
 
   AuthState copyWith({
@@ -30,6 +32,7 @@ class AuthState {
     bool? isAuthenticated,
     bool? otpSent,
     String? identity,
+    bool? isInitialChecked,
   }) {
     return AuthState(
       user: user ?? this.user,
@@ -39,6 +42,7 @@ class AuthState {
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       otpSent: otpSent ?? this.otpSent,
       identity: identity ?? this.identity,
+      isInitialChecked: isInitialChecked ?? this.isInitialChecked,
     );
   }
 }
@@ -50,13 +54,13 @@ class AuthNotifier extends Notifier<AuthState> {
   @override
   AuthState build() {
     _checkAuth();
-    return AuthState(isLoading: false, isAuthenticated: false);
+    return AuthState(isLoading: true, isAuthenticated: false, isInitialChecked: false);
   }
 
   Future<void> _checkAuth() async {
     final token = await _storage.read(key: 'jwt_token');
     if (token == null) {
-      state = state.copyWith(isAuthenticated: false, isLoading: false, token: null);
+      state = state.copyWith(isAuthenticated: false, isLoading: false, token: null, isInitialChecked: true);
       return;
     }
 
@@ -68,12 +72,13 @@ class AuthNotifier extends Notifier<AuthState> {
           user: response.data,
           isAuthenticated: true,
           isLoading: false,
+          isInitialChecked: true,
         );
       } else {
         await logout();
       }
     } catch (e) {
-      state = state.copyWith(isLoading: false, isAuthenticated: false, error: e.toString());
+      state = state.copyWith(isLoading: false, isAuthenticated: false, error: e.toString(), isInitialChecked: true);
     }
   }
 
@@ -81,9 +86,11 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(isLoading: true, identity: identity);
     try {
       final response = await ref.read(authRepositoryProvider).requestOtp(identity, channel);
+      print("${response} \n");
       state = state.copyWith(isLoading: false, otpSent: response.meta.isSuccess);
       return response.meta.isSuccess;
     } catch (e) {
+      print("${e} \n");
       state = state.copyWith(isLoading: false, error: e.toString());
       return false;
     }
@@ -139,7 +146,7 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> logout() async {
     await _storage.delete(key: 'jwt_token');
     await _storage.delete(key: 'user_id');
-    state = AuthState();
+    state = AuthState(isInitialChecked: true);
   }
 }
 

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/data/models/transaction.dart';
 import 'package:nomi_mobile/core/db/database.dart' as db;
@@ -49,18 +50,34 @@ class _FinanceHistorySheetState extends ConsumerState<FinanceHistorySheet> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final transactionsStream = ref.watch(transactionsStreamProvider((_selectedCategory, _textController.text)));
     final size = MediaQuery.of(context).size;
-    final bool isLargeScreen = size.width >= 700;
 
-    return Container(
-      width: double.infinity,
-      constraints: BoxConstraints(maxHeight: size.height * 0.9),
-      decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate).withValues(alpha: 0.95),
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
       ),
-      child: Column(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(maxHeight: size.height * 0.9),
+          decoration: BoxDecoration(
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
         children: [
           // Header
           ClipRRect(
@@ -69,36 +86,36 @@ class _FinanceHistorySheetState extends ConsumerState<FinanceHistorySheet> {
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.02),
-                  border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+                  color: Color(themeState.textMain).withValues(alpha: 0.02),
+                  border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
                 ),
                 child: Column(
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Column(
+                        Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'FINANCIAL OPERATIONS',
                               style: TextStyle(
-                                color: Color(AppConfig.emerald),
+                                color: Color(themeState.accentColor),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 2,
                               ),
                             ),
-                            SizedBox(height: 4),
+                            const SizedBox(height: 4),
                             Text(
                               'Money Tracking',
-                              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: Color(themeState.textMain), fontSize: 22, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(LucideIcons.x, color: Colors.white38),
+                          icon: Icon(LucideIcons.x, color: Color(themeState.textMuted)),
                         ),
                       ],
                     ),
@@ -107,20 +124,20 @@ class _FinanceHistorySheetState extends ConsumerState<FinanceHistorySheet> {
                     // Search Bar
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.3),
+                        color: themeState.isDark ? Colors.black.withValues(alpha: 0.3) : Color(themeState.textMain).withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
                       ),
                       child: TextField(
                         controller: _textController,
                         onChanged: (_) => _syncWithFilters(),
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                        decoration: const InputDecoration(
+                        style: TextStyle(color: Color(themeState.textMain), fontSize: 14),
+                        decoration: InputDecoration(
                           hintText: 'Search merchant or description...',
-                          hintStyle: TextStyle(color: Colors.white24, fontSize: 14),
-                          prefixIcon: Icon(LucideIcons.search, size: 16, color: Colors.white24),
+                          hintStyle: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5), fontSize: 14),
+                          prefixIcon: Icon(LucideIcons.search, size: 16, color: Color(themeState.textMuted)),
                           border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 14),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                       ),
                     ),
@@ -141,16 +158,16 @@ class _FinanceHistorySheetState extends ConsumerState<FinanceHistorySheet> {
                                 setState(() => _selectedCategory = val ? cat['name'] : null);
                                 _syncWithFilters();
                               },
-                              backgroundColor: Colors.white.withValues(alpha: 0.03),
-                              selectedColor: Colors.blue.withValues(alpha: 0.2),
+                              backgroundColor: Color(themeState.textMain).withValues(alpha: 0.03),
+                              selectedColor: Color(themeState.primaryColor).withValues(alpha: 0.2),
                               labelStyle: TextStyle(
-                                color: isSelected ? Colors.blue : Colors.white38,
+                                color: isSelected ? Color(themeState.primaryColor) : Color(themeState.textMuted),
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(20),
-                                side: BorderSide(color: isSelected ? Colors.blue.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.05)),
+                                side: BorderSide(color: isSelected ? Color(themeState.primaryColor).withValues(alpha: 0.3) : Color(themeState.borderMain).withValues(alpha: 0.5)),
                               ),
                             ),
                           );
@@ -172,11 +189,11 @@ class _FinanceHistorySheetState extends ConsumerState<FinanceHistorySheet> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(LucideIcons.dollarSign, size: 48, color: Colors.white.withValues(alpha: 0.05)),
+                        Icon(LucideIcons.dollarSign, size: 48, color: Color(themeState.textMuted).withValues(alpha: 0.1)),
                         const SizedBox(height: 16),
                         Text(
                           'No transactions found',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 14, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.4), fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -200,6 +217,8 @@ class _FinanceHistorySheetState extends ConsumerState<FinanceHistorySheet> {
           ),
         ],
       ),
+    ),
+    ),
     );
   }
 
@@ -213,26 +232,33 @@ class _FinanceHistorySheetState extends ConsumerState<FinanceHistorySheet> {
   }
 }
 
-class _TransactionDetailSheet extends StatelessWidget {
+class _TransactionDetailSheet extends ConsumerWidget {
   final Transaction tx;
   const _TransactionDetailSheet({required this.tx});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     final currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
     final amount = double.tryParse(tx.totalAmount) ?? 0.0;
     final size = MediaQuery.of(context).size;
 
     return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           width: double.infinity,
           constraints: BoxConstraints(maxHeight: size.height * 0.85),
           decoration: BoxDecoration(
-            color: const Color(AppConfig.deepSlate).withValues(alpha: 0.9),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: const Border(top: BorderSide(color: Colors.white10)),
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
           ),
           padding: const EdgeInsets.all(32),
           child: SingleChildScrollView(
@@ -242,18 +268,18 @@ class _TransactionDetailSheet extends StatelessWidget {
                 // Header
                 Row(
                   children: [
-                    const Icon(LucideIcons.receipt, color: Color(AppConfig.emerald), size: 24),
+                    Icon(LucideIcons.receipt, color: Color(themeState.accentColor), size: 24),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('TRANSACTION DETAILS', style: TextStyle(color: Color(AppConfig.emerald), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                          Text(tx.merchantName ?? 'Unknown Merchant', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                          Text('TRANSACTION DETAILS', style: TextStyle(color: Color(themeState.accentColor), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                          Text(tx.merchantName ?? 'Unknown Merchant', style: TextStyle(color: Color(themeState.textMain), fontSize: 20, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
-                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white38)),
+                    IconButton(onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: Color(themeState.textMuted))),
                   ],
                 ),
                 const SizedBox(height: 32),
@@ -265,23 +291,23 @@ class _TransactionDetailSheet extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('TOTAL AMOUNT', style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                        Text('TOTAL AMOUNT', style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
                         const SizedBox(height: 4),
-                        Text(currencyFormat.format(amount), style: const TextStyle(color: Color(AppConfig.rose), fontSize: 24, fontWeight: FontWeight.w900, fontFamily: 'monospace')),
+                        Text(currencyFormat.format(amount), style: TextStyle(color: Color(themeState.accentColor), fontSize: 24, fontWeight: FontWeight.w900, fontFamily: 'monospace')),
                       ],
                     ),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        const Text('DATE', style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                        Text('DATE', style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
                         const SizedBox(height: 4),
                         Text(
                           DateFormat('MMM d, yyyy').format(DateTime.parse(tx.createdAt)),
-                          style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Color(themeState.textMain), fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                         Text(
                           DateFormat('HH:mm:ss').format(DateTime.parse(tx.createdAt)),
-                          style: const TextStyle(color: Colors.white38, fontSize: 11, fontFamily: 'monospace'),
+                          style: TextStyle(color: Color(themeState.textMuted), fontSize: 11, fontFamily: 'monospace'),
                         ),
                       ],
                     ),
@@ -293,48 +319,48 @@ class _TransactionDetailSheet extends StatelessWidget {
                 Row(
                   children: [
                     if (tx.category != null) ...[
-                      _metaChip(LucideIcons.tag, tx.category!.toUpperCase()),
+                      _metaChip(themeState, LucideIcons.tag, tx.category!.toUpperCase()),
                       const SizedBox(width: 12),
                     ],
                     if (tx.userDisplayName != null)
-                      _metaChip(LucideIcons.user, '@${tx.userDisplayName}'),
+                      _metaChip(themeState, LucideIcons.user, '@${tx.userDisplayName}'),
                   ],
                 ),
                 const SizedBox(height: 32),
 
                 // Description
                 if (tx.description != null && tx.description!.isNotEmpty) ...[
-                  const Text('DESCRIPTION', style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                  Text('DESCRIPTION', style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
                   const SizedBox(height: 12),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.02),
+                      color: Color(themeState.textMain).withValues(alpha: 0.02),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                      border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
                     ),
-                    child: Text(tx.description!, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.6)),
+                    child: Text(tx.description!, style: TextStyle(color: Color(themeState.textMain), fontSize: 14, height: 1.6)),
                   ),
                   const SizedBox(height: 32),
                 ],
 
                 // Items List
-                const Text('PURCHASED ITEMS', style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                Text('PURCHASED ITEMS', style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
                 const SizedBox(height: 16),
                 if (tx.items != null && tx.items!.isNotEmpty)
-                  ...tx.items!.map((item) => _buildItemRow(item, currencyFormat))
+                  ...tx.items!.map((item) => _buildItemRow(themeState, item, currencyFormat))
                 else
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.02),
+                      color: Color(themeState.textMain).withValues(alpha: 0.02),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                      border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
                     ),
-                    child: const Center(
-                      child: Text('No specific items recorded.', style: TextStyle(color: Colors.white24, fontSize: 12, fontStyle: FontStyle.italic)),
+                    child: Center(
+                      child: Text('No specific items recorded.', style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5), fontSize: 12, fontStyle: FontStyle.italic)),
                     ),
                   ),
                 const SizedBox(height: 40),
@@ -346,34 +372,34 @@ class _TransactionDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _metaChip(IconData icon, String label) {
+  Widget _metaChip(NomiTheme themeState, IconData icon, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: Color(themeState.textMain).withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: Colors.white38),
+          Icon(icon, size: 12, color: Color(themeState.textMuted)),
           const SizedBox(width: 8),
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+          Text(label, style: TextStyle(color: Color(themeState.textMain), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
         ],
       ),
     );
   }
 
-  Widget _buildItemRow(TransactionItem item, NumberFormat currencyFormat) {
+  Widget _buildItemRow(NomiTheme themeState, TransactionItem item, NumberFormat currencyFormat) {
     final itemAmount = double.tryParse(item.totalAmount) ?? 0.0;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.2),
+        color: Color(themeState.textMain).withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
       ),
       child: Row(
         children: [
@@ -381,15 +407,15 @@ class _TransactionDetailSheet extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                Text(item.name, style: TextStyle(color: Color(themeState.textMain), fontSize: 14, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                Text('QTY: ${item.quantity}', style: const TextStyle(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                Text('QTY: ${item.quantity}', style: TextStyle(color: Color(themeState.textMuted), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
               ],
             ),
           ),
           Text(
             currencyFormat.format(itemAmount),
-            style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+            style: TextStyle(color: Color(themeState.textMain), fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
           ),
         ],
       ),
@@ -397,13 +423,14 @@ class _TransactionDetailSheet extends StatelessWidget {
   }
 }
 
-class _TransactionListItem extends StatelessWidget {
+class _TransactionListItem extends ConsumerWidget {
   final Transaction tx;
   final VoidCallback onTap;
   const _TransactionListItem({required this.tx, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     final currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
     final amount = double.tryParse(tx.totalAmount) ?? 0.0;
     
@@ -413,9 +440,9 @@ class _TransactionListItem extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
+          color: Color(themeState.textMain).withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
         ),
         child: Row(
           children: [
@@ -427,19 +454,19 @@ class _TransactionListItem extends StatelessWidget {
                     children: [
                       Text(
                         tx.merchantName ?? 'Unknown Merchant',
-                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Color(themeState.textMain), fontSize: 14, fontWeight: FontWeight.bold),
                       ),
                       if (tx.category != null) ...[
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.05),
+                            color: Color(themeState.textMain).withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             tx.category!.toUpperCase(),
-                            style: const TextStyle(color: Colors.white38, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1),
+                            style: TextStyle(color: Color(themeState.textMuted), fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1),
                           ),
                         ),
                       ],
@@ -448,14 +475,14 @@ class _TransactionListItem extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     tx.description ?? 'No description',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
+                    style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.8), fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     DateFormat('MMM d, HH:mm').format(DateTime.parse(tx.createdAt)),
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.15), fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                    style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.4), fontSize: 9, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
                   ),
                 ],
               ),
@@ -465,13 +492,13 @@ class _TransactionListItem extends StatelessWidget {
               children: [
                 Text(
                   currencyFormat.format(amount),
-                  style: const TextStyle(color: Color(AppConfig.rose), fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'monospace'),
+                  style: TextStyle(color: Color(themeState.accentColor), fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'monospace'),
                 ),
                 const SizedBox(height: 4),
                 if (tx.userDisplayName != null)
                   Text(
                     '@${tx.userDisplayName}',
-                    style: TextStyle(color: Colors.blue.withValues(alpha: 0.4), fontSize: 8, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic),
+                    style: TextStyle(color: Color(themeState.primaryColor), fontSize: 8, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic),
                   ),
               ],
             ),

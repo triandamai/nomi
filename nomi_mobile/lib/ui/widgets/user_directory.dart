@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/data/models/user_profile.dart';
 import 'package:nomi_mobile/ui/widgets/user_detail.dart';
@@ -42,25 +42,32 @@ class _UserDirectorySheetState extends ConsumerState<UserDirectorySheet> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final size = MediaQuery.of(context).size;
     final isLargeScreen = size.width >= 700;
 
     return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
+      ),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           width: double.infinity,
           constraints: BoxConstraints(maxHeight: size.height * 0.9),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(AppConfig.deepSlate).withValues(alpha: 0.7),
-                const Color(0xFF1e293b).withValues(alpha: 0.4),
-              ],
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
             ),
-            border: const Border(top: BorderSide(color: Colors.white10)),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
           ),
           padding: EdgeInsets.symmetric(horizontal: 24, vertical: isLargeScreen ? 24 : 32),
           child: SafeArea(
@@ -69,17 +76,28 @@ class _UserDirectorySheetState extends ConsumerState<UserDirectorySheet> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Column(
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('DIRECTORY', style: TextStyle(color: Color(AppConfig.blue), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                        SizedBox(height: 4),
-                        Text('User Registry', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                        Text(
+                          'DIRECTORY', 
+                          style: TextStyle(
+                            color: Color(themeState.primaryColor), 
+                            fontSize: 10, 
+                            fontWeight: FontWeight.w900, 
+                            letterSpacing: 2
+                          )
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'User Registry', 
+                          style: TextStyle(color: Color(themeState.textMain), fontSize: 22, fontWeight: FontWeight.bold)
+                        ),
                       ],
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(LucideIcons.x, color: Colors.white38),
+                      icon: Icon(LucideIcons.x, color: Color(themeState.textMuted)),
                     ),
                   ],
                 ),
@@ -87,20 +105,20 @@ class _UserDirectorySheetState extends ConsumerState<UserDirectorySheet> {
 
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.3),
+                    color: themeState.isDark ? Colors.black.withValues(alpha: 0.3) : Color(themeState.textMain).withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                    border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
                   ),
                   child: TextField(
                     controller: _searchController,
                     onSubmitted: (val) => _fetchUsers(query: val),
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: Color(themeState.textMain), fontSize: 14),
+                    decoration: InputDecoration(
                       hintText: 'Search by name or email...',
-                      hintStyle: TextStyle(color: Colors.white24, fontSize: 14),
-                      prefixIcon: Icon(LucideIcons.search, size: 16, color: Colors.white24),
+                      hintStyle: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5), fontSize: 14),
+                      prefixIcon: Icon(LucideIcons.search, size: 16, color: Color(themeState.textMuted)),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(vertical: 14),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
                 ),
@@ -123,18 +141,19 @@ class _UserDirectorySheetState extends ConsumerState<UserDirectorySheet> {
   }
 }
 
-class _UserItem extends StatelessWidget {
+class _UserItem extends ConsumerWidget {
   final UserProfile user;
   const _UserItem({required this.user});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: Color(themeState.textMain).withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
       ),
       child: InkWell(
         onTap: () {
@@ -151,21 +170,30 @@ class _UserItem extends StatelessWidget {
           child: Row(
             children: [
               CircleAvatar(
-                backgroundColor: const Color(AppConfig.blue).withValues(alpha: 0.1),
-                child: Text(user.displayName?[0].toUpperCase() ?? '?', style: const TextStyle(color: Color(AppConfig.blue))),
+                backgroundColor: Color(themeState.primaryColor).withValues(alpha: 0.1),
+                child: Text(
+                  user.displayName?[0].toUpperCase() ?? '?', 
+                  style: TextStyle(color: Color(themeState.primaryColor))
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.displayName ?? user.name ?? 'Unknown', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                    Text(user.email ?? 'No email', style: const TextStyle(color: Colors.white38, fontSize: 11, fontFamily: 'monospace')),
+                    Text(
+                      user.displayName ?? user.name ?? 'Unknown', 
+                      style: TextStyle(color: Color(themeState.textMain), fontSize: 14, fontWeight: FontWeight.bold)
+                    ),
+                    Text(
+                      user.email ?? 'No email', 
+                      style: TextStyle(color: Color(themeState.textMuted), fontSize: 11, fontFamily: 'monospace')
+                    ),
                   ],
                 ),
               ),
               if (user.isVerified ?? false)
-                const Icon(LucideIcons.checkCircle2, color: Color(AppConfig.emerald), size: 16),
+                Icon(LucideIcons.checkCircle2, color: Color(themeState.accentColor), size: 16),
             ],
           ),
         ),

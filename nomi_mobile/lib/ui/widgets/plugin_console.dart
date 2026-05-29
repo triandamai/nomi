@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/providers/navigation_provider.dart';
 import 'package:nomi_mobile/data/models/plugin.dart';
@@ -34,16 +34,33 @@ class _PluginConsoleSheetState extends ConsumerState<PluginConsoleSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final pluginsStream = ref.watch(pluginsStreamProvider(_searchController.text));
 
-    return Container(
-      width: double.infinity,
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
-      decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate).withValues(alpha: 0.95),
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
       ),
-      child: Column(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
+          decoration: BoxDecoration(
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
         children: [
           // Header with Liquid Glass Feel
           ClipRRect(
@@ -52,36 +69,36 @@ class _PluginConsoleSheetState extends ConsumerState<PluginConsoleSheet> {
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.02),
-                  border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+                  color: Color(themeState.textMain).withValues(alpha: 0.02),
+                  border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
                 ),
                 child: Column(
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Column(
+                        Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'COMPUTE ENGINE',
                               style: TextStyle(
-                                color: Color(AppConfig.emerald),
+                                color: Color(themeState.accentColor),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 2,
                               ),
                             ),
-                            SizedBox(height: 4),
+                            const SizedBox(height: 4),
                             Text(
                               'Edge Plugins',
-                              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: Color(themeState.textMain), fontSize: 22, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(LucideIcons.x, color: Colors.white38),
+                          icon: Icon(LucideIcons.x, color: Color(themeState.textMuted)),
                         ),
                       ],
                     ),
@@ -90,20 +107,20 @@ class _PluginConsoleSheetState extends ConsumerState<PluginConsoleSheet> {
                     // Search Bar
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.3),
+                        color: themeState.isDark ? Colors.black.withValues(alpha: 0.3) : Color(themeState.textMain).withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
                       ),
                       child: TextField(
                         controller: _searchController,
                         onChanged: (_) => setState(() {}),
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                        decoration: const InputDecoration(
+                        style: TextStyle(color: Color(themeState.textMain), fontSize: 14),
+                        decoration: InputDecoration(
                           hintText: 'Search plugins or slugs...',
-                          hintStyle: TextStyle(color: Colors.white24, fontSize: 14),
-                          prefixIcon: Icon(LucideIcons.search, size: 16, color: Colors.white24),
+                          hintStyle: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5), fontSize: 14),
+                          prefixIcon: Icon(LucideIcons.search, size: 16, color: Color(themeState.textMuted)),
                           border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 14),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                       ),
                     ),
@@ -122,11 +139,11 @@ class _PluginConsoleSheetState extends ConsumerState<PluginConsoleSheet> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(LucideIcons.cpu, size: 48, color: Colors.white.withValues(alpha: 0.05)),
+                        Icon(LucideIcons.cpu, size: 48, color: Color(themeState.textMuted).withValues(alpha: 0.1)),
                         const SizedBox(height: 16),
                         Text(
                           'No edge plugins available',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 14, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.4), fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -146,6 +163,8 @@ class _PluginConsoleSheetState extends ConsumerState<PluginConsoleSheet> {
           ),
         ],
       ),
+    ),
+    ),
     );
   }
 }
@@ -156,12 +175,13 @@ class _PluginListItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: Color(themeState.textMain).withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
       ),
       child: InkWell(
         onTap: () {
@@ -179,10 +199,10 @@ class _PluginListItem extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
+                  color: Color(themeState.primaryColor).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(LucideIcons.code2, size: 20, color: Colors.blue),
+                child: Icon(LucideIcons.code2, size: 20, color: Color(themeState.primaryColor)),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -193,18 +213,18 @@ class _PluginListItem extends ConsumerWidget {
                       children: [
                         Text(
                           plugin.name,
-                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Color(themeState.textMain), fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.05),
+                            color: Color(themeState.textMain).withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             'V${plugin.version ?? "1.0"}',
-                            style: const TextStyle(color: Colors.white38, fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1),
+                            style: TextStyle(color: Color(themeState.textMuted), fontSize: 7, fontWeight: FontWeight.w900, letterSpacing: 1),
                           ),
                         ),
                       ],
@@ -212,19 +232,19 @@ class _PluginListItem extends ConsumerWidget {
                     const SizedBox(height: 4),
                     Text(
                       plugin.slug,
-                      style: const TextStyle(color: Color(AppConfig.blue), fontSize: 10, fontFamily: 'monospace'),
+                      style: TextStyle(color: Color(themeState.primaryColor), fontSize: 10, fontFamily: 'monospace'),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       plugin.description ?? 'No description provided.',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 12),
+                      style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.8), fontSize: 12),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              const Icon(LucideIcons.chevronRight, size: 16, color: Colors.white10),
+              Icon(LucideIcons.chevronRight, size: 16, color: Color(themeState.textMuted).withValues(alpha: 0.3)),
             ],
           ),
         ),

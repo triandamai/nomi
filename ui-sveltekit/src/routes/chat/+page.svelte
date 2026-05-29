@@ -756,10 +756,18 @@
 
 <style>
     .whatsapp-canvas {
-        background-color: #0f172a;
+        background-color: var(--slate-900);
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='%23202c33' fill-opacity='0.22'%3E%3Cpath d='M15 5h2v2h-2zm0 10h2v2h-2zm10-5h2v2h-2zm10 20h2v2h-2zm-20 10h2v2h-2zm30-5h2v2h-2zM5 45h2v2h-2zm15 15h2v2h-2zm40-30h2v2h-2zm-10-10h2v2h-2zm10 30h2v2h-2zm-20 15h2v2h-2zm30 10h2v2h-2zM55 5h2v2h-2zm0 10h2v2h-2zm-40 50h2v2h-2zm30 10h2v2h-2zm10-25h2v2h-2zm-5 15h2v2h-2zm-25 5h2v2h-2zm-10-35h2v2h-2z'/%3E%3Ccircle cx='40' cy='40' r='1'/%3E%3Cpath d='M45 40c0-2.8 2.2-5 5-5s5 2.2 5 5-2.2 5-5 5-5-2.2-5-5zm-30 0c0-2.8 2.2-5 5-5s5 2.2 5 5-2.2 5-5 5-5-2.2-5-5z'/%3E%3C/g%3E%3C/svg%3E");
         background-repeat: repeat;
         background-size: 140px 140px;
+        transition: background-color 0.3s ease, background-image 0.3s ease;
+    }
+
+    :global([data-theme="crystal-light"]) .whatsapp-canvas,
+    :global([data-theme="sakura-blossom"]) .whatsapp-canvas,
+    :global([data-theme="mint-matcha"]) .whatsapp-canvas {
+        background-color: color-mix(in srgb, var(--slate-900) 97.5%, transparent);
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='%23ffffff' fill-opacity='0.88'%3E%3Cpath d='M15 5h2v2h-2zm0 10h2v2h-2zm10-5h2v2h-2zm10 20h2v2h-2zm-20 10h2v2h-2zm30-5h2v2h-2zM5 45h2v2h-2zm15 15h2v2h-2zm40-30h2v2h-2zm-10-10h2v2h-2zm10 30h2v2h-2zm-20 15h2v2h-2zm30 10h2v2h-2zM55 5h2v2h-2zm0 10h2v2h-2zm-40 50h2v2h-2zm30 10h2v2h-2zm10-25h2v2h-2zm-5 15h2v2h-2zm-25 5h2v2h-2zm-10-35h2v2h-2z'/%3E%3Ccircle cx='40' cy='40' r='1'/%3E%3Cpath d='M45 40c0-2.8 2.2-5 5-5s5 2.2 5 5-2.2 5-5 5-5-2.2-5-5zm-30 0c0-2.8 2.2-5 5-5s5 2.2 5 5-2.2 5-5 5-5-2.2-5-5z'/%3E%3C/g%3E%3C/svg%3E");
     }
 
     :global(body) {

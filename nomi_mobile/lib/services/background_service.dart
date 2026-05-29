@@ -82,7 +82,7 @@ Future<void> _initMqtt(MqttService mqtt, ServiceInstance service, String userId)
 
   final status = await mqtt.connect(userId);
   if (status?.state == MqttConnectionState.connected) {
-    mqtt.updates?.listen((msgList) {
+    mqtt.updates.listen((msgList) {
       if (msgList.isEmpty) return;
       final MqttPublishMessage rec = msgList[0].payload as MqttPublishMessage;
       final String payload = MqttPublishPayload.bytesToStringAsString(rec.payload.message);

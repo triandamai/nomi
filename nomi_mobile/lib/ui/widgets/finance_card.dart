@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
-import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
 import 'package:nomi_mobile/data/models/transaction.dart';
 
 class FinanceCard extends ConsumerStatefulWidget {
@@ -53,16 +53,29 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
+
     if (_isLoading) {
       return Container(
         margin: const EdgeInsets.symmetric(vertical: 8),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
+          color: themeState.isDark 
+            ? Color(themeState.slate950).withValues(alpha: 0.6) 
+            : Color(themeState.textMain).withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
         ),
-        child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+        child: Center(
+          child: SizedBox(
+            width: 20, 
+            height: 20, 
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Color(themeState.primaryColor),
+            )
+          )
+        ),
       );
     }
 
@@ -82,12 +95,14 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: themeState.isDark 
+          ? Color(themeState.slate950).withValues(alpha: 0.6) 
+          : Color(themeState.textMain).withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(AppConfig.emerald).withValues(alpha: 0.2)),
+        border: Border.all(color: Color(themeState.accentColor).withValues(alpha: 0.2)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
+            color: Colors.black.withValues(alpha: themeState.isDark ? 0.2 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -102,20 +117,20 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(AppConfig.emerald).withValues(alpha: 0.05),
-                border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+                color: Color(themeState.accentColor).withValues(alpha: 0.05),
+                border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: [
-                      const Icon(LucideIcons.wallet, size: 12, color: Color(AppConfig.emerald)),
+                      Icon(LucideIcons.wallet, size: 12, color: Color(themeState.accentColor)),
                       const SizedBox(width: 8),
                       Text(
                         'FINANCE ENTRY',
                         style: TextStyle(
-                          color: const Color(AppConfig.emerald).withValues(alpha: 0.8),
+                          color: Color(themeState.accentColor).withValues(alpha: 0.8),
                           fontSize: 9,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.2,
@@ -127,12 +142,12 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(AppConfig.emerald).withValues(alpha: 0.1),
+                        color: Color(themeState.accentColor).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         _transaction!.category!.toUpperCase(),
-                        style: const TextStyle(color: Color(AppConfig.emerald), fontSize: 8, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Color(themeState.accentColor), fontSize: 8, fontWeight: FontWeight.bold),
                       ),
                     ),
                 ],
@@ -145,13 +160,13 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'MERCHANT',
-                    style: TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
+                    style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.6), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
                   ),
                   Text(
                     _transaction!.merchantName ?? 'Unknown Merchant',
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: Color(themeState.textMain), fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -160,14 +175,14 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'TOTAL AMOUNT',
-                            style: TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
+                            style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.6), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
                           ),
                           Text(
                             currencyFormat.format(amount),
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: Color(themeState.textMain),
                               fontSize: 20,
                               fontWeight: FontWeight.w900,
                               letterSpacing: -0.5,
@@ -178,11 +193,11 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(AppConfig.emerald).withValues(alpha: 0.1),
+                          color: Color(themeState.accentColor).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(AppConfig.emerald).withValues(alpha: 0.1)),
+                          border: Border.all(color: Color(themeState.accentColor).withValues(alpha: 0.1)),
                         ),
-                        child: const Icon(LucideIcons.trendingDown, size: 20, color: Color(AppConfig.emerald)),
+                        child: Icon(LucideIcons.trendingDown, size: 20, color: Color(themeState.accentColor)),
                       ),
                     ],
                   ),
@@ -193,18 +208,18 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                     Container(
                       padding: const EdgeInsets.only(top: 12),
                       decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+                        border: Border(top: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
+                          Row(
                             children: [
-                              Icon(LucideIcons.receipt, size: 10, color: Colors.white24),
-                              SizedBox(width: 8),
+                              Icon(LucideIcons.receipt, size: 10, color: Color(themeState.textMuted)),
+                              const SizedBox(width: 8),
                               Text(
                                 'LINE ITEMS',
-                                style: TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
+                                style: TextStyle(color: Color(themeState.textMuted), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
                               ),
                             ],
                           ),
@@ -217,13 +232,13 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                                 Expanded(
                                   child: Text(
                                     "${item.name} (x${item.quantity})",
-                                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                                    style: TextStyle(color: Color(themeState.textMain).withValues(alpha: 0.6), fontSize: 11),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 Text(
                                   currencyFormat.format(double.tryParse(item.totalAmount) ?? 0.0),
-                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                                  style: TextStyle(color: Color(themeState.textMain), fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
                                 ),
                               ],
                             ),
@@ -233,7 +248,7 @@ class _FinanceCardState extends ConsumerState<FinanceCard> {
                               padding: const EdgeInsets.only(top: 4),
                               child: Text(
                                 "+${items.length - 3} more items...",
-                                style: TextStyle(color: Colors.white24, fontSize: 9, fontStyle: FontStyle.italic),
+                                style: TextStyle(color: Color(themeState.textMuted), fontSize: 9, fontStyle: FontStyle.italic),
                               ),
                             ),
                         ],

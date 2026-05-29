@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/navigation_provider.dart';
 import 'package:nomi_mobile/ui/widgets/reminder_history.dart';
@@ -18,27 +19,33 @@ class UtilityGridSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     final size = MediaQuery.of(context).size;
     final bool isLargeScreen = size.width >= 700;
     final nav = ref.read(navigationProvider.notifier);
 
     return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
+      ),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           width: double.infinity,
           constraints: BoxConstraints(maxHeight: size.height * 0.9),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(AppConfig.deepSlate).withValues(alpha: 0.7),
-                const Color(0xFF1e293b).withValues(alpha: 0.4),
-              ],
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
             ),
-            borderRadius: BorderRadius.zero,
-            border: const Border(top: BorderSide(color: Colors.white10)),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
           ),
           padding: EdgeInsets.symmetric(horizontal: 24, vertical: isLargeScreen ? 24 : 32),
           child: SafeArea(
@@ -48,17 +55,32 @@ class UtilityGridSheet extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Column(
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('SYSTEM UTILITIES', style: TextStyle(color: Color(AppConfig.emerald), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                        SizedBox(height: 4),
-                        Text('Command Center', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                        Text(
+                          'SYSTEM UTILITIES', 
+                          style: TextStyle(
+                            color: Color(themeState.accentColor), 
+                            fontSize: 10, 
+                            fontWeight: FontWeight.w900, 
+                            letterSpacing: 2
+                          )
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Command Center', 
+                          style: TextStyle(
+                            color: Color(themeState.textMain), 
+                            fontSize: 22, 
+                            fontWeight: FontWeight.bold
+                          )
+                        ),
                       ],
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: Icon(LucideIcons.x, color: Colors.white38, size: isLargeScreen ? 20 : 24),
+                      icon: Icon(LucideIcons.x, color: Color(themeState.textMuted), size: isLargeScreen ? 20 : 24),
                     ),
                   ],
                 ),
@@ -85,7 +107,7 @@ class UtilityGridSheet extends ConsumerWidget {
                       _UtilityButton(
                         icon: LucideIcons.activity,
                         label: 'Nomi Workflows',
-                        color: const Color(AppConfig.indigo),
+                        color: Color(AppConfig.indigo),
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
@@ -95,7 +117,7 @@ class UtilityGridSheet extends ConsumerWidget {
                       _UtilityButton(
                         icon: LucideIcons.dollarSign,
                         label: 'Money Tracking',
-                        color: const Color(AppConfig.emerald),
+                        color: Color(AppConfig.emerald),
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
@@ -105,7 +127,7 @@ class UtilityGridSheet extends ConsumerWidget {
                       _UtilityButton(
                         icon: LucideIcons.heartPulse,
                         label: 'Health & Vitality',
-                        color: const Color(AppConfig.rose),
+                        color: Color(AppConfig.rose),
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
@@ -145,7 +167,7 @@ class UtilityGridSheet extends ConsumerWidget {
                       _UtilityButton(
                         icon: LucideIcons.shieldCheck,
                         label: 'Guardrails',
-                        color: const Color(AppConfig.emerald),
+                        color: Color(AppConfig.emerald),
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
@@ -155,7 +177,7 @@ class UtilityGridSheet extends ConsumerWidget {
                       _UtilityButton(
                         icon: LucideIcons.puzzle,
                         label: 'System Skills',
-                        color: const Color(AppConfig.indigo),
+                        color: Color(AppConfig.indigo),
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
@@ -175,7 +197,7 @@ class UtilityGridSheet extends ConsumerWidget {
                       _UtilityButton(
                         icon: LucideIcons.users,
                         label: 'User Directory',
-                        color: const Color(AppConfig.blue),
+                        color: Color(AppConfig.blue),
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
@@ -195,7 +217,7 @@ class UtilityGridSheet extends ConsumerWidget {
                       _UtilityButton(
                         icon: LucideIcons.factory,
                         label: 'Factory Console',
-                        color: const Color(AppConfig.emerald),
+                        color: Color(AppConfig.emerald),
                         isLargeScreen: isLargeScreen,
                         onTap: () {
                           Navigator.pop(context);
@@ -215,7 +237,7 @@ class UtilityGridSheet extends ConsumerWidget {
   }
 }
 
-class _UtilityButton extends StatelessWidget {
+class _UtilityButton extends ConsumerWidget {
   final IconData icon;
   final String label;
   final Color color;
@@ -231,9 +253,10 @@ class _UtilityButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     return Material(
-      color: Colors.white.withAlpha(13),
+      color: Color(themeState.textMain).withValues(alpha: 0.05),
       borderRadius: BorderRadius.circular(isLargeScreen ? 16 : 24),
       child: InkWell(
         onTap: onTap,
@@ -242,7 +265,7 @@ class _UtilityButton extends StatelessWidget {
           padding: EdgeInsets.all(isLargeScreen ? 12 : 20),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(isLargeScreen ? 16 : 24),
-            border: Border.all(color: color.withAlpha(51)),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -250,7 +273,7 @@ class _UtilityButton extends StatelessWidget {
               Container(
                 padding: EdgeInsets.all(isLargeScreen ? 8 : 16),
                 decoration: BoxDecoration(
-                  color: color.withAlpha(25),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(isLargeScreen ? 12 : 20),
                 ),
                 child: Icon(icon, color: color, size: isLargeScreen ? 24 : 32),
@@ -260,7 +283,7 @@ class _UtilityButton extends StatelessWidget {
                 label.toUpperCase(),
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withAlpha(204),
+                  color: Color(themeState.textMain),
                   fontSize: isLargeScreen ? 8 : 10,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1,

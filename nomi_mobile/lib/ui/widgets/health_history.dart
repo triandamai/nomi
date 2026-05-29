@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/data/models/health_metric.dart';
 import 'package:nomi_mobile/core/db/database.dart' as db;
@@ -34,17 +36,34 @@ class _HealthHistorySheetState extends ConsumerState<HealthHistorySheet> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final historyStream = ref.watch(healthHistoryStreamProvider((_startDate, _endDate)));
     final size = MediaQuery.of(context).size;
 
-    return Container(
-      width: double.infinity,
-      constraints: BoxConstraints(maxHeight: size.height * 0.9),
-      decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate).withValues(alpha: 0.95),
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
       ),
-      child: Column(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(maxHeight: size.height * 0.9),
+          decoration: BoxDecoration(
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
         children: [
           // Header with Liquid Glass Feel
           ClipRRect(
@@ -53,18 +72,18 @@ class _HealthHistorySheetState extends ConsumerState<HealthHistorySheet> {
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.02),
-                  border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+                  color: Color(themeState.textMain).withValues(alpha: 0.02),
+                  border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.3))),
                 ),
                 child: Column(
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Column(
+                        Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
+                            const Text(
                               'BIOMETRIC DATA',
                               style: TextStyle(
                                 color: Color(AppConfig.emerald),
@@ -73,16 +92,16 @@ class _HealthHistorySheetState extends ConsumerState<HealthHistorySheet> {
                                 letterSpacing: 2,
                               ),
                             ),
-                            SizedBox(height: 4),
+                            const SizedBox(height: 4),
                             Text(
                               'Health & Vitality',
-                              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: Color(themeState.textMain), fontSize: 22, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(LucideIcons.x, color: Colors.white38),
+                          icon: Icon(LucideIcons.x, color: Color(themeState.textMuted)),
                         ),
                       ],
                     ),
@@ -95,6 +114,7 @@ class _HealthHistorySheetState extends ConsumerState<HealthHistorySheet> {
                           child: _DateSelector(
                             label: 'Start Date',
                             date: _startDate,
+                            themeState: themeState,
                             onTap: () async {
                               final d = await showDatePicker(
                                 context: context,
@@ -114,6 +134,7 @@ class _HealthHistorySheetState extends ConsumerState<HealthHistorySheet> {
                           child: _DateSelector(
                             label: 'End Date',
                             date: _endDate,
+                            themeState: themeState,
                             onTap: () async {
                               final d = await showDatePicker(
                                 context: context,
@@ -145,11 +166,11 @@ class _HealthHistorySheetState extends ConsumerState<HealthHistorySheet> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(LucideIcons.activity, size: 48, color: Colors.white.withValues(alpha: 0.05)),
+                        Icon(LucideIcons.activity, size: 48, color: Color(themeState.textMuted).withValues(alpha: 0.1)),
                         const SizedBox(height: 16),
                         Text(
                           'No biometrics synced',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 14, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.4), fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -175,15 +196,15 @@ class _HealthHistorySheetState extends ConsumerState<HealthHistorySheet> {
                     const SizedBox(height: 24),
                     
                     // Chart
-                    _ActivityChart(data: stepsData, startDate: _startDate, endDate: _endDate),
+                    _ActivityChart(data: stepsData, startDate: _startDate, endDate: _endDate, themeState: themeState),
                     const SizedBox(height: 32),
 
-                    const Text(
+                    Text(
                       'DAILY BREAKDOWN',
-                      style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5),
+                      style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5),
                     ),
                     const SizedBox(height: 12),
-                    ...items.map((i) => _DailyMetricItem(metric: HealthMetric.fromDb(i))),
+                    ...items.map((i) => _DailyMetricItem(metric: HealthMetric.fromDb(i), themeState: themeState)),
                   ],
                 );
               },
@@ -193,6 +214,8 @@ class _HealthHistorySheetState extends ConsumerState<HealthHistorySheet> {
           ),
         ],
       ),
+    ),
+    ),
     );
   }
 
@@ -229,8 +252,9 @@ class _DateSelector extends StatelessWidget {
   final String label;
   final DateTime date;
   final VoidCallback onTap;
+  final NomiTheme themeState;
 
-  const _DateSelector({required this.label, required this.date, required this.onTap});
+  const _DateSelector({required this.label, required this.date, required this.onTap, required this.themeState});
 
   @override
   Widget build(BuildContext context) {
@@ -240,20 +264,20 @@ class _DateSelector extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.3),
+          color: Color(themeState.textMain).withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.3)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label.toUpperCase(), style: const TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
+            Text(label.toUpperCase(), style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.6), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(LucideIcons.calendar, size: 12, color: Colors.blue),
+                Icon(LucideIcons.calendar, size: 12, color: Color(themeState.primaryColor)),
                 const SizedBox(width: 8),
-                Text(DateFormat('MMM d, yyyy').format(date), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                Text(DateFormat('MMM d, yyyy').format(date), style: TextStyle(color: Color(themeState.textMain), fontSize: 11, fontWeight: FontWeight.bold)),
               ],
             ),
           ],
@@ -305,26 +329,27 @@ class _ActivityChart extends StatelessWidget {
   final List<double> data;
   final DateTime startDate;
   final DateTime endDate;
+  final NomiTheme themeState;
 
-  const _ActivityChart({required this.data, required this.startDate, required this.endDate});
+  const _ActivityChart({required this.data, required this.startDate, required this.endDate, required this.themeState});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.02),
+        color: Color(themeState.textMain).withValues(alpha: 0.02),
         borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(LucideIcons.trendingUp, size: 14, color: Colors.blue),
-              SizedBox(width: 12),
-              Text('ACTIVITY TREND', style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+              Icon(LucideIcons.trendingUp, size: 14, color: Color(themeState.primaryColor)),
+              const SizedBox(width: 12),
+              Text('ACTIVITY TREND', style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
             ],
           ),
           const SizedBox(height: 24),
@@ -339,8 +364,8 @@ class _ActivityChart extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(DateFormat('MMM d').format(startDate), style: const TextStyle(color: Colors.white10, fontSize: 8, fontWeight: FontWeight.bold)),
-              Text(DateFormat('MMM d').format(endDate), style: const TextStyle(color: Colors.white10, fontSize: 8, fontWeight: FontWeight.bold)),
+              Text(DateFormat('MMM d').format(startDate), style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.4), fontSize: 8, fontWeight: FontWeight.bold)),
+              Text(DateFormat('MMM d').format(endDate), style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.4), fontSize: 8, fontWeight: FontWeight.bold)),
             ],
           ),
         ],
@@ -406,7 +431,8 @@ class _LineChartPainter extends CustomPainter {
 
 class _DailyMetricItem extends StatelessWidget {
   final HealthMetric metric;
-  const _DailyMetricItem({required this.metric});
+  final NomiTheme themeState;
+  const _DailyMetricItem({required this.metric, required this.themeState});
 
   @override
   Widget build(BuildContext context) {
@@ -417,8 +443,9 @@ class _DailyMetricItem extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: Color(themeState.textMain).withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -426,17 +453,17 @@ class _DailyMetricItem extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(DateFormat('EEE, MMM d').format(date), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-              Text('SYNCED ${DateFormat('HH:mm').format(updated)}', style: const TextStyle(color: Colors.white12, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+              Text(DateFormat('EEE, MMM d').format(date), style: TextStyle(color: Color(themeState.textMain), fontSize: 13, fontWeight: FontWeight.bold)),
+              Text('SYNCED ${DateFormat('HH:mm').format(updated)}', style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5), fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
             ],
           ),
           Row(
             children: [
-              _MetricMini(label: 'Steps', value: NumberFormat('#,###', 'de_DE').format(metric.metrics.steps), color: const Color(AppConfig.emerald)),
+              _MetricMini(label: 'Steps', value: NumberFormat('#,###', 'de_DE').format(metric.metrics.steps), color: const Color(AppConfig.emerald), themeState: themeState),
               const SizedBox(width: 16),
-              _MetricMini(label: 'Heart', value: metric.metrics.avgHeartRate?.toString() ?? '--', color: const Color(AppConfig.rose), suffix: 'BPM'),
+              _MetricMini(label: 'Heart', value: metric.metrics.avgHeartRate?.toString() ?? '--', color: const Color(AppConfig.rose), suffix: 'BPM', themeState: themeState),
               const SizedBox(width: 16),
-              _MetricMini(label: 'Sleep', value: metric.metrics.sleepHours?.toStringAsFixed(1) ?? '--', color: Colors.indigo, suffix: 'H'),
+              _MetricMini(label: 'Sleep', value: metric.metrics.sleepHours?.toStringAsFixed(1) ?? '--', color: Colors.indigo, suffix: 'H', themeState: themeState),
             ],
           ),
         ],
@@ -450,15 +477,16 @@ class _MetricMini extends StatelessWidget {
   final String value;
   final Color color;
   final String? suffix;
+  final NomiTheme themeState;
 
-  const _MetricMini({required this.label, required this.value, required this.color, this.suffix});
+  const _MetricMini({required this.label, required this.value, required this.color, this.suffix, required this.themeState});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text(label.toUpperCase(), style: const TextStyle(color: Colors.white10, fontSize: 7, fontWeight: FontWeight.w900)),
+        Text(label.toUpperCase(), style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.6), fontSize: 7, fontWeight: FontWeight.w900)),
         Row(
           children: [
             Text(value, style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),

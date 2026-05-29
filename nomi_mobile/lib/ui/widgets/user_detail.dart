@@ -2,7 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:nomi_mobile/core/config.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/data/models/user_detail.dart';
 
@@ -36,34 +37,44 @@ class _UserDetailSheetState extends ConsumerState<UserDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
+      ),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           width: double.infinity,
           constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [const Color(AppConfig.deepSlate).withValues(alpha: 0.7), const Color(0xFF1e293b).withValues(alpha: 0.4)],
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
             ),
-            border: const Border(top: BorderSide(color: Colors.white10)),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
           ),
           padding: const EdgeInsets.all(24),
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _user == null
-                  ? const Center(child: Text('User not found', style: TextStyle(color: Colors.white)))
+                  ? Center(child: Text('User not found', style: TextStyle(color: Color(themeState.textMain))))
                   : SingleChildScrollView(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildHeader(),
+                          _buildHeader(themeState),
                           const SizedBox(height: 24),
-                          _buildSection('CONVERSATIONS', _user!.conversations.map((c) => c.title ?? 'Untitled').toList()),
+                          _buildSection(themeState, 'CONVERSATIONS', _user!.conversations.map((c) => c.title ?? 'Untitled').toList()),
                           const SizedBox(height: 24),
-                          _buildSection('CHANNELS', _user!.channels.map((c) => '${c.channelType}: ${c.conversationTitle ?? 'No Title'}').toList()),
+                          _buildSection(themeState, 'CHANNELS', _user!.channels.map((c) => '${c.channelType}: ${c.conversationTitle ?? 'No Title'}').toList()),
                         ],
                       ),
                     ),
@@ -72,35 +83,52 @@ class _UserDetailSheetState extends ConsumerState<UserDetailSheet> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(NomiTheme themeState) {
     return Row(
       children: [
-        CircleAvatar(radius: 30, child: Text(_user!.displayName?[0].toUpperCase() ?? '?')),
+        CircleAvatar(
+          radius: 30, 
+          backgroundColor: Color(themeState.primaryColor).withValues(alpha: 0.1),
+          child: Text(
+            _user!.displayName?[0].toUpperCase() ?? '?', 
+            style: TextStyle(color: Color(themeState.primaryColor), fontWeight: FontWeight.bold)
+          )
+        ),
         const SizedBox(width: 16),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_user!.displayName ?? 'Unknown', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            Text(_user!.email ?? '', style: const TextStyle(color: Colors.white38)),
+            Text(_user!.displayName ?? 'Unknown', style: TextStyle(color: Color(themeState.textMain), fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(_user!.email ?? '', style: TextStyle(color: Color(themeState.textMuted))),
           ],
         ),
         const Spacer(),
-        IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white38)),
+        IconButton(onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: Color(themeState.textMuted))),
       ],
     );
   }
 
-  Widget _buildSection(String title, List<String> items) {
+  Widget _buildSection(NomiTheme themeState, String title, List<String> items) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+        Text(title, style: TextStyle(color: Color(themeState.primaryColor), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
         const SizedBox(height: 12),
         ...items.map((item) => Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03), borderRadius: BorderRadius.circular(12)),
-          child: Text(item, style: const TextStyle(color: Colors.white)),
+          decoration: BoxDecoration(
+            color: Color(themeState.textMain).withValues(alpha: 0.03), 
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(item, style: TextStyle(color: Color(themeState.textMain))),
+              ),
+            ],
+          ),
         )),
       ],
     );

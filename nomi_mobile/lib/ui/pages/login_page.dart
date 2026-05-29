@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nomi_mobile/providers/auth_provider.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -17,6 +19,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final authState = ref.watch(authProvider);
 
     final List<Map<String, dynamic>> channels = [
@@ -26,7 +29,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
+      backgroundColor: themeState.isDark ? const Color(0xFF020617) : Color(themeState.bgHeader),
       body: Stack(
         children: [
           Center(
@@ -39,17 +42,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.1),
+                      color: Color(themeState.primaryColor).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(32),
-                      border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+                      border: Border.all(color: Color(themeState.primaryColor).withValues(alpha: 0.2)),
                     ),
-                    child: const Icon(LucideIcons.bot, size: 64, color: Colors.blue),
+                    child: Icon(LucideIcons.bot, size: 64, color: Color(themeState.primaryColor)),
                   ),
                   const SizedBox(height: 32),
-                  const Text(
+                  Text(
                     'Nomi AI',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: Color(themeState.textMain),
                       fontSize: 32,
                       fontWeight: FontWeight.w900,
                       letterSpacing: -1,
@@ -59,7 +62,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   Text(
                     'High-Fidelity Agentic Workspace',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
+                      color: Color(themeState.textMuted),
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                     ),
@@ -68,9 +71,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
                   // Inputs
                   if (!authState.otpSent) ...[
-                    _buildChannelSelector(channels),
+                    _buildChannelSelector(themeState, channels),
                     const SizedBox(height: 24),
                     _buildInput(
+                      themeState: themeState,
                       controller: _idController,
                       label: 'IDENTITY ID',
                       hint: _selectedChannel == 'email' ? 'Enter your email' : 'Enter phone or ID',
@@ -78,6 +82,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                     const SizedBox(height: 24),
                     _buildButton(
+                      themeState: themeState,
                       onPressed: () async {
                         if (_idController.text.isNotEmpty) {
                           await ref
@@ -90,6 +95,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                   ] else ...[
                     _buildInput(
+                      themeState: themeState,
                       controller: _otpController,
                       label: 'OTP VERIFICATION',
                       hint: 'Enter 6-digit code',
@@ -98,6 +104,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                     const SizedBox(height: 24),
                     _buildButton(
+                      themeState: themeState,
                       onPressed: () async {
                         if (_otpController.text.isNotEmpty) {
                           await ref
@@ -110,7 +117,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                     TextButton(
                       onPressed: () => ref.read(authProvider.notifier).resetOtp(),
-                      child: const Text('Change ID', style: TextStyle(color: Colors.grey)),
+                      child: Text('Change ID', style: TextStyle(color: Color(themeState.textMuted))),
                     ),
                   ],
                 ],
@@ -121,8 +128,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           if (authState.isLoading)
             Container(
               color: Colors.black.withValues(alpha: 0.5),
-              child: const Center(
-                child: CircularProgressIndicator(color: Colors.blue),
+              child: Center(
+                child: CircularProgressIndicator(color: Color(themeState.primaryColor)),
               ),
             ),
         ],
@@ -130,16 +137,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     );
   }
 
-  Widget _buildChannelSelector(List<Map<String, dynamic>> channels) {
+  Widget _buildChannelSelector(NomiTheme themeState, List<Map<String, dynamic>> channels) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 4, bottom: 12),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
           child: Text(
             'SELECT CHANNEL',
             style: TextStyle(
-              color: Colors.blue,
+              color: Color(themeState.primaryColor),
               fontSize: 10,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.5,
@@ -158,10 +165,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
-                    color: isActive ? Colors.blue.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
+                    color: isActive ? Color(themeState.primaryColor).withValues(alpha: 0.1) : Color(themeState.textMain).withValues(alpha: 0.03),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isActive ? Colors.blue : Colors.white.withValues(alpha: 0.1),
+                      color: isActive ? Color(themeState.primaryColor) : Color(themeState.borderMain).withValues(alpha: 0.5),
                     ),
                   ),
                   child: Column(
@@ -169,13 +176,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       Icon(
                         ch['icon'],
                         size: 18,
-                        color: isActive ? Colors.blue : Colors.white.withValues(alpha: 0.5),
+                        color: isActive ? Color(themeState.primaryColor) : Color(themeState.textMuted),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         ch['label'],
                         style: TextStyle(
-                          color: isActive ? Colors.white : Colors.white.withValues(alpha: 0.5),
+                          color: isActive ? Color(themeState.textMain) : Color(themeState.textMuted),
                           fontSize: 9,
                           fontWeight: FontWeight.bold,
                         ),
@@ -192,6 +199,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Widget _buildInput({
+    required NomiTheme themeState,
     required TextEditingController controller,
     required String label,
     required String hint,
@@ -205,8 +213,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(
             label,
-            style: const TextStyle(
-              color: Colors.blue,
+            style: TextStyle(
+              color: Color(themeState.primaryColor),
               fontSize: 10,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.5,
@@ -215,18 +223,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         ),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: themeState.isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
           ),
           child: TextField(
             controller: controller,
             keyboardType: keyboardType,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: TextStyle(color: Color(themeState.textMain), fontWeight: FontWeight.bold),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
-              prefixIcon: Icon(icon, size: 18, color: Colors.white.withValues(alpha: 0.5)),
+              hintStyle: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5)),
+              prefixIcon: Icon(icon, size: 18, color: Color(themeState.textMuted)),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             ),
@@ -237,6 +245,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Widget _buildButton({
+    required NomiTheme themeState,
     required VoidCallback onPressed,
     required String label,
     bool isLoading = false,
@@ -247,7 +256,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       child: ElevatedButton(
         onPressed: isLoading ? null : onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue,
+          backgroundColor: Color(themeState.primaryColor),
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 0,

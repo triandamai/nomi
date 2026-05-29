@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:nomi_mobile/data/models/api_response.dart';
 import 'package:nomi_mobile/data/models/conversation.dart';
 import 'package:nomi_mobile/core/api/api_client.dart';
@@ -12,6 +13,8 @@ class AuthRepository {
       '/auth/request-otp',
       data: {'identity': identity, 'channel': channel},
     );
+
+    print("${response} \n");
     return ApiResponse.fromJson(
       response.data,
       (json) => null,

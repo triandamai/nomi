@@ -60,7 +60,7 @@ class ChatNotifier extends Notifier<ChatState> {
     // 🌐 Listening to the global MQTT stream directly (UI Isolate)
     final mqtt = ref.read(mqttServiceProvider);
 
-    mqtt.updates?.listen((List<MqttReceivedMessage<MqttMessage>> c) {
+    mqtt.updates.listen((List<MqttReceivedMessage<MqttMessage>> c) {
       if (c.isEmpty) return;
 
       final MqttPublishMessage rec = c[0].payload as MqttPublishMessage;
@@ -225,7 +225,10 @@ class ChatNotifier extends Notifier<ChatState> {
   }
 
   void setReplyingTo(Message? message) {
-    state = state.copyWith(replyingTo: message);
+    state = state.copyWith(
+      replyingTo: message,
+      clearReplyingTo: message == null,
+    );
   }
 
   void toggleSidebar() {

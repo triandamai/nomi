@@ -7,12 +7,15 @@ import 'package:image_picker/image_picker.dart';
 import 'package:nomi_mobile/providers/chat_provider.dart';
 import 'package:nomi_mobile/providers/auth_provider.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/data/models/message.dart';
 import 'package:nomi_mobile/ui/widgets/chat_bubble.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/core/utils/formatter.dart';
 import 'package:nomi_mobile/ui/widgets/typing_indicator.dart';
 import 'package:nomi_mobile/core/db/database.dart' as db;
+import 'package:nomi_mobile/core/localization/i18n.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key});
@@ -219,25 +222,49 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Future<void> _pickMedia() async {
+    final themeState = ref.read(themeProvider);
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      backgroundColor: const Color(AppConfig.deepSlate),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(LucideIcons.camera, color: Color(AppConfig.blue)),
-              title: const Text('Take Photo', style: TextStyle(color: Colors.white)),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
+      backgroundColor: Colors.transparent,
+      builder: (context) => ClipRRect(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: themeState.isDark 
+                ? Color(themeState.slate950).withValues(alpha: 0.85) 
+                : Color(themeState.bgHeader).withValues(alpha: 0.92),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+              border: Border.all(
+                color: Color(themeState.borderMain).withValues(alpha: 0.25),
+                width: 1.2,
+              ),
             ),
-            ListTile(
-              leading: const Icon(LucideIcons.image, color: Color(AppConfig.emerald)),
-              title: const Text('Choose from Gallery', style: TextStyle(color: Colors.white)),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: Icon(LucideIcons.camera, color: Color(themeState.primaryColor)),
+                    title: Text('Take Photo', style: TextStyle(color: Color(themeState.textMain), fontWeight: FontWeight.bold)),
+                    onTap: () => Navigator.pop(context, ImageSource.camera),
+                  ),
+                  ListTile(
+                    leading: Icon(LucideIcons.image, color: Color(themeState.accentColor)),
+                    title: Text('Choose from Gallery', style: TextStyle(color: Color(themeState.textMain), fontWeight: FontWeight.bold)),
+                    onTap: () => Navigator.pop(context, ImageSource.gallery),
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -293,6 +320,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatProvider);
+    final themeState = ref.watch(themeProvider);
     final activeConvId = chatState.activeConversationId;
     final size = MediaQuery.of(context).size;
     final bool isLargeScreen = size.width >= 900;
@@ -340,29 +368,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       activeConv = conversations.firstWhere((c) => c.id == activeConvId);
     } catch (_) {}
 
+    final double bottomPadding = 100.0 + 
+        (chatState.replyingTo != null ? 80.0 : 0.0) +
+        (_selectedFile != null ? 68.0 : 0.0) +
+        ((_showMentionSuggestions && _mentionCandidates.isNotEmpty) ? 180.0 : 0.0);
+
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: _showScrollToBottom
-          ? Padding(
-              padding: const EdgeInsets.only(bottom: 100),
-              child: FloatingActionButton.small(
-                onPressed: _scrollToBottom,
-                backgroundColor: const Color(AppConfig.blue).withValues(alpha: 0.8),
-                elevation: 4,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: const Icon(LucideIcons.chevronDown, color: Colors.white, size: 20),
-              ),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       appBar: isLargeScreen
           ? null
           : AppBar(
-              backgroundColor: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
+              backgroundColor: Color(themeState.bgHeader).withValues(alpha: 0.8),
               elevation: 0,
+              scrolledUnderElevation: 0,
               leading: IconButton(
                 onPressed: () => Scaffold.of(context).openDrawer(),
-                icon: const Icon(LucideIcons.menu),
+                icon: Icon(LucideIcons.menu, color: Color(themeState.textMain)),
               ),
               title: InkWell(
                 onTap: activeConv != null ? () => _showThreadDetail(context, activeConv!) : null,
@@ -378,12 +399,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                           Flexible(
                             child: Text(
                               activeConv?.name ?? 'Nomi Chat',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(themeState.textMain)),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Icon(LucideIcons.info, size: 12, color: Colors.white24),
+                          Icon(LucideIcons.info, size: 12, color: Color(themeState.textMuted).withValues(alpha: 0.5)),
                         ],
                       ),
                       if (chatState.isTyping[chatState.activeConversationId] ?? false)
@@ -402,7 +423,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       ref.read(chatProvider.notifier).fetchMessages(chatState.activeConversationId!);
                     }
                   },
-                  icon: const Icon(LucideIcons.refreshCw, size: 18),
+                  icon: Icon(LucideIcons.refreshCw, size: 18, color: Color(themeState.textMain)),
                 ),
               ],
             ),
@@ -410,15 +431,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         children: [
           Positioned.fill(
             child: Opacity(
-              opacity: 0.05,
-              child: Image.asset('assets/images/bg_dark.png', repeat: ImageRepeat.repeat),
+              opacity: themeState.isDark ? 0.05 : 0.02,
+              child: Image.asset(
+                'assets/images/bg_dark.png',
+                repeat: ImageRepeat.repeat,
+              ),
             ),
           ),
           activeConvId == null
-              ? _buildEmptyState(isLargeScreen)
+              ? _buildEmptyState(isLargeScreen, themeState)
               : Column(
                   children: [
-                    if (isLargeScreen) _buildDesktopHeader(activeConv, chatState, activeConvId),
+                    if (isLargeScreen) _buildDesktopHeader(activeConv, chatState, activeConvId, themeState),
                     Expanded(
                       child: Center(
                         child: Container(
@@ -434,7 +458,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                         return ListView.builder(
                                           controller: _scrollController,
                                           reverse: true,
-                                          padding: EdgeInsets.fromLTRB(isLargeScreen ? 32 : 16, 16, isLargeScreen ? 32 : 16, 100),
+                                          padding: EdgeInsets.fromLTRB(
+                                            isLargeScreen ? 32 : 16,
+                                            16,
+                                            isLargeScreen ? 32 : 16,
+                                            bottomPadding,
+                                          ),
                                           itemCount: uiMessages.length + (showActiveProcess ? 1 : 0),
                                           itemBuilder: (context, index) {
                                             if (showActiveProcess && index == 0) {
@@ -459,8 +488,21 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                 bottom: 0,
                                 left: 0,
                                 right: 0,
-                                child: _buildInputArea(chatState, isLargeScreen),
+                                child: _buildInputArea(chatState, isLargeScreen, themeState),
                               ),
+                              if (_showScrollToBottom)
+                                Positioned(
+                                  bottom: bottomPadding + 8.0,
+                                  right: isLargeScreen ? 32.0 : 20.0,
+                                  child: FloatingActionButton.small(
+                                    onPressed: _scrollToBottom,
+                                    backgroundColor: Color(themeState.primaryColor).withValues(alpha: 0.9),
+                                    foregroundColor: Colors.white,
+                                    elevation: 4,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    child: const Icon(LucideIcons.chevronDown, size: 20),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -473,13 +515,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
-  Widget _buildDesktopHeader(db.Conversation? activeConv, ChatState chatState, String? activeConvId) {
+  Widget _buildDesktopHeader(db.Conversation? activeConv, ChatState chatState, String? activeConvId, NomiTheme themeState) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
       decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate),
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        color: Color(themeState.bgHeader),
+        border: Border(bottom: BorderSide(color: Color(themeState.borderMain))),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -497,9 +539,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(activeConv?.name ?? 'Nomi Chat', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                          Text(activeConv?.name ?? 'Nomi Chat', style: TextStyle(color: Color(themeState.textMain), fontSize: 24, fontWeight: FontWeight.w900)),
                           const SizedBox(width: 8),
-                          const Icon(LucideIcons.info, size: 16, color: Colors.white24),
+                          Icon(LucideIcons.info, size: 16, color: Color(themeState.textMuted).withValues(alpha: 0.5)),
                         ],
                       ),
                     ),
@@ -532,14 +574,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 ref.read(chatProvider.notifier).fetchMessages(chatState.activeConversationId!);
               }
             },
-            icon: const Icon(LucideIcons.refreshCw, size: 20, color: Colors.white24),
+            icon: Icon(LucideIcons.refreshCw, size: 20, color: Color(themeState.textMuted)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState(bool isLargeScreen) {
+  Widget _buildEmptyState(bool isLargeScreen, NomiTheme themeState) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -554,9 +596,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             child: const Center(child: Text('N', style: TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.w900))),
           ),
           const SizedBox(height: 24),
-          const Text('Select a Session', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+          Text('Select a Session'.tr(ref), style: TextStyle(color: Color(themeState.textMain), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
           const SizedBox(height: 8),
-          Text('Choose a conversation from the sidebar to begin technical operations.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13, fontWeight: FontWeight.bold)),
+          Text('choose_conversation'.tr(ref), textAlign: TextAlign.center, style: TextStyle(color: Color(themeState.textMuted), fontSize: 13, fontWeight: FontWeight.bold)),
           if (!isLargeScreen) ...[
             const SizedBox(height: 32),
             ElevatedButton.icon(
@@ -603,7 +645,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: const Color(AppConfig.blue).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4), border: Border.all(color: const Color(AppConfig.blue).withValues(alpha: 0.2))), child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(LucideIcons.wrench, size: 10, color: Color(AppConfig.blue)), const SizedBox(width: 6), Text('USING ${toolName.toUpperCase()}', style: const TextStyle(color: Color(AppConfig.blue), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 0.5))]));
   }
 
-  Widget _buildInputArea(ChatState chatState, bool isLargeScreen) {
+  Widget _buildInputArea(ChatState chatState, bool isLargeScreen, NomiTheme themeState) {
     return Padding(
       padding: EdgeInsets.fromLTRB(isLargeScreen ? 24 : 16, 8, isLargeScreen ? 24 : 16, isLargeScreen ? 32 : 16),
       child: ClipRRect(
@@ -613,9 +655,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.transparent,
+              color: themeState.isDark 
+                ? Color(themeState.slate950).withValues(alpha: 0.6) 
+                : Color(themeState.textMain).withValues(alpha: 0.08), // Darkens input pane in light theme for liquid crystal contrast!
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -628,20 +672,28 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   children: [
                     IconButton(
                       onPressed: _isUploading ? null : _pickMedia,
-                      icon: Icon(_selectedFile != null ? LucideIcons.checkCircle2 : LucideIcons.paperclip, color: _selectedFile != null ? const Color(AppConfig.emerald) : Colors.white38),
+                      icon: Icon(
+                        _selectedFile != null ? LucideIcons.checkCircle2 : LucideIcons.paperclip, 
+                        color: _selectedFile != null 
+                          ? const Color(AppConfig.emerald) 
+                          : Color(themeState.textMuted).withValues(alpha: 0.7)
+                      ),
                     ),
                     Expanded(
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03), borderRadius: BorderRadius.circular(20)),
+                        decoration: BoxDecoration(
+                          color: Color(themeState.textMain).withValues(alpha: 0.05), 
+                          borderRadius: BorderRadius.circular(20)
+                        ),
                         child: TextField(
                           controller: _textController, 
                           onChanged: _onTextChanged,
                           onSubmitted: (_) => _handleSend(), 
-                          style: const TextStyle(color: Colors.white, fontSize: 14), 
-                          decoration: const InputDecoration(
-                            hintText: 'Message Nomi...', 
-                            hintStyle: TextStyle(color: Colors.white24, fontSize: 14), 
+                          style: TextStyle(color: Color(themeState.textMain), fontSize: 14), 
+                          decoration: InputDecoration(
+                            hintText: 'message_nomi'.tr(ref), 
+                            hintStyle: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5), fontSize: 14), 
                             border: InputBorder.none
                           )
                         ),
@@ -649,7 +701,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     ),
                     const SizedBox(width: 8),
                     CircleAvatar(
-                      backgroundColor: _isUploading ? Colors.white10 : const Color(AppConfig.blue),
+                      backgroundColor: _isUploading ? Colors.white10 : Color(themeState.primaryColor),
                       radius: 20,
                       child: IconButton(
                         onPressed: _isUploading ? null : _handleSend,
@@ -746,7 +798,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Widget _buildReplyContext(Message message) {
-    return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(AppConfig.blue).withValues(alpha: 0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(AppConfig.blue).withValues(alpha: 0.2))), child: Row(children: [const Icon(LucideIcons.reply, size: 14, color: Color(AppConfig.blue)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Replying to ${message.displayName ?? message.role}', style: const TextStyle(color: Color(AppConfig.blue), fontSize: 9, fontWeight: FontWeight.bold)), Text(message.content, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11))])), IconButton(onPressed: () => ref.read(chatProvider.notifier).setReplyingTo(null), icon: const Icon(LucideIcons.x, size: 14, color: Colors.white38))]));
+    return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(AppConfig.blue).withValues(alpha: 0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(AppConfig.blue).withValues(alpha: 0.2))), child: Row(children: [const Icon(LucideIcons.reply, size: 14, color: Color(AppConfig.blue)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${'replying_to'.tr(ref)} ${message.displayName ?? message.role}', style: const TextStyle(color: Color(AppConfig.blue), fontSize: 9, fontWeight: FontWeight.bold)), Text(message.content, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11))])), IconButton(onPressed: () => ref.read(chatProvider.notifier).setReplyingTo(null), icon: const Icon(LucideIcons.x, size: 14, color: Colors.white38))]));
   }
 
   void _showThreadDetail(BuildContext context, db.Conversation conv) {
@@ -759,46 +811,57 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 }
 
-class _ThreadDetailSheet extends StatelessWidget {
+class _ThreadDetailSheet extends ConsumerWidget {
   final db.Conversation conv;
   const _ThreadDetailSheet({required this.conv});
 
-  (String, Color, String) _getInteractionMode(double val) {
+  (String, Color, String) _getInteractionMode(NomiTheme themeState, double val) {
     if (val <= 0.25) return ('Proactive', const Color(AppConfig.emerald), '🏁');
-    if (val <= 0.50) return ('Balanced', const Color(AppConfig.blue), '🤝');
+    if (val <= 0.50) return ('Balanced', Color(themeState.primaryColor), '🤝');
     if (val <= 0.75) return ('Conservative', const Color(AppConfig.amber), '🛡️');
-    return ('Silent Monitor', Colors.white38, '🤫');
+    return ('Silent Monitor', Color(themeState.textMuted), '🤫');
   }
 
-  (String, Color, String) _getIntentMode(double val) {
+  (String, Color, String) _getIntentMode(NomiTheme themeState, double val) {
     if (val <= 0.40) return ('Experimental', const Color(AppConfig.indigo), '🧪');
-    if (val <= 0.70) return ('Adaptive', const Color(AppConfig.blue), '🏎️');
+    if (val <= 0.70) return ('Adaptive', Color(themeState.primaryColor), '🏎️');
     return ('Strict', const Color(AppConfig.rose), '📐');
   }
 
-  (String, Color, String) _getGuardrailMode(double val) {
+  (String, Color, String) _getGuardrailMode(NomiTheme themeState, double val) {
     if (val <= 0.50) return ('Permissive', const Color(AppConfig.emerald), '🔓');
-    if (val <= 0.80) return ('Standard', const Color(AppConfig.blue), '👤');
+    if (val <= 0.80) return ('Standard', Color(themeState.primaryColor), '👤');
     return ('Hardened Shield', const Color(AppConfig.rose), '🌋');
   }
 
   @override
-  Widget build(BuildContext context) {
-    // Note: In a real scenario, we'd add this column to Drift.
-    // I'll assume standard defaults or empty if not present.
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     final double interactionGate = 0.60; 
     final double intentClassification = 0.40;
     final double guardrails = 0.65;
 
     return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
+      ),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: const Color(AppConfig.deepSlate).withValues(alpha: 0.9),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: const Border(top: BorderSide(color: Colors.white10)),
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -806,18 +869,18 @@ class _ThreadDetailSheet extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(LucideIcons.terminal, color: Color(AppConfig.blue), size: 24),
+                  Icon(LucideIcons.terminal, color: Color(themeState.primaryColor), size: 24),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('THREAD CONFIGURATION', style: TextStyle(color: Color(AppConfig.blue), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                        Text(conv.name ?? 'Untitled Session', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                        Text('THREAD CONFIGURATION', style: TextStyle(color: Color(themeState.primaryColor), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                        Text(conv.name ?? 'Untitled Session', style: TextStyle(color: Color(themeState.textMain), fontSize: 20, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
-                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white38)),
+                  IconButton(onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: Color(themeState.textMuted))),
                 ],
               ),
               const SizedBox(height: 32),
@@ -826,32 +889,32 @@ class _ThreadDetailSheet extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: _buildMetricCard('TOTAL USAGE', Formatter.formatTokenCount(conv.cumulativeTokens ?? 0), const Color(AppConfig.blue)),
+                    child: _buildMetricCard(themeState, 'TOTAL USAGE', Formatter.formatTokenCount(conv.cumulativeTokens ?? 0), Color(themeState.primaryColor)),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: _buildMetricCard('LIMIT', Formatter.formatTokenCount(conv.maxTokenUsage ?? 0), Colors.white24),
+                    child: _buildMetricCard(themeState, 'LIMIT', Formatter.formatTokenCount(conv.maxTokenUsage ?? 0), Color(themeState.textMuted)),
                   ),
                 ],
               ),
 
               const SizedBox(height: 32),
-              const Divider(color: Colors.white10),
+              Divider(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
               const SizedBox(height: 24),
-              const Text('BEHAVIOR BOUNDARIES (DEB)', style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+              Text('BEHAVIOR BOUNDARIES (DEB)', style: TextStyle(color: Color(themeState.textMuted), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
               const SizedBox(height: 24),
 
-              _buildReadOnlyBoundary('Sociability', interactionGate, _getInteractionMode(interactionGate)),
+              _buildReadOnlyBoundary(themeState, 'Sociability', interactionGate, _getInteractionMode(themeState, interactionGate)),
               const SizedBox(height: 20),
-              _buildReadOnlyBoundary('Confidence', intentClassification, _getIntentMode(intentClassification)),
+              _buildReadOnlyBoundary(themeState, 'Confidence', intentClassification, _getIntentMode(themeState, intentClassification)),
               const SizedBox(height: 20),
-              _buildReadOnlyBoundary('Vigilance', guardrails, _getGuardrailMode(guardrails)),
+              _buildReadOnlyBoundary(themeState, 'Vigilance', guardrails, _getGuardrailMode(themeState, guardrails)),
 
               const SizedBox(height: 40),
               Center(
                 child: Text(
                   'Parameters are optimized for this conversation context.',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 11, fontStyle: FontStyle.italic),
+                  style: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5), fontSize: 11, fontStyle: FontStyle.italic),
                 ),
               ),
               const SizedBox(height: 12),
@@ -862,18 +925,18 @@ class _ThreadDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildMetricCard(String label, String value, Color color) {
+  Widget _buildMetricCard(NomiTheme themeState, String label, String value, Color color) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.2),
+        color: Color(themeState.textMain).withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
+          Text(label, style: TextStyle(color: Color(themeState.textMuted), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
           const SizedBox(height: 8),
           Text(value, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
         ],
@@ -881,13 +944,13 @@ class _ThreadDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildReadOnlyBoundary(String label, double value, (String, Color, String) mode) {
+  Widget _buildReadOnlyBoundary(NomiTheme themeState, String label, double value, (String, Color, String) mode) {
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+            Text(label, style: TextStyle(color: Color(themeState.textMain), fontSize: 11, fontWeight: FontWeight.bold)),
             Text('${mode.$3} ${mode.$1} (${value.toStringAsFixed(2)})', style: TextStyle(color: mode.$2, fontSize: 10, fontWeight: FontWeight.w900, fontFamily: 'monospace')),
           ],
         ),
@@ -896,7 +959,7 @@ class _ThreadDetailSheet extends StatelessWidget {
           borderRadius: BorderRadius.circular(2),
           child: LinearProgressIndicator(
             value: value,
-            backgroundColor: Colors.white.withValues(alpha: 0.05),
+            backgroundColor: Color(themeState.borderMain).withValues(alpha: 0.3),
             valueColor: AlwaysStoppedAnimation<Color>(mode.$2.withValues(alpha: 0.5)),
             minHeight: 2,
           ),

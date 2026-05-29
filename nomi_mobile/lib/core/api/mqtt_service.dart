@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,10 @@ class MqttService {
   MqttServerClient? _client;
   String? _currentUserId;
   String? _deviceId;
+  
+  final StreamController<List<MqttReceivedMessage<MqttMessage>>> _updatesController = 
+      StreamController<List<MqttReceivedMessage<MqttMessage>>>.broadcast();
+  StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>? _updatesSubscription;
 
   MqttService();
 
@@ -92,6 +97,9 @@ class MqttService {
       debugPrint('[MQTT] 🔒 Secure MQTTS Mode: TCP/SSL on port 8883');
     }
 
+    _updatesSubscription?.cancel();
+    _updatesSubscription = null;
+
     try {
       debugPrint('[MQTT] 🛰️ Connecting to ${AppConfig.mqttHost}:${AppConfig.mqttPort} via Raw TCP...');
       final status = await _client!.connect(AppConfig.mqttUsername, AppConfig.mqttPassword);
@@ -100,6 +108,12 @@ class MqttService {
       if (status?.state == MqttConnectionState.connected) {
         subscribe('nomi/users/$userId/#');
         subscribe('nomi/broadcast/#');
+        
+        _updatesSubscription = _client!.updates?.listen((List<MqttReceivedMessage<MqttMessage>> messages) {
+          if (!_updatesController.isClosed) {
+            _updatesController.add(messages);
+          }
+        });
       }
       
       return status;
@@ -120,6 +134,8 @@ class MqttService {
   }
 
   void disconnect() {
+    _updatesSubscription?.cancel();
+    _updatesSubscription = null;
     if (isConnected || isConnecting) {
       debugPrint('[MQTT] 🔌 Manually disconnecting...');
       _client?.disconnect();
@@ -127,7 +143,7 @@ class MqttService {
     }
   }
 
-  Stream<List<MqttReceivedMessage<MqttMessage>>>? get updates => _client?.updates;
+  Stream<List<MqttReceivedMessage<MqttMessage>>> get updates => _updatesController.stream;
 
   void _onConnected() {
     debugPrint('[MQTT] ✅ Handshake complete. Global connection active.');

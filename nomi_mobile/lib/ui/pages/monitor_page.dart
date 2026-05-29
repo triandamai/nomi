@@ -2,6 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/providers/navigation_provider.dart';
@@ -43,6 +45,7 @@ class _MonitorPageState extends ConsumerState<MonitorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final isLargeScreen = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
@@ -50,22 +53,22 @@ class _MonitorPageState extends ConsumerState<MonitorPage> {
       appBar: isLargeScreen 
         ? null 
         : AppBar(
-            backgroundColor: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
+            backgroundColor: Color(themeState.bgHeader).withValues(alpha: 0.8),
             elevation: 0,
             leading: IconButton(
               onPressed: () => Scaffold.of(context).openDrawer(),
-              icon: const Icon(LucideIcons.menu),
+              icon: Icon(LucideIcons.menu, color: Color(themeState.textMain)),
             ),
-            title: const Text('Conversation Monitor', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            title: Text('Conversation Monitor', style: TextStyle(color: Color(themeState.textMain), fontSize: 18, fontWeight: FontWeight.bold)),
           ),
       body: Column(
         children: [
-          _buildHeader(),
+          _buildHeader(themeState),
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())
               : _sessions.isEmpty
-                ? const Center(child: Text('No active sessions detected.', style: TextStyle(color: Colors.white38)))
+                ? Center(child: Text('No active sessions detected.', style: TextStyle(color: Color(themeState.textMuted))))
                 : ListView.builder(
                     padding: const EdgeInsets.all(24),
                     itemCount: _sessions.length,
@@ -92,35 +95,35 @@ class _MonitorPageState extends ConsumerState<MonitorPage> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(NomiTheme themeState) {
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        color: Color(themeState.bgHeader).withValues(alpha: 0.8),
+        border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
       ),
       child: Row(
         children: [
           IconButton(
             onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
-            icon: const Icon(LucideIcons.chevronLeft, color: Colors.white38, size: 20),
+            icon: Icon(LucideIcons.chevronLeft, color: Color(themeState.textMuted), size: 20),
           ),
           const SizedBox(width: 8),
-          const Icon(LucideIcons.lineChart, color: Color(AppConfig.blue), size: 24),
+          Icon(LucideIcons.lineChart, color: Color(themeState.primaryColor), size: 24),
           const SizedBox(width: 16),
-          const Column(
+          Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('CONVERSATION MONITOR', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-              Text('Cross-System Session Observability', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w500)),
+              Text('CONVERSATION MONITOR', style: TextStyle(color: Color(themeState.textMain), fontSize: 16, fontWeight: FontWeight.bold)),
+              Text('Cross-System Session Observability', style: TextStyle(color: Color(themeState.textMuted), fontSize: 10, fontWeight: FontWeight.w500)),
             ],
           ),
           const Spacer(),
           IconButton(
             onPressed: _fetchSessions,
-            icon: const Icon(LucideIcons.refreshCw, size: 18, color: Colors.white38),
+            icon: Icon(LucideIcons.refreshCw, size: 18, color: Color(themeState.textMuted)),
           ),
         ],
       ),
@@ -128,14 +131,15 @@ class _MonitorPageState extends ConsumerState<MonitorPage> {
   }
 }
 
-class _SessionItem extends StatelessWidget {
+class _SessionItem extends ConsumerWidget {
   final AdminConversation session;
   final VoidCallback onTap;
   
   const _SessionItem({required this.session, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     final double usagePercent = (session.maxTokenUsage != null && session.maxTokenUsage! > 0)
         ? (session.cumulativeTokens ?? 0) / session.maxTokenUsage!
         : 0.0;
@@ -144,14 +148,14 @@ class _SessionItem extends StatelessWidget {
         ? const Color(AppConfig.rose) 
         : usagePercent > 0.7 
             ? const Color(AppConfig.amber) 
-            : const Color(AppConfig.blue);
+            : Color(themeState.primaryColor);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: Color(themeState.textMain).withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
       ),
       child: InkWell(
         onTap: onTap,
@@ -165,19 +169,19 @@ class _SessionItem extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(AppConfig.blue).withValues(alpha: 0.1),
+                      color: Color(themeState.primaryColor).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(LucideIcons.messagesSquare, size: 20, color: Color(AppConfig.blue)),
+                    child: Icon(LucideIcons.messagesSquare, size: 20, color: Color(themeState.primaryColor)),
                   ),
                   const SizedBox(width: 20),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(session.title ?? 'Untitled Session', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                        Text(session.title ?? 'Untitled Session', style: TextStyle(color: Color(themeState.textMain), fontSize: 15, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
-                        Text(session.id, style: const TextStyle(color: Colors.white24, fontSize: 10, fontFamily: 'monospace')),
+                        Text(session.id, style: TextStyle(color: Color(themeState.textMuted), fontSize: 10, fontFamily: 'monospace')),
                       ],
                     ),
                   ),
@@ -191,7 +195,7 @@ class _SessionItem extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         'LIMIT: ${Formatter.formatTokenCount(session.maxTokenUsage ?? 0)}',
-                        style: const TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Color(themeState.textMuted), fontSize: 9, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -202,7 +206,7 @@ class _SessionItem extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   value: usagePercent.clamp(0.0, 1.0),
-                  backgroundColor: Colors.white.withValues(alpha: 0.05),
+                  backgroundColor: Color(themeState.textMain).withValues(alpha: 0.05),
                   valueColor: AlwaysStoppedAnimation<Color>(progressColor),
                   minHeight: 6,
                 ),
@@ -252,22 +256,22 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
     super.dispose();
   }
 
-  (String, Color, String) _getInteractionMode(double val) {
+  (String, Color, String) _getInteractionMode(NomiTheme themeState, double val) {
     if (val <= 0.25) return ('Proactive', const Color(AppConfig.emerald), '🏁');
-    if (val <= 0.50) return ('Balanced', const Color(AppConfig.blue), '🤝');
+    if (val <= 0.50) return ('Balanced', Color(themeState.primaryColor), '🤝');
     if (val <= 0.75) return ('Conservative', const Color(AppConfig.amber), '🛡️');
-    return ('Silent Monitor', Colors.white38, '🤫');
+    return ('Silent Monitor', Color(themeState.textMuted), '🤫');
   }
 
-  (String, Color, String) _getIntentMode(double val) {
+  (String, Color, String) _getIntentMode(NomiTheme themeState, double val) {
     if (val <= 0.40) return ('Experimental', const Color(AppConfig.indigo), '🧪');
-    if (val <= 0.70) return ('Adaptive', const Color(AppConfig.blue), '🏎️');
+    if (val <= 0.70) return ('Adaptive', Color(themeState.primaryColor), '🏎️');
     return ('Strict', const Color(AppConfig.rose), '📐');
   }
 
-  (String, Color, String) _getGuardrailMode(double val) {
+  (String, Color, String) _getGuardrailMode(NomiTheme themeState, double val) {
     if (val <= 0.50) return ('Permissive', const Color(AppConfig.emerald), '🔓');
-    if (val <= 0.80) return ('Standard', const Color(AppConfig.blue), '👤');
+    if (val <= 0.80) return ('Standard', Color(themeState.primaryColor), '👤');
     return ('Hardened Shield', const Color(AppConfig.rose), '🌋');
   }
 
@@ -302,15 +306,28 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
+      ),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 40),
           decoration: BoxDecoration(
-            color: const Color(AppConfig.deepSlate).withValues(alpha: 0.9),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: const Border(top: BorderSide(color: Colors.white10)),
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -320,46 +337,46 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Column(
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('SESSION PARAMETERS', style: TextStyle(color: Color(AppConfig.blue), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                        SizedBox(height: 4),
-                        Text('Adjust Constraints', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                        Text('SESSION PARAMETERS', style: TextStyle(color: Color(themeState.primaryColor), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                        const SizedBox(height: 4),
+                        Text('Adjust Constraints', style: TextStyle(color: Color(themeState.textMain), fontSize: 20, fontWeight: FontWeight.bold)),
                       ],
                     ),
-                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white38)),
+                    IconButton(onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: Color(themeState.textMuted))),
                   ],
                 ),
                 const SizedBox(height: 32),
-                _buildField('Session Title', _titleController, 'e.g. Technical Research Pass'),
+                _buildField(themeState, 'Session Title', _titleController, 'e.g. Technical Research Pass'),
                 const SizedBox(height: 24),
-                _buildField('Max Token Limit', _limitController, 'e.g. 500000', isNumeric: true),
+                _buildField(themeState, 'Max Token Limit', _limitController, 'e.g. 500000', isNumeric: true),
                 
                 const SizedBox(height: 32),
-                const Divider(color: Colors.white10),
+                Divider(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
                 const SizedBox(height: 24),
-                const Text('BEHAVIOR BOUNDARIES (DEB)', style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                Text('BEHAVIOR BOUNDARIES (DEB)', style: TextStyle(color: Color(themeState.textMuted), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
                 const SizedBox(height: 24),
                 
                 _buildSlider(
                   'Sociability', 
                   _interactionGate, 
-                  _getInteractionMode(_interactionGate),
+                  _getInteractionMode(themeState, _interactionGate),
                   (val) => setState(() => _interactionGate = val)
                 ),
                 const SizedBox(height: 24),
                 _buildSlider(
                   'Confidence', 
                   _intentClassification, 
-                  _getIntentMode(_intentClassification),
+                  _getIntentMode(themeState, _intentClassification),
                   (val) => setState(() => _intentClassification = val)
                 ),
                 const SizedBox(height: 24),
                 _buildSlider(
                   'Vigilance', 
                   _guardrails, 
-                  _getGuardrailMode(_guardrails),
+                  _getGuardrailMode(themeState, _guardrails),
                   (val) => setState(() => _guardrails = val)
                 ),
 
@@ -369,7 +386,12 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
                   height: 56,
                   child: ElevatedButton(
                     onPressed: _isSaving ? null : _handleSave,
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(AppConfig.blue), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(themeState.primaryColor), 
+                      foregroundColor: Colors.white, 
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), 
+                      elevation: 0
+                    ),
                     child: _isSaving 
                       ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Text('UPDATE SESSION', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
@@ -384,12 +406,13 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
   }
 
   Widget _buildSlider(String label, double value, (String, Color, String) mode, Function(double) onChanged) {
+    final themeState = ref.watch(themeProvider);
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+            Text(label, style: TextStyle(color: Color(themeState.textMain).withValues(alpha: 0.8), fontSize: 11, fontWeight: FontWeight.bold)),
             Text('${mode.$3} ${mode.$1} (${value.toStringAsFixed(2)})', style: TextStyle(color: mode.$2, fontSize: 10, fontWeight: FontWeight.w900, fontFamily: 'monospace')),
           ],
         ),
@@ -398,8 +421,8 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
           data: SliderTheme.of(context).copyWith(
             trackHeight: 2,
             activeTrackColor: mode.$2,
-            inactiveTrackColor: Colors.white10,
-            thumbColor: Colors.white,
+            inactiveTrackColor: Color(themeState.borderMain).withValues(alpha: 0.5),
+            thumbColor: Color(themeState.textMain),
             overlayColor: mode.$2.withValues(alpha: 0.1),
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
           ),
@@ -412,16 +435,29 @@ class _SessionDetailSheetState extends ConsumerState<_SessionDetailSheet> {
     );
   }
 
-  Widget _buildField(String label, TextEditingController controller, String hint, {bool isNumeric = false}) {
+  Widget _buildField(NomiTheme themeState, String label, TextEditingController controller, String hint, {bool isNumeric = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: const TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
+        Text(label.toUpperCase(), style: TextStyle(color: Color(themeState.textMuted), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.05))),
-          child: TextField(controller: controller, keyboardType: isNumeric ? TextInputType.number : TextInputType.text, style: const TextStyle(color: Colors.white, fontSize: 14), decoration: InputDecoration(hintText: hint, hintStyle: const TextStyle(color: Colors.white24, fontSize: 14), border: InputBorder.none)),
+          decoration: BoxDecoration(
+            color: Color(themeState.textMain).withValues(alpha: 0.03), 
+            borderRadius: BorderRadius.circular(12), 
+            border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5))
+          ),
+          child: TextField(
+            controller: controller, 
+            keyboardType: isNumeric ? TextInputType.number : TextInputType.text, 
+            style: TextStyle(color: Color(themeState.textMain), fontSize: 14), 
+            decoration: InputDecoration(
+              hintText: hint, 
+              hintStyle: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5), fontSize: 14), 
+              border: InputBorder.none
+            )
+          ),
         ),
       ],
     );

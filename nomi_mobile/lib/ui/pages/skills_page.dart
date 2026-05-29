@@ -2,6 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/providers/navigation_provider.dart';
@@ -55,6 +57,7 @@ class _SkillsPageState extends ConsumerState<SkillsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final isLargeScreen = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
@@ -62,22 +65,22 @@ class _SkillsPageState extends ConsumerState<SkillsPage> {
       appBar: isLargeScreen 
         ? null 
         : AppBar(
-            backgroundColor: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
+            backgroundColor: Color(themeState.bgHeader).withValues(alpha: 0.8),
             elevation: 0,
             leading: IconButton(
               onPressed: () => Scaffold.of(context).openDrawer(),
-              icon: const Icon(LucideIcons.menu),
+              icon: Icon(LucideIcons.menu, color: Color(themeState.textMain)),
             ),
-            title: const Text('System Skills', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            title: Text('System Skills', style: TextStyle(color: Color(themeState.textMain), fontSize: 18, fontWeight: FontWeight.bold)),
           ),
       body: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(child: _buildHeader()),
-          SliverToBoxAdapter(child: _buildSearchBar()),
+          SliverToBoxAdapter(child: _buildHeader(themeState)),
+          SliverToBoxAdapter(child: _buildSearchBar(themeState)),
           _isLoading 
             ? const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
             : _filteredSkills.isEmpty
-              ? const SliverFillRemaining(child: Center(child: Text('No matching skills found.', style: TextStyle(color: Colors.white38))))
+              ? SliverFillRemaining(child: Center(child: Text('No matching skills found.', style: TextStyle(color: Color(themeState.textMuted)))))
               : SliverPadding(
                   padding: EdgeInsets.all(isLargeScreen ? 32 : 16),
                   sliver: isLargeScreen 
@@ -114,58 +117,58 @@ class _SkillsPageState extends ConsumerState<SkillsPage> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(NomiTheme themeState) {
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        color: Color(themeState.bgHeader).withValues(alpha: 0.8),
+        border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
       ),
       child: Row(
         children: [
           IconButton(
             onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
-            icon: const Icon(LucideIcons.chevronLeft, color: Colors.white38, size: 20),
+            icon: Icon(LucideIcons.chevronLeft, color: Color(themeState.textMuted), size: 20),
           ),
           const SizedBox(width: 8),
-          const Icon(LucideIcons.puzzle, color: Color(AppConfig.indigo), size: 24),
+          Icon(LucideIcons.puzzle, color: Color(themeState.primaryColor), size: 24),
           const SizedBox(width: 16),
-          const Column(
+          Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('SYSTEM SKILLS', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-              Text('Registry of Native & Dynamic Capabilities', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w500)),
+              Text('SYSTEM SKILLS', style: TextStyle(color: Color(themeState.textMain), fontSize: 16, fontWeight: FontWeight.bold)),
+              Text('Registry of Native & Dynamic Capabilities', style: TextStyle(color: Color(themeState.textMuted), fontSize: 10, fontWeight: FontWeight.w500)),
             ],
           ),
           const Spacer(),
           IconButton(
             onPressed: _fetchSkills,
-            icon: const Icon(LucideIcons.refreshCw, size: 18, color: Colors.white38),
+            icon: Icon(LucideIcons.refreshCw, size: 18, color: Color(themeState.textMuted)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar(NomiTheme themeState) {
     return Container(
       padding: const EdgeInsets.fromLTRB(32, 24, 32, 0),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.02),
+          color: Color(themeState.textMain).withValues(alpha: 0.02),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
         ),
         child: TextField(
           onChanged: (val) => setState(() => _searchQuery = val),
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-          decoration: const InputDecoration(
+          style: TextStyle(color: Color(themeState.textMain), fontSize: 14),
+          decoration: InputDecoration(
             hintText: 'Search skills, descriptions, or intents...',
-            hintStyle: TextStyle(color: Colors.white24, fontSize: 14),
-            prefixIcon: Icon(LucideIcons.search, size: 16, color: Colors.white24),
+            hintStyle: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5), fontSize: 14),
+            prefixIcon: Icon(LucideIcons.search, size: 16, color: Color(themeState.textMuted)),
             border: InputBorder.none,
           ),
         ),
@@ -183,7 +186,7 @@ class _SkillsPageState extends ConsumerState<SkillsPage> {
   }
 }
 
-class _SkillCard extends StatelessWidget {
+class _SkillCard extends ConsumerWidget {
   final Skill skill;
   final VoidCallback onTap;
 
@@ -202,7 +205,8 @@ class _SkillCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     final isLargeScreen = MediaQuery.of(context).size.width >= 900;
     final isSystem = skill.skillType == 'System';
 
@@ -213,9 +217,9 @@ class _SkillCard extends StatelessWidget {
         child: Container(
           height: isLargeScreen ? null : 160,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.02),
+            color: Color(themeState.textMain).withValues(alpha: 0.02),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
           ),
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -227,31 +231,31 @@ class _SkillCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.3),
+                      color: themeState.isDark ? Colors.black.withValues(alpha: 0.3) : Color(themeState.textMain).withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(_getIcon(skill.name), color: isSystem ? const Color(AppConfig.emerald) : const Color(AppConfig.indigo), size: 20),
+                    child: Icon(_getIcon(skill.name), color: isSystem ? const Color(AppConfig.emerald) : Color(themeState.primaryColor), size: 20),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: (isSystem ? const Color(AppConfig.emerald) : const Color(AppConfig.indigo)).withValues(alpha: 0.1),
+                      color: (isSystem ? const Color(AppConfig.emerald) : Color(themeState.primaryColor)).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       skill.skillType.toUpperCase(),
-                      style: TextStyle(color: isSystem ? const Color(AppConfig.emerald) : const Color(AppConfig.indigo), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
+                      style: TextStyle(color: isSystem ? const Color(AppConfig.emerald) : Color(themeState.primaryColor), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1),
                     ),
                   ),
                 ],
               ),
               const Spacer(),
-              Text(skill.name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+              Text(skill.name, style: TextStyle(color: Color(themeState.textMain), fontSize: 14, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Flexible(
                 child: Text(
                   skill.description,
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.4),
+                  style: TextStyle(color: Color(themeState.textMuted), fontSize: 11, height: 1.4),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -264,48 +268,61 @@ class _SkillCard extends StatelessWidget {
   }
 }
 
-class _SkillDetailSheet extends StatefulWidget {
+class _SkillDetailSheet extends ConsumerStatefulWidget {
   final Skill skill;
   const _SkillDetailSheet({required this.skill});
 
   @override
-  State<_SkillDetailSheet> createState() => _SkillDetailSheetState();
+  ConsumerState<_SkillDetailSheet> createState() => _SkillDetailSheetState();
 }
 
-class _SkillDetailSheetState extends State<_SkillDetailSheet> {
+class _SkillDetailSheetState extends ConsumerState<_SkillDetailSheet> {
   bool _showCode = false;
   bool _showSchema = false;
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
+      ),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           width: double.infinity,
           constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
           decoration: BoxDecoration(
-            color: const Color(AppConfig.deepSlate).withValues(alpha: 0.9),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: const Border(top: BorderSide(color: Colors.white10)),
+            color: themeState.isDark 
+              ? Color(themeState.slate950).withValues(alpha: 0.85) 
+              : Color(themeState.bgHeader).withValues(alpha: 0.92),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+            border: Border.all(
+              color: Color(themeState.borderMain).withValues(alpha: 0.25),
+              width: 1.2,
+            ),
           ),
           padding: const EdgeInsets.all(32),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildHeader(),
+                _buildHeader(themeState),
                 const SizedBox(height: 32),
-                _section('DESCRIPTION', widget.skill.description),
+                _section(themeState, 'DESCRIPTION', widget.skill.description),
                 const SizedBox(height: 24),
-                _buildIntents(),
+                _buildIntents(themeState),
                 if (widget.skill.scriptCode != null) ...[
                   const SizedBox(height: 24),
-                  _buildToggleSection('SOURCE CODE', _showCode, (val) => setState(() => _showCode = val), widget.skill.scriptCode!, isCode: true),
+                  _buildToggleSection(themeState, 'SOURCE CODE', _showCode, (val) => setState(() => _showCode = val), widget.skill.scriptCode!, isCode: true),
                 ],
                 if (widget.skill.schemaJson != null) ...[
                   const SizedBox(height: 24),
-                  _buildToggleSection('TECHNICAL SCHEMA', _showSchema, (val) => setState(() => _showSchema = val), jsonEncode(widget.skill.schemaJson)),
+                  _buildToggleSection(themeState, 'TECHNICAL SCHEMA', _showSchema, (val) => setState(() => _showSchema = val), jsonEncode(widget.skill.schemaJson)),
                 ],
               ],
             ),
@@ -315,41 +332,41 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(NomiTheme themeState) {
     return Row(
       children: [
-        const Icon(LucideIcons.sparkles, color: Color(AppConfig.indigo), size: 24),
+        Icon(LucideIcons.sparkles, color: Color(themeState.primaryColor), size: 24),
         const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('SKILL INTELLIGENCE', style: TextStyle(color: Color(AppConfig.indigo), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
-              Text(widget.skill.name, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text('SKILL INTELLIGENCE', style: TextStyle(color: Color(themeState.primaryColor), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+              Text(widget.skill.name, style: TextStyle(color: Color(themeState.textMain), fontSize: 20, fontWeight: FontWeight.bold)),
             ],
           ),
         ),
-        IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white38)),
+        IconButton(onPressed: () => Navigator.pop(context), icon: Icon(LucideIcons.x, color: Color(themeState.textMuted))),
       ],
     );
   }
 
-  Widget _section(String title, String content) {
+  Widget _section(NomiTheme themeState, String title, String content) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+        Text(title, style: TextStyle(color: Color(themeState.textMuted), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
         const SizedBox(height: 12),
-        Text(content, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.6)),
+        Text(content, style: TextStyle(color: Color(themeState.textMain).withValues(alpha: 0.8), fontSize: 14, height: 1.6)),
       ],
     );
   }
 
-  Widget _buildIntents() {
+  Widget _buildIntents(NomiTheme themeState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('ACTIVATION INTENTS', style: TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+        Text('ACTIVATION INTENTS', style: TextStyle(color: Color(themeState.textMuted), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
@@ -357,17 +374,17 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
           children: widget.skill.intents.map((i) => Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
+              color: Color(themeState.textMain).withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Text(i, style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace')),
+            child: Text(i, style: TextStyle(color: Color(themeState.textMain).withValues(alpha: 0.8), fontSize: 11, fontFamily: 'monospace')),
           )).toList(),
         ),
       ],
     );
   }
 
-  Widget _buildToggleSection(String title, bool isExpanded, Function(bool) onToggle, String content, {bool isCode = false}) {
+  Widget _buildToggleSection(NomiTheme themeState, String title, bool isExpanded, Function(bool) onToggle, String content, {bool isCode = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -375,9 +392,9 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
           onTap: () => onToggle(!isExpanded),
           child: Row(
             children: [
-              Text(title, style: const TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+              Text(title, style: TextStyle(color: Color(themeState.textMuted), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
               const Spacer(),
-              Icon(isExpanded ? LucideIcons.chevronUp : LucideIcons.chevronDown, size: 14, color: Colors.white24),
+              Icon(isExpanded ? LucideIcons.chevronUp : LucideIcons.chevronDown, size: 14, color: Color(themeState.textMuted)),
             ],
           ),
         ),
@@ -387,9 +404,9 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.black,
+              color: themeState.isDark ? Colors.black : Color(themeState.bgHeader),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
             ),
             child: isCode 
               ? HighlightView(

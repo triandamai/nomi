@@ -46,154 +46,184 @@ class ChatRepository {
 
   // 🔄 Sync: Remote to Local
   Future<void> syncConversations() async {
-    final response = await _apiClient.dio.get('/conversations');
-    if (response.statusCode == 200) {
-      final List<dynamic> jsonList = response.data['data'] ?? [];
-      final List<db.ConversationsCompanion> companions = jsonList.map((e) {
-        final conv = conv_model.Conversation.fromJson(e);
-        return db.ConversationsCompanion.insert(
-          id: conv.id,
-          name: Value(conv.name),
-          cumulativeTokens: Value(conv.cumulativeTokens),
-          maxTokenUsage: Value(conv.maxTokenUsage),
-          createdAt: _safeParse(conv.createdAt),
-          updatedAt: _safeParse(conv.updatedAt),
-        );
-      }).toList();
-      await _db.upsertConversations(companions);
+    try {
+      final response = await _apiClient.dio.get('/conversations');
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = response.data['data'] ?? [];
+        final List<db.ConversationsCompanion> companions = jsonList.map((e) {
+          final conv = conv_model.Conversation.fromJson(e);
+          return db.ConversationsCompanion.insert(
+            id: conv.id,
+            name: Value(conv.name),
+            cumulativeTokens: Value(conv.cumulativeTokens),
+            maxTokenUsage: Value(conv.maxTokenUsage),
+            createdAt: _safeParse(conv.createdAt),
+            updatedAt: _safeParse(conv.updatedAt),
+          );
+        }).toList();
+        await _db.upsertConversations(companions);
+      }
+    } catch (e) {
+      print('Failed to sync conversations: $e');
     }
   }
 
   Future<void> syncMessages(String conversationId, {String? cursor}) async {
-    final Map<String, dynamic> query = {'limit': 50};
-    if (cursor != null) query['cursor'] = cursor;
+    final uuidRegex = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+    if (!uuidRegex.hasMatch(conversationId)) {
+      print('Invalid conversation ID for syncMessages: $conversationId');
+      return;
+    }
 
-    final response = await _apiClient.dio.get(
-      '/conversations/$conversationId/messages',
-      queryParameters: query,
-    );
+    try {
+      final Map<String, dynamic> query = {'limit': 50};
+      if (cursor != null) query['cursor'] = cursor;
 
-    if (response.statusCode == 200) {
-      final List<dynamic> msgList = response.data['data']['messages'] ?? [];
-      final List<db.MessagesCompanion> companions = msgList.map((e) {
-        final m = msg_model.Message.fromJson(e);
-        return db.MessagesCompanion.insert(
-          id: m.id,
-          conversationId: m.conversationId,
-          role: m.role,
-          content: m.content,
-          displayName: Value(m.displayName),
-          thought: Value(m.thought),
-          imageUrl: Value(m.imageUrl),
-          videoUrl: Value(m.video_url),
-          audioUrl: Value(m.audio_url),
-          documentUrl: Value(m.document_url),
-          stickerUrl: Value(m.sticker_url),
-          userId: Value(m.userId),
-          totalTokens: Value(m.totalTokens),
-          createdAt: _safeParse(m.createdAt),
-          metadata: Value(m.metadata != null ? jsonEncode(m.metadata) : null),
-          replyToId: Value(m.replyToId),
-          repliedMessage: Value(m.repliedMessage != null ? jsonEncode(m.repliedMessage!.toJson()) : null),
-          syncStatus: db.SyncStatus.synced,
-        );
-      }).toList();
-      await _db.upsertMessages(companions);
+      final response = await _apiClient.dio.get(
+        '/conversations/$conversationId/messages',
+        queryParameters: query,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> msgList = response.data['data']['messages'] ?? [];
+        final List<db.MessagesCompanion> companions = msgList.map((e) {
+          final m = msg_model.Message.fromJson(e);
+          return db.MessagesCompanion.insert(
+            id: m.id,
+            conversationId: m.conversationId,
+            role: m.role,
+            content: m.content,
+            displayName: Value(m.displayName),
+            thought: Value(m.thought),
+            imageUrl: Value(m.imageUrl),
+            videoUrl: Value(m.video_url),
+            audioUrl: Value(m.audio_url),
+            documentUrl: Value(m.document_url),
+            stickerUrl: Value(m.sticker_url),
+            userId: Value(m.userId),
+            totalTokens: Value(m.totalTokens),
+            createdAt: _safeParse(m.createdAt),
+            metadata: Value(m.metadata != null ? jsonEncode(m.metadata) : null),
+            replyToId: Value(m.replyToId),
+            repliedMessage: Value(m.repliedMessage != null ? jsonEncode(m.repliedMessage!.toJson()) : null),
+            syncStatus: db.SyncStatus.synced,
+          );
+        }).toList();
+        await _db.upsertMessages(companions);
+      }
+    } catch (e) {
+      print('Failed to sync messages for conversation $conversationId: $e');
     }
   }
 
   Future<void> syncReminders() async {
-    final response = await _apiClient.dio.get('/reminders');
-    if (response.statusCode == 200) {
-      final List<dynamic> jsonList = response.data['data'] ?? [];
-      final List<db.RemindersCompanion> companions = jsonList.map((e) {
-        final r = rem_model.Reminder.fromJson(e);
-        return db.RemindersCompanion.insert(
-          id: r.id,
-          content: r.content,
-          taskType: Value(r.taskType),
-          frequency: Value(r.frequency),
-          status: r.status,
-          dueAt: _safeParse(r.dueAt),
-          createdAt: _safeParse(r.createdAt),
-          userDisplayName: Value(r.userDisplayName),
-          conversationTitle: Value(r.conversationTitle),
-        );
-      }).toList();
-      await _db.upsertReminders(companions);
+    try {
+      final response = await _apiClient.dio.get('/reminders');
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = response.data['data'] ?? [];
+        final List<db.RemindersCompanion> companions = jsonList.map((e) {
+          final r = rem_model.Reminder.fromJson(e);
+          return db.RemindersCompanion.insert(
+            id: r.id,
+            content: r.content,
+            taskType: Value(r.taskType),
+            frequency: Value(r.frequency),
+            status: r.status,
+            dueAt: _safeParse(r.dueAt),
+            createdAt: _safeParse(r.createdAt),
+            userDisplayName: Value(r.userDisplayName),
+            conversationTitle: Value(r.conversationTitle),
+          );
+        }).toList();
+        await _db.upsertReminders(companions);
+      }
+    } catch (e) {
+      print('Failed to sync reminders: $e');
     }
   }
 
   Future<void> syncTransactions({int page = 1, String? query, String? category}) async {
-    final Map<String, dynamic> params = {'page': page};
-    if (query != null && query.isNotEmpty) params['query'] = query;
-    if (category != null && category.isNotEmpty) params['category'] = category;
+    try {
+      final Map<String, dynamic> params = {'page': page};
+      if (query != null && query.isNotEmpty) params['query'] = query;
+      if (category != null && category.isNotEmpty) params['category'] = category;
 
-    final response = await _apiClient.dio.get('/money/history', queryParameters: params);
-    if (response.statusCode == 200) {
-      final List<dynamic> jsonList = response.data['data']['items'] ?? [];
-      final List<db.TransactionsCompanion> companions = jsonList.map((e) {
-        final tx = tx_model.Transaction.fromJson(e);
-        return db.TransactionsCompanion.insert(
-          id: tx.id,
-          merchantName: Value(tx.merchantName),
-          category: Value(tx.category),
-          description: Value(tx.description),
-          totalAmount: tx.totalAmount,
-          createdAt: _safeParse(tx.createdAt),
-          userDisplayName: Value(tx.userDisplayName),
-          conversationTitle: Value(tx.conversationTitle),
-          itemsJson: Value(tx.items != null ? jsonEncode(tx.items!.map((i) => i.toJson()).toList()) : null),
-        );
-      }).toList();
-      await _db.upsertTransactions(companions);
+      final response = await _apiClient.dio.get('/money/history', queryParameters: params);
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = response.data['data']['items'] ?? [];
+        final List<db.TransactionsCompanion> companions = jsonList.map((e) {
+          final tx = tx_model.Transaction.fromJson(e);
+          return db.TransactionsCompanion.insert(
+            id: tx.id,
+            merchantName: Value(tx.merchantName),
+            category: Value(tx.category),
+            description: Value(tx.description),
+            totalAmount: tx.totalAmount,
+            createdAt: _safeParse(tx.createdAt),
+            userDisplayName: Value(tx.userDisplayName),
+            conversationTitle: Value(tx.conversationTitle),
+            itemsJson: Value(tx.items != null ? jsonEncode(tx.items!.map((i) => i.toJson()).toList()) : null),
+          );
+        }).toList();
+        await _db.upsertTransactions(companions);
+      }
+    } catch (e) {
+      print('Failed to sync transactions: $e');
     }
   }
 
   Future<void> syncHealthHistory({DateTime? start, DateTime? end}) async {
-    final Map<String, dynamic> params = {};
-    if (start != null) params['start_date'] = start.toIso8601String().split('T')[0];
-    if (end != null) params['end_date'] = end.toIso8601String().split('T')[0];
+    try {
+      final Map<String, dynamic> params = {};
+      if (start != null) params['start_date'] = start.toIso8601String().split('T')[0];
+      if (end != null) params['end_date'] = end.toIso8601String().split('T')[0];
 
-    final response = await _apiClient.dio.get('/health/history', queryParameters: params);
-    if (response.statusCode == 200) {
-      final List<dynamic> jsonList = response.data['data'] ?? [];
-      final List<db.HealthMetricsCompanion> companions = jsonList.map((e) {
-        final m = health_model.HealthMetric.fromJson(e);
-        return db.HealthMetricsCompanion.insert(
-          id: m.id,
-          userId: m.userId,
-          logDate: _safeParse(m.logDate),
-          steps: Value(m.metrics.steps),
-          avgHeartRate: Value(m.metrics.avgHeartRate),
-          sleepHours: Value(m.metrics.sleepHours),
-          updatedAt: _safeParse(m.updatedAt),
-        );
-      }).toList();
-      await _db.upsertHealthMetrics(companions);
+      final response = await _apiClient.dio.get('/health/history', queryParameters: params);
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = response.data['data'] ?? [];
+        final List<db.HealthMetricsCompanion> companions = jsonList.map((e) {
+          final m = health_model.HealthMetric.fromJson(e);
+          return db.HealthMetricsCompanion.insert(
+            id: m.id,
+            userId: m.userId,
+            logDate: _safeParse(m.logDate),
+            steps: Value(m.metrics.steps),
+            avgHeartRate: Value(m.metrics.avgHeartRate),
+            sleepHours: Value(m.metrics.sleepHours),
+            updatedAt: _safeParse(m.updatedAt),
+          );
+        }).toList();
+        await _db.upsertHealthMetrics(companions);
+      }
+    } catch (e) {
+      print('Failed to sync health history: $e');
     }
   }
 
   Future<void> syncPlugins() async {
-    final response = await _apiClient.dio.get('/plugins');
-    if (response.statusCode == 200) {
-      final List<dynamic> jsonList = response.data['data'] ?? [];
-      final List<db.PluginsCompanion> companions = jsonList.map((e) {
-        final p = plugin_model.Plugin.fromJson(e);
-        return db.PluginsCompanion.insert(
-          id: p.id,
-          name: p.name,
-          slug: p.slug,
-          description: Value(p.description),
-          scriptCode: Value(p.scriptCode),
-          version: Value(p.version),
-          author: Value(p.author),
-          intentsJson: Value(p.intents != null ? jsonEncode(p.intents) : null),
-          createdAt: _safeParse(p.createdAt),
-          updatedAt: _safeParse(p.updatedAt),
-        );
-      }).toList();
-      await _db.upsertPlugins(companions);
+    try {
+      final response = await _apiClient.dio.get('/plugins');
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonList = response.data['data'] ?? [];
+        final List<db.PluginsCompanion> companions = jsonList.map((e) {
+          final p = plugin_model.Plugin.fromJson(e);
+          return db.PluginsCompanion.insert(
+            id: p.id,
+            name: p.name,
+            slug: p.slug,
+            description: Value(p.description),
+            scriptCode: Value(p.scriptCode),
+            version: Value(p.version),
+            author: Value(p.author),
+            intentsJson: Value(p.intents != null ? jsonEncode(p.intents) : null),
+            createdAt: _safeParse(p.createdAt),
+            updatedAt: _safeParse(p.updatedAt),
+          );
+        }).toList();
+        await _db.upsertPlugins(companions);
+      }
+    } catch (e) {
+      print('Failed to sync plugins: $e');
     }
   }
 

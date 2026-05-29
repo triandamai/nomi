@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/providers/navigation_provider.dart';
@@ -36,6 +38,7 @@ class _ReinforcementPageState extends ConsumerState<ReinforcementPage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final isLargeScreen = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
@@ -43,16 +46,16 @@ class _ReinforcementPageState extends ConsumerState<ReinforcementPage> {
       appBar: isLargeScreen 
         ? null 
         : AppBar(
-            backgroundColor: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
+            backgroundColor: Color(themeState.bgHeader).withValues(alpha: 0.8),
             elevation: 0,
             leading: IconButton(
               onPressed: () => Scaffold.of(context).openDrawer(),
-              icon: const Icon(LucideIcons.menu),
+              icon: Icon(LucideIcons.menu, color: Color(themeState.textMain)),
             ),
-            title: const Text('Reinforcement', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            title: Text('Reinforcement', style: TextStyle(color: Color(themeState.textMain), fontSize: 18, fontWeight: FontWeight.bold)),
           ),
       body: _selectedSlug == null
-          ? _buildPluginList(isLargeScreen)
+          ? _buildPluginList(themeState, isLargeScreen)
           : _ReinforcementPlayground(
               slug: _selectedSlug!,
               onBack: () => setState(() => _selectedSlug = null),
@@ -60,15 +63,15 @@ class _ReinforcementPageState extends ConsumerState<ReinforcementPage> {
     );
   }
 
-  Widget _buildPluginList(bool isLargeScreen) {
+  Widget _buildPluginList(NomiTheme themeState, bool isLargeScreen) {
     return Column(
       children: [
-        _buildHeader('SRP Registry', 'Self-Reinforcement Tool Intelligence'),
+        _buildHeader(themeState, 'SRP Registry', 'Self-Reinforcement Tool Intelligence'),
         Expanded(
           child: _isLoadingList
               ? const Center(child: CircularProgressIndicator())
               : _availablePlugins.isEmpty
-                  ? const Center(child: Text('No learning plugins detected.', style: TextStyle(color: Colors.white38)))
+                  ? Center(child: Text('No learning plugins detected.', style: TextStyle(color: Color(themeState.textMuted))))
                   : GridView.builder(
                       padding: const EdgeInsets.all(32),
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -88,19 +91,19 @@ class _ReinforcementPageState extends ConsumerState<ReinforcementPage> {
     );
   }
 
-  Widget _buildHeader(String title, String subtitle) {
+  Widget _buildHeader(NomiTheme themeState, String title, String subtitle) {
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        color: Color(themeState.bgHeader).withValues(alpha: 0.8),
+        border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
       ),
       child: Row(
         children: [
           IconButton(
             onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
-            icon: const Icon(LucideIcons.chevronLeft, color: Colors.white38, size: 20),
+            icon: Icon(LucideIcons.chevronLeft, color: Color(themeState.textMuted), size: 20),
           ),
           const SizedBox(width: 8),
           const Icon(LucideIcons.brain, color: Color(AppConfig.emerald), size: 24),
@@ -109,8 +112,8 @@ class _ReinforcementPageState extends ConsumerState<ReinforcementPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-              Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w500)),
+              Text(title, style: TextStyle(color: Color(themeState.textMain), fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(subtitle, style: TextStyle(color: Color(themeState.textMuted), fontSize: 10, fontWeight: FontWeight.w500)),
             ],
           ),
           const Spacer(),
@@ -135,23 +138,24 @@ class _ReinforcementPageState extends ConsumerState<ReinforcementPage> {
   }
 }
 
-class _PluginCard extends StatelessWidget {
+class _PluginCard extends ConsumerWidget {
   final String slug;
   final VoidCallback onTap;
 
   const _PluginCard({required this.slug, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.02),
+            color: Color(themeState.textMain).withValues(alpha: 0.02),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
           ),
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -163,20 +167,20 @@ class _PluginCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.3),
+                      color: themeState.isDark ? Colors.black.withValues(alpha: 0.3) : Color(themeState.textMain).withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(LucideIcons.wrench, color: Color(AppConfig.emerald), size: 20),
                   ),
-                  const Icon(LucideIcons.chevronRight, color: Colors.white10, size: 16),
+                  Icon(LucideIcons.chevronRight, color: Color(themeState.textMuted).withValues(alpha: 0.5), size: 16),
                 ],
               ),
               const Spacer(),
-              Text(slug.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'monospace', letterSpacing: 1)),
+              Text(slug.toUpperCase(), style: TextStyle(color: Color(themeState.textMain), fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'monospace', letterSpacing: 1)),
               const SizedBox(height: 8),
               Text(
                 'Core Nomi tool with autonomous reinforcement enabled.',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11, height: 1.4),
+                style: TextStyle(color: Color(themeState.textMuted), fontSize: 11, height: 1.4),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -238,9 +242,10 @@ class _ReinforcementPlaygroundState extends ConsumerState<_ReinforcementPlaygrou
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     return Column(
       children: [
-        _buildHeader(),
+        _buildHeader(themeState),
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
@@ -248,8 +253,8 @@ class _ReinforcementPlaygroundState extends ConsumerState<_ReinforcementPlaygrou
                   ? const Center(child: Text('Failed to load state'))
                   : Row(
                       children: [
-                        Expanded(flex: 4, child: _buildAuditPane()),
-                        Expanded(flex: 6, child: _buildSimulationPane()),
+                        Expanded(flex: 4, child: _buildAuditPane(themeState)),
+                        Expanded(flex: 6, child: _buildSimulationPane(themeState)),
                       ],
                     ),
         ),
@@ -257,21 +262,21 @@ class _ReinforcementPlaygroundState extends ConsumerState<_ReinforcementPlaygrou
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(NomiTheme themeState) {
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
-        border: Border(bottom: BorderSide(color: Colors.white10)),
+        color: Color(themeState.bgHeader).withValues(alpha: 0.8),
+        border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
       ),
       child: Row(
         children: [
-          IconButton(onPressed: widget.onBack, icon: const Icon(LucideIcons.arrowLeft, color: Colors.white38, size: 20)),
+          IconButton(onPressed: widget.onBack, icon: Icon(LucideIcons.arrowLeft, color: Color(themeState.textMuted), size: 20)),
           const SizedBox(width: 8),
           const Icon(LucideIcons.sparkles, color: Color(AppConfig.emerald), size: 20),
           const SizedBox(width: 16),
-          Text(widget.slug.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'monospace')),
+          Text(widget.slug.toUpperCase(), style: TextStyle(color: Color(themeState.textMain), fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'monospace')),
           const Spacer(),
           const Text('AUTONOMOUS MODE', style: TextStyle(color: Color(AppConfig.emerald), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
         ],
@@ -279,28 +284,28 @@ class _ReinforcementPlaygroundState extends ConsumerState<_ReinforcementPlaygrou
     );
   }
 
-  Widget _buildAuditPane() {
+  Widget _buildAuditPane(NomiTheme themeState) {
     return Container(
       padding: const EdgeInsets.all(32),
-      decoration: const BoxDecoration(
-        border: Border(right: BorderSide(color: Colors.white10)),
+      decoration: BoxDecoration(
+        border: Border(right: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
       ),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _section('ENRICHED INTELLIGENCE', _data!.enrichedDescription),
+            _section(themeState, 'ENRICHED INTELLIGENCE', _data!.enrichedDescription),
             const SizedBox(height: 32),
-            _listSection('LEARNED VOCABULARY', _data!.learnedPhrases),
+            _listSection(themeState, 'LEARNED VOCABULARY', _data!.learnedPhrases),
             const SizedBox(height: 32),
-            _listSection('OPERATIONAL RULES', _data!.additionalRules),
+            _listSection(themeState, 'OPERATIONAL RULES', _data!.additionalRules),
           ],
         ),
       ),
     );
   }
 
-  Widget _section(String title, String content) {
+  Widget _section(NomiTheme themeState, String title, String content) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -308,14 +313,18 @@ class _ReinforcementPlaygroundState extends ConsumerState<_ReinforcementPlaygrou
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.02), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white10)),
-          child: Text(content, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.6)),
+          decoration: BoxDecoration(
+            color: Color(themeState.textMain).withValues(alpha: 0.02), 
+            borderRadius: BorderRadius.circular(16), 
+            border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5))
+          ),
+          child: Text(content, style: TextStyle(color: Color(themeState.textMain).withValues(alpha: 0.8), fontSize: 13, height: 1.6)),
         ),
       ],
     );
   }
 
-  Widget _listSection(String title, List<String> items) {
+  Widget _listSection(NomiTheme themeState, String title, List<String> items) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -324,51 +333,54 @@ class _ReinforcementPlaygroundState extends ConsumerState<_ReinforcementPlaygrou
         ...items.map((item) => Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.02), borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(
+            color: Color(themeState.textMain).withValues(alpha: 0.02), 
+            borderRadius: BorderRadius.circular(12)
+          ),
           child: Row(
             children: [
               const Icon(LucideIcons.checkCircle2, color: Color(AppConfig.emerald), size: 12),
               const SizedBox(width: 12),
-              Expanded(child: Text(item, style: const TextStyle(color: Colors.white70, fontSize: 12))),
+              Expanded(child: Text(item, style: TextStyle(color: Color(themeState.textMain).withValues(alpha: 0.8), fontSize: 12))),
             ],
           ),
         )),
         if (items.isEmpty)
-          const Text('No dynamic patterns learned yet.', style: TextStyle(color: Colors.white24, fontSize: 11, fontStyle: FontStyle.italic)),
+          Text('No dynamic patterns learned yet.', style: TextStyle(color: Color(themeState.textMuted), fontSize: 11, fontStyle: FontStyle.italic)),
       ],
     );
   }
 
-  Widget _buildSimulationPane() {
+  Widget _buildSimulationPane(NomiTheme themeState) {
     return Container(
-      color: Colors.black.withValues(alpha: 0.2),
+      color: themeState.isDark ? Colors.black.withValues(alpha: 0.2) : Color(themeState.bgHeader).withValues(alpha: 0.2),
       padding: const EdgeInsets.all(32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('ALIGNMENT PLAYGROUND', style: TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+          Text('ALIGNMENT PLAYGROUND', style: TextStyle(color: Color(themeState.primaryColor), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
           const SizedBox(height: 24),
           
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.02),
+              color: themeState.isDark ? Colors.white.withValues(alpha: 0.02) : Colors.black.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
             ),
             child: TextField(
               controller: _simController,
               onSubmitted: (_) => _runSimulation(),
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: Color(themeState.textMain), fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Simulate natural language interaction...',
-                hintStyle: const TextStyle(color: Colors.white24),
+                hintStyle: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5)),
                 border: InputBorder.none,
                 suffixIcon: IconButton(
                   onPressed: _isSimulating ? null : _runSimulation,
                   icon: _isSimulating 
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(LucideIcons.play, color: Colors.blue, size: 16),
+                    : Icon(LucideIcons.play, color: Color(themeState.primaryColor), size: 16),
                 ),
               ),
             ),
@@ -376,16 +388,16 @@ class _ReinforcementPlaygroundState extends ConsumerState<_ReinforcementPlaygrou
           
           if (_simOutcome != null) ...[
             const SizedBox(height: 32),
-            const Text('SIMULATION TRACE', style: TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
+            Text('SIMULATION TRACE', style: TextStyle(color: Color(themeState.textMuted), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
             const SizedBox(height: 16),
             Expanded(
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.black,
+                  color: themeState.isDark ? Colors.black : Color(themeState.bgHeader),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white10),
+                  border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
                 ),
                 child: SingleChildScrollView(
                   child: Text(

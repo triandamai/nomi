@@ -1,6 +1,9 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 import 'package:nomi_mobile/core/config.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/providers/navigation_provider.dart';
@@ -79,6 +82,7 @@ class _GuardrailPageState extends ConsumerState<GuardrailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
     final isLargeScreen = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
@@ -86,17 +90,17 @@ class _GuardrailPageState extends ConsumerState<GuardrailPage> {
       appBar: isLargeScreen 
         ? null 
         : AppBar(
-            backgroundColor: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
+            backgroundColor: Color(themeState.bgHeader).withValues(alpha: 0.8),
             elevation: 0,
             leading: IconButton(
               onPressed: () => Scaffold.of(context).openDrawer(),
-              icon: const Icon(LucideIcons.menu),
+              icon: Icon(LucideIcons.menu, color: Color(themeState.textMain)),
             ),
-            title: const Text('Guardrails', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            title: Text('Guardrails', style: TextStyle(color: Color(themeState.textMain), fontSize: 18, fontWeight: FontWeight.bold)),
           ),
       body: Column(
         children: [
-          _buildHeader(),
+          _buildHeader(themeState),
           Expanded(
             child: Row(
               children: [
@@ -105,7 +109,7 @@ class _GuardrailPageState extends ConsumerState<GuardrailPage> {
                   child: _isLoading 
                     ? const Center(child: CircularProgressIndicator())
                     : _patterns.isEmpty
-                      ? const Center(child: Text('No guardrail patterns defined.', style: TextStyle(color: Colors.white38)))
+                      ? Center(child: Text('No guardrail patterns defined.', style: TextStyle(color: Color(themeState.textMuted))))
                       : ListView.builder(
                           padding: const EdgeInsets.all(24),
                           itemCount: _patterns.length,
@@ -118,7 +122,7 @@ class _GuardrailPageState extends ConsumerState<GuardrailPage> {
                 if (isLargeScreen)
                   Expanded(
                     flex: 4,
-                    child: _buildAddPatternPane(),
+                    child: _buildAddPatternPane(themeState),
                   ),
               ],
             ),
@@ -128,69 +132,86 @@ class _GuardrailPageState extends ConsumerState<GuardrailPage> {
       floatingActionButton: isLargeScreen 
         ? null 
         : FloatingActionButton(
-            onPressed: () => _showAddPatternSheet(),
-            backgroundColor: const Color(AppConfig.blue),
+            onPressed: () => _showAddPatternSheet(themeState),
+            backgroundColor: Color(themeState.primaryColor),
             child: const Icon(LucideIcons.plus, color: Colors.white),
           ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(NomiTheme themeState) {
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: const Color(AppConfig.deepSlate).withValues(alpha: 0.8),
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        color: Color(themeState.bgHeader).withValues(alpha: 0.8),
+        border: Border(bottom: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
       ),
       child: Row(
         children: [
           IconButton(
             onPressed: () => ref.read(navigationProvider.notifier).navigateTo(MainView.chat),
-            icon: const Icon(LucideIcons.chevronLeft, color: Colors.white38, size: 20),
+            icon: Icon(LucideIcons.chevronLeft, color: Color(themeState.textMuted), size: 20),
           ),
           const SizedBox(width: 8),
-          const Icon(LucideIcons.shieldCheck, color: Color(AppConfig.emerald), size: 24),
+          Icon(LucideIcons.shieldCheck, color: isDarkTheme(themeState) ? const Color(AppConfig.emerald) : Color(themeState.primaryColor), size: 24),
           const SizedBox(width: 16),
-          const Column(
+          Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('GUARDRAIL PATTERNS', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-              Text('Prompt Injection & Safety Registry', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w500)),
+              Text('GUARDRAIL PATTERNS', style: TextStyle(color: Color(themeState.textMain), fontSize: 16, fontWeight: FontWeight.bold)),
+              Text('Prompt Injection & Safety Registry', style: TextStyle(color: Color(themeState.textMuted), fontSize: 10, fontWeight: FontWeight.w500)),
             ],
           ),
           const Spacer(),
           IconButton(
             onPressed: _fetchPatterns,
-            icon: const Icon(LucideIcons.refreshCw, size: 18, color: Colors.white38),
+            icon: Icon(LucideIcons.refreshCw, size: 18, color: Color(themeState.textMuted)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAddPatternPane() {
+  bool isDarkTheme(NomiTheme themeState) {
+    return themeState.isDark;
+  }
+
+  Widget _buildAddPatternPane(NomiTheme themeState) {
     return Container(
       padding: const EdgeInsets.all(32),
-      decoration: const BoxDecoration(
-        color: Colors.black26,
-        border: Border(left: BorderSide(color: Colors.white10)),
+      decoration: BoxDecoration(
+        color: themeState.isDark ? Colors.black26 : Color(themeState.bgHeader).withValues(alpha: 0.3),
+        border: Border(left: BorderSide(color: Color(themeState.borderMain).withValues(alpha: 0.5))),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('REGISTER PATTERN', style: TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+          Text('REGISTER PATTERN', style: TextStyle(color: Color(themeState.primaryColor), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'Add a new pattern to the safety knowledge base. This helps the agent detect and intercept malicious prompt injection attempts.',
-            style: TextStyle(color: Colors.white38, fontSize: 12, height: 1.5),
+            style: TextStyle(color: Color(themeState.textMuted), fontSize: 12, height: 1.5),
           ),
           const SizedBox(height: 32),
           Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.02), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withValues(alpha: 0.05))),
-            child: TextField(controller: _patternController, maxLines: 5, style: const TextStyle(color: Colors.white, fontSize: 14), decoration: const InputDecoration(hintText: 'Enter malicious pattern or instruction...', hintStyle: TextStyle(color: Colors.white24, fontSize: 14), border: InputBorder.none)),
+            decoration: BoxDecoration(
+              color: Color(themeState.textMain).withValues(alpha: 0.02), 
+              borderRadius: BorderRadius.circular(16), 
+              border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5))
+            ),
+            child: TextField(
+              controller: _patternController, 
+              maxLines: 5, 
+              style: TextStyle(color: Color(themeState.textMain), fontSize: 14), 
+              decoration: InputDecoration(
+                hintText: 'Enter malicious pattern or instruction...', 
+                hintStyle: TextStyle(color: Color(themeState.textMuted).withValues(alpha: 0.5), fontSize: 14), 
+                border: InputBorder.none
+              )
+            ),
           ),
           const SizedBox(height: 32),
           SizedBox(
@@ -198,7 +219,12 @@ class _GuardrailPageState extends ConsumerState<GuardrailPage> {
             height: 56,
             child: ElevatedButton(
               onPressed: _isSaving ? null : _addPattern,
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(AppConfig.blue), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(themeState.primaryColor), 
+                foregroundColor: Colors.white, 
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), 
+                elevation: 0
+              ),
               child: _isSaving 
                 ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('ENROLL PATTERN', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
@@ -209,36 +235,74 @@ class _GuardrailPageState extends ConsumerState<GuardrailPage> {
     );
   }
 
-  void _showAddPatternSheet() {
+  void _showAddPatternSheet(NomiTheme themeState) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: Container(decoration: const BoxDecoration(color: Color(AppConfig.deepSlate), borderRadius: BorderRadius.vertical(top: Radius.circular(24))), child: _buildAddPatternPane()),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                color: themeState.isDark 
+                  ? Color(themeState.slate950).withValues(alpha: 0.85) 
+                  : Color(themeState.bgHeader).withValues(alpha: 0.92), 
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+                border: Border.all(
+                  color: Color(themeState.borderMain).withValues(alpha: 0.25),
+                  width: 1.2,
+                ),
+              ), 
+              child: _buildAddPatternPane(themeState)
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-class _PatternItem extends StatelessWidget {
+class _PatternItem extends ConsumerWidget {
   final GuardrailPattern pattern;
   final VoidCallback onDelete;
   const _PatternItem({required this.pattern, required this.onDelete});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withValues(alpha: 0.05))),
+      decoration: BoxDecoration(
+        color: Color(themeState.textMain).withValues(alpha: 0.03), 
+        borderRadius: BorderRadius.circular(20), 
+        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5))
+      ),
       child: Row(
         children: [
           const Icon(LucideIcons.shieldAlert, size: 20, color: Color(AppConfig.rose)),
           const SizedBox(width: 20),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(pattern.content, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4, fontWeight: FontWeight.w500)), const SizedBox(height: 8), Text('ENROLLED: ${pattern.createdAt.split('T')[0]}', style: const TextStyle(color: Colors.white24, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1))])),
-          IconButton(onPressed: onDelete, icon: const Icon(LucideIcons.trash2, size: 16, color: Colors.white12), hoverColor: Color(AppConfig.rose).withValues(alpha: 0.1)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, 
+              children: [
+                Text(pattern.content, style: TextStyle(color: Color(themeState.textMain), fontSize: 13, height: 1.4, fontWeight: FontWeight.w500)), 
+                const SizedBox(height: 8), 
+                Text('ENROLLED: ${pattern.createdAt.split('T')[0]}', style: TextStyle(color: Color(themeState.textMuted), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1))
+              ]
+            )
+          ),
+          IconButton(onPressed: onDelete, icon: Icon(LucideIcons.trash2, size: 16, color: Color(themeState.textMuted).withValues(alpha: 0.5)), hoverColor: const Color(AppConfig.rose).withValues(alpha: 0.1)),
         ],
       ),
     );

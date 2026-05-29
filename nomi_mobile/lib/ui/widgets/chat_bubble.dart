@@ -15,6 +15,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nomi_mobile/providers/repositories.dart';
 import 'package:nomi_mobile/core/api/api_client.dart';
+import 'package:nomi_mobile/providers/theme_provider.dart';
+import 'package:nomi_mobile/core/theme/nomi_theme.dart';
 
 class MentionCache {
   static final Map<String, String> _cache = {};
@@ -206,6 +208,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
   Widget build(BuildContext context) {
     final message = widget.message;
     final apiClient = ref.watch(apiClientProvider);
+    final NomiTheme themeState = ref.watch(themeProvider);
     final processedContent = _processContent(message.content, apiClient);
 
     return Dismissible(
@@ -244,14 +247,14 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
+                        color: Color(themeState.textMain).withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                        border: Border.all(color: Color(themeState.borderMain).withValues(alpha: 0.5)),
                       ),
                       child: Text(
                         '${Formatter.formatTokenCount(message.totalTokens)} TOKENS',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.3),
+                          color: Color(themeState.textMuted),
                           fontSize: 7,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1,
@@ -263,7 +266,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                   Text(
                     'Today at ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}', 
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.1),
+                      color: Color(themeState.textMuted).withValues(alpha: 0.6),
                       fontSize: 9,
                       fontWeight: FontWeight.bold,
                     ),
@@ -318,21 +321,21 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                           }
                         },
                         styleSheet: MarkdownStyleSheet(
-                          p: const TextStyle(color: Color(0xFFdcddde), fontSize: 14, height: 1.4),
-                          code: const TextStyle(
-                            backgroundColor: Color(0xFF202225),
+                          p: TextStyle(color: Color(themeState.textMain), fontSize: 14, height: 1.4),
+                          code: TextStyle(
+                            backgroundColor: Color(themeState.slate950),
                             fontFamily: 'monospace',
                             fontSize: 12,
-                            color: Color(0xFF10b981),
+                            color: Color(themeState.accentColor),
                           ),
                           codeblockDecoration: BoxDecoration(
-                            color: const Color(0xFF202225),
+                            color: Color(themeState.slate950),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                            border: Border.all(color: Color(themeState.borderMain)),
                           ),
                           codeblockPadding: const EdgeInsets.all(12),
-                          a: const TextStyle(
-                            color: Color(0xFF60a5fa),
+                          a: TextStyle(
+                            color: Color(themeState.primaryColor),
                             fontWeight: FontWeight.bold,
                             decoration: TextDecoration.none,
                           ),
@@ -522,6 +525,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
   }
 
   Widget _buildThoughts() {
+    final themeState = ref.read(themeProvider);
     return GestureDetector(
       onTap: () => setState(() => _thoughtExpanded = !_thoughtExpanded),
       child: Container(
@@ -537,12 +541,12 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    const Color(0xFF2f3136).withValues(alpha: 0.5),
-                    const Color(0xFF1e293b).withValues(alpha: 0.2),
+                    Color(themeState.slate900).withValues(alpha: 0.5),
+                    Color(themeState.slate950).withValues(alpha: 0.2),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.withValues(alpha: 0.15)),
+                border: Border.all(color: Color(themeState.primaryColor).withValues(alpha: 0.15)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -550,14 +554,14 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(LucideIcons.brain, size: 12, color: Color(0xFF3b82f6)),
-                          SizedBox(width: 8),
+                          Icon(LucideIcons.brain, size: 12, color: Color(themeState.primaryColor)),
+                          const SizedBox(width: 8),
                           Text(
                             'DEEP THOUGHT',
                             style: TextStyle(
-                              color: Color(0xFF3b82f6),
+                              color: Color(themeState.primaryColor),
                               fontSize: 8,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 1,
@@ -568,7 +572,7 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                       Icon(
                         _thoughtExpanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
                         size: 14,
-                        color: Colors.white10,
+                        color: Color(themeState.textMuted).withValues(alpha: 0.3),
                       ),
                     ],
                   ),
@@ -576,8 +580,8 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                     const SizedBox(height: 10),
                     Text(
                       widget.message.thought!,
-                      style: const TextStyle(
-                        color: Color(0xFFb9bbbe),
+                      style: TextStyle(
+                        color: Color(themeState.textMain).withValues(alpha: 0.8),
                         fontSize: 12,
                         fontStyle: FontStyle.italic,
                         height: 1.4,

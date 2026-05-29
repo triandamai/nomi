@@ -8,6 +8,7 @@
 	import DiscordSidebar from "$lib/components/DiscordSidebar.svelte"
 	import Header from '$lib/components/Header.svelte';
 	import { conversationStore } from '$lib/stores/conversation.svelte';
+	import { themeStore } from '$lib/stores/theme.svelte';
 
 	import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
@@ -43,6 +44,7 @@
 	}
 
 	onMount(() => {
+		themeStore.init();
 		open();
 		const unsubscribe = eventBus.subscribe("load", open);
 		return () => {
@@ -58,7 +60,13 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
-<div class="dark flex h-[100dvh] bg-[--bg-main] text-[--text-main] font-sans selection:bg-zinc-800">
+<div class="dark flex h-[100dvh] bg-transparent text-[--text-main] font-sans selection:bg-zinc-800 relative">
+	<!-- Apple Liquid Glass Background Layer -->
+	<div class="liquid-glass-bg">
+		<div class="liquid-glass-light-1"></div>
+		<div class="liquid-glass-light-2"></div>
+	</div>
+
 	{#if page.url.pathname !== '/login' && page.url.pathname !== '/'  && !page.url.pathname.startsWith('/docs')}
 		<DiscordSidebar />
 		<div class="flex-1 flex flex-col relative overflow-hidden">
