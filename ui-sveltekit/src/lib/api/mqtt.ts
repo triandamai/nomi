@@ -9,9 +9,11 @@ class MqttClient {
     private client: mqtt.MqttClient | null = null;
     private userId: string | null = null;
     private currentConversationId: string | null = null;
+    private subscribedConversations: Set<string> = new Set();
 
     connect() {
         if (this.client) return;
+        this.subscribedConversations.clear();
 
         const [token, userId] = getSession();
         if (!userId) {
@@ -57,6 +59,12 @@ class MqttClient {
         this.client.on('connect', () => {
             eventBus.emit('gateway-status', {online: true, transport: 'mqtt'});
             this.subscribeToBasicTopics();
+            
+            const prevIds = Array.from(this.subscribedConversations);
+            this.subscribedConversations.clear();
+            if (prevIds.length > 0) {
+                this.subscribeConversations(prevIds);
+            }
         });
 
         this.client.on('disconnect', () => {
@@ -94,22 +102,27 @@ class MqttClient {
         });
     }
 
-    setConversation(conversationId: string | null) {
+    subscribeConversations(conversationIds: string[]) {
         if (!this.client) return;
 
-        // Unsubscribe from previous conversation
-        if (this.currentConversationId && this.currentConversationId !== conversationId) {
-            this.client.unsubscribe(`nomi/conversations/${this.currentConversationId}/#`);
+        for (const id of conversationIds) {
+            if (!this.subscribedConversations.has(id)) {
+                this.client.subscribe(`nomi/conversations/${id}/#`, (err) => {
+                    if (!err) {
+                        this.subscribedConversations.add(id);
+                    }
+                });
+            }
         }
+    }
 
-        this.currentConversationId = conversationId;
+    setConversation(conversationId: string | null) {
+        if (!this.client || !conversationId) return;
 
-        if (this.currentConversationId) {
-            this.client.subscribe(`nomi/conversations/${this.currentConversationId}/#`, (err) => {
-                if (err) {
-                    // console.error('MQTT: Conversation subscription error', err);
-                } else {
-                    // console.log(`MQTT: Subscribed to conversation ${this.currentConversationId}`);
+        if (!this.subscribedConversations.has(conversationId)) {
+            this.client.subscribe(`nomi/conversations/${conversationId}/#`, (err) => {
+                if (!err) {
+                    this.subscribedConversations.add(conversationId);
                 }
             });
         }
@@ -167,6 +180,7 @@ class MqttClient {
         if (this.client) {
             this.client.end();
             this.client = null;
+            this.subscribedConversations.clear();
         }
     }
 }

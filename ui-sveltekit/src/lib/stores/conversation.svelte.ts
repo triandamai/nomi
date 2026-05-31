@@ -87,6 +87,7 @@ function createConversationStore() {
                         online: true
                     }));
                     conversations = loaded;
+                    mqttClient.subscribeConversations(loaded.map((c: any) => c.id));
 
                     const currentId = getPersistConversationId()
                     if (currentId != null) {
@@ -124,6 +125,7 @@ function createConversationStore() {
                         online: true
                     };
                     conversations = [...conversations, newConv];
+                    mqttClient.subscribeConversations([newConv.id]);
                     return newConv;
                 }
             } catch (error) {

@@ -807,7 +807,7 @@
     </div>
 {/snippet}
 
-<aside class="w-[72px] h-[100dvh] bg-[#0f172a] border-r border-slate-800 flex flex-col items-center py-3 gap-3">
+<aside class="w-[72px] h-[100dvh] bg-[#0f172a] border-r border-slate-800 flex flex-col items-center py-3 gap-3 relative z-30">
     <!-- Home / Logo -->
     <div class="mb-2">
         <a href="/"
