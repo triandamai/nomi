@@ -41,7 +41,7 @@
 
 <div class="flex flex-col h-screen bg-bg-main text-text-main overflow-hidden font-sans relative">
   <!-- Standard Header Alignment -->
-  <header class="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-6 border-b border-border-main bg-bg-main/80 backdrop-blur-md z-30">
+  <header class="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-6 border-b border-border-main bg-bg-main/80 backdrop-blur-md">
     <div class="flex items-center gap-3">
       <button 
         onclick={() => isMobileNavOpen = !isMobileNavOpen}

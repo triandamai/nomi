@@ -209,8 +209,7 @@
     </div>
 {/snippet}
 
-<div class="flex flex-col h-full text-slate-200">
-    <div class="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 custom-scrollbar">
+<div class="space-y-4 text-slate-200 bg-transparent">
         {#if adminStore.convLoading && adminStore.conversations.length === 0}
             <div class="flex flex-col items-center justify-center py-24 gap-4">
                 <Loader2 class="w-8 h-8 animate-spin text-blue-500" />
@@ -284,7 +283,6 @@
                 </div>
             {/if}
         {/if}
-    </div>
 </div>
 
 <style>

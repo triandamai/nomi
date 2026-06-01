@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT fr.id, fr.sender_id, fr.receiver_id, \n               u1.display_name as sender_display_name, \n               u2.display_name as receiver_display_name, \n               fr.created_at\n        FROM friend_requests fr\n        JOIN users u1 ON fr.sender_id = u1.id\n        JOIN users u2 ON fr.receiver_id = u2.id\n        WHERE fr.receiver_id = $1\n        ORDER BY fr.created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "sender_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "receiver_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "sender_display_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "receiver_display_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "21f296ca93eb3d7677b122f11f5f45cbb312c75c346e441ea7593bdfa8fe04f5"
+}

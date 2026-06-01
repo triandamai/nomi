@@ -64,36 +64,36 @@
     });
 </script>
 
-<div class="flex flex-col h-full bg-slate-900 text-slate-100 overflow-hidden rounded-lg">
+<div class="space-y-4 text-slate-200 bg-transparent">
     <!-- Header with Search -->
-    <div class="p-4 border-b border-slate-800 space-y-4">
+    <div class="sticky top-0 bg-[#0f172a]/95 backdrop-blur-md border-b border-slate-800/60 p-4 -mx-6 -mt-6 z-10 space-y-4">
         <div class="relative">
             <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input
                 type="text"
                 bind:value={searchQuery}
                 placeholder="Search tools, descriptions, or intents..."
-                class="w-full bg-slate-950 border border-slate-800 rounded-md py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-sky-500 transition-all placeholder:text-slate-600"
+                class="w-full bg-[#04060b] border border-slate-800/80 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500/40 transition-all placeholder:text-slate-700"
             />
         </div>
     </div>
 
     <!-- Tools List -->
-    <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+    <div class="space-y-2 pt-2">
         {#if isLoading}
-            <div class="flex flex-col items-center justify-center h-full space-y-3 opacity-50">
+            <div class="flex flex-col items-center justify-center py-12 space-y-3 opacity-50">
                 <Loader2 class="w-8 h-8 text-sky-500 animate-spin" />
                 <p class="text-slate-400 text-sm italic font-medium">Scanning capabilities...</p>
             </div>
         {:else if filteredTools.length === 0}
-            <div class="flex flex-col items-center justify-center h-full text-slate-500 space-y-2">
+            <div class="flex flex-col items-center justify-center py-12 text-slate-500 space-y-2">
                 <Terminal class="w-12 h-12 opacity-20" />
                 <p class="text-sm">No tools found matching your query</p>
             </div>
         {:else}
             <div class="grid gap-2">
                 {#each filteredTools as tool}
-                    <div class="group p-4 rounded-lg bg-slate-800/40 border border-slate-700/50 hover:bg-slate-800/60 hover:border-sky-500/30 transition-all cursor-default">
+                    <div class="group p-4 rounded-2xl bg-slate-900/40 border border-slate-800/50 hover:bg-slate-900/80 hover:border-sky-500/35 transition-all cursor-default">
                         <div class="flex items-start justify-between gap-4">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 mb-1.5">
@@ -132,12 +132,12 @@
     </div>
 
     <!-- Footer Stats -->
-    <div class="p-3 bg-slate-950/50 border-t border-slate-800 flex items-center justify-between">
-        <div class="flex items-center gap-2 text-[10px] text-slate-500 font-medium uppercase tracking-widest">
-            <Sparkles class="w-3 h-3 text-sky-500" />
+    <div class="sticky bottom-0 bg-[#0f172a]/95 backdrop-blur-md border-t border-slate-800/60 p-4 -mx-6 -mb-6 z-10 flex items-center justify-between">
+        <div class="flex items-center gap-2 text-[10px] text-slate-500 font-black uppercase tracking-widest">
+            <Sparkles class="w-3.5 h-3.5 text-sky-500 animate-pulse" />
             <span>{filteredTools.length} Skills Mapped</span>
         </div>
-        <div class="text-[10px] text-slate-700 font-mono">
+        <div class="text-[9px] text-slate-700 font-mono font-bold">
             REFLECTOR_V1
         </div>
     </div>

@@ -239,8 +239,8 @@
     </div>
 {/snippet}
 
-<div class="flex flex-col h-full text-slate-200">
-    <div class="p-4 md:p-6 border-b border-slate-800 bg-[#0f172a]/50 backdrop-blur-md">
+<div class="space-y-4 text-slate-200 bg-transparent">
+    <div class="sticky top-0 bg-[#0f172a]/95 backdrop-blur-md border-b border-slate-800/60 p-4 -mx-6 -mt-6 z-10 space-y-4">
         <div class="relative">
             <Search class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input 
@@ -248,12 +248,13 @@
                 placeholder="Search by name, email..." 
                 oninput={handleSearch}
                 value={adminStore.userSearchQuery}
-                class="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all placeholder:text-slate-600"
+                class="w-full bg-[#04060b] border border-slate-800/80 rounded-xl pl-11 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all placeholder:text-slate-600"
             />
         </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 custom-scrollbar">
+    <!-- User List Body -->
+    <div class="space-y-3 pt-2">
         {#if adminStore.userLoading && adminStore.users.length === 0}
             <div class="flex flex-col items-center justify-center py-24 gap-4">
                 <Loader2 class="w-8 h-8 animate-spin text-purple-500" />

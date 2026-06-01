@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO conversations (id, title, conversation_type) VALUES ($1, $2, 'private')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9213bd08b2c5fd1bd49c9ac1d1f4370878e5c3d54220a1b1450a2efb67a4076a"
+}

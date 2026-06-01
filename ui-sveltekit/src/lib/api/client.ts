@@ -495,6 +495,30 @@ export const chatApi = {
         return apiFetch<any>(`/srp/proposals/${slug}/deploy`, {
             method: 'POST'
         });
+    },
+    getFriends: () => {
+        return apiFetch<any[]>('/friends');
+    },
+    sendFriendRequest: (receiverId: string) => {
+        return apiFetch<any>('/friends/requests', {
+            method: 'POST',
+            body: JSON.stringify({ receiver_id: receiverId })
+        });
+    },
+    respondFriendRequest: (senderId: string, accept: boolean) => {
+        return apiFetch<string | null>('/friends/requests/respond', {
+            method: 'POST',
+            body: JSON.stringify({ sender_id: senderId, accept })
+        });
+    },
+    getPendingRequests: () => {
+        return apiFetch<{ incoming: any[], outgoing: any[] }>('/friends/requests/pending');
+    },
+    blockUser: (blockedUserId: string) => {
+        return apiFetch<any>('/friends/block', {
+            method: 'POST',
+            body: JSON.stringify({ blocked_user_id: blockedUserId })
+        });
     }
 };
 

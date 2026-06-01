@@ -71,7 +71,7 @@
 
 <div class="daf-canvas w-full h-screen overflow-hidden flex flex-col bg-bg-main text-text-main font-sans relative">
   <!-- Standard Header Alignment -->
-  <header class="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-6 border-b border-border-main bg-bg-main/80 backdrop-blur-md z-30">
+  <header class="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-6 border-b border-border-main bg-bg-main/80 backdrop-blur-md">
     <div class="flex items-center gap-3">
       <button 
         onclick={() => isMobileNavOpen = !isMobileNavOpen}
@@ -184,7 +184,7 @@
 
             <div class="flex items-center gap-2 md:gap-3 w-full sm:w-auto">
                 {#if profileStore.currentUser?.role === 'admin'}
-                    <button onclick={() => factoryStore.deleteProposal(factoryStore.selectedProposal.slug)} class="p-2.5 hover:bg-rose-500/10 text-text-muted hover:text-rose-500 rounded-xl transition-all border border-transparent hover:border-rose-500/20" title="Discard Proposal">
+                    <button onclick={() => factoryStore.deleteProposal(factoryStore.selectedProposal?.slug)} class="p-2.5 hover:bg-rose-500/10 text-text-muted hover:text-rose-500 rounded-xl transition-all border border-transparent hover:border-rose-500/20" title="Discard Proposal">
                         <Trash2 class="w-4 h-4" />
                     </button>
                     
@@ -200,7 +200,7 @@
 
                     {#if factoryStore.selectedProposal.status === 'pending' || factoryStore.selectedProposal.status === 'failed'}
                         <button 
-                            onclick={() => factoryStore.launchBuild(factoryStore.selectedProposal.slug)}
+                            onclick={() => factoryStore.launchBuild(factoryStore.selectedProposal?.slug)}
                             class="flex-1 sm:flex-none px-6 py-2.5 bg-accent-emerald hover:bg-accent-emerald/80 text-bg-main font-black rounded-xl text-[10px] md:text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent-emerald/10"
                         >
                             <Play class="w-3.5 h-3.5 fill-current" />
@@ -208,7 +208,7 @@
                         </button>
                     {:else if factoryStore.selectedProposal.status === 'ready'}
                         <button 
-                            onclick={() => factoryStore.deployToProduction(factoryStore.selectedProposal.slug)}
+                            onclick={() => factoryStore.deployToProduction(factoryStore.selectedProposal?.slug)}
                             class="flex-1 sm:flex-none px-6 py-2.5 bg-primary-blue hover:bg-primary-blue/80 text-white font-black rounded-xl text-[10px] md:text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-blue/20"
                         >
                             <Rocket class="w-3.5 h-3.5 fill-current" />

@@ -1,6 +1,6 @@
-import { chatApi } from '$lib/api/client';
-import { eventBus } from '$lib/utils';
-import { popupStore } from './popup.svelte';
+import {chatApi} from '$lib/api/client';
+import {eventBus} from '$lib/utils';
+import {popupStore} from './popup.svelte';
 
 export interface Proposal {
     slug: string;
@@ -34,14 +34,19 @@ function createFactoryStore() {
 
         if (event.log) {
             liveLogs = [...liveLogs, {
-                time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                time: new Date().toLocaleTimeString([], {
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                }),
                 log: event.log,
                 step: event.step || currentStep
             }];
         }
         if (event.step) currentStep = event.step;
         if (event.code) activeCodeOutput = event.code;
-        
+
         if (event.step === "success" || event.step === "failed") {
             reloadProposalsList();
         }
@@ -66,7 +71,12 @@ function createFactoryStore() {
             const res = await chatApi.getProposalLogs(slug);
             if (res.data) {
                 const logs = res.data.map((l: any) => ({
-                    time: new Date(l.created_at).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    time: new Date(l.created_at).toLocaleTimeString([], {
+                        hour12: false,
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    }),
                     log: l.message,
                     step: l.event_step || "system"
                 }));
@@ -79,7 +89,7 @@ function createFactoryStore() {
 
     function selectProposal(item: Proposal, blueprintReviewSnippet?: any) {
         selectedProposal = item;
-        
+
         // Initialize logs with historical data if available
         let historyLogs: FactoryLog[] = [];
         if (item.error_logs) {
@@ -95,12 +105,17 @@ function createFactoryStore() {
         liveLogs = [
             ...historyLogs,
             {
-                time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                time: new Date().toLocaleTimeString([], {
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                }),
                 log: `[MONITOR]: Attaching telemetry listener for [${item.slug}]...`,
                 step: "monitor"
             }
         ];
-        
+
         // Also try to fetch persistent system logs if it was selected
         fetchProposalLogs(item.slug);
 
@@ -116,11 +131,14 @@ function createFactoryStore() {
         }
     }
 
-    async function launchBuild(slug: string) {
+    async function launchBuild(slug: string|null|undefined) {
+        if (!slug) {
+            return confirm("Please select proposal you want to approve.")
+        }
         try {
             const res = await chatApi.approveProposal(slug);
             if (res.data) {
-                proposals = proposals.map(p => p.slug === slug ? { ...p, status: res.data.status } : p);
+                proposals = proposals.map(p => p.slug === slug ? {...p, status: res.data.status} : p);
                 const item = proposals.find(p => p.slug === slug);
                 if (item) selectProposal(item);
             }
@@ -129,34 +147,55 @@ function createFactoryStore() {
         }
     }
 
-    async function deployToProduction(slug: string) {
+    async function deployToProduction(slug: string|null|undefined) {
+        if (!slug) {
+            return confirm("Please select proposal you want to deploy.")
+        }
         liveLogs = [...liveLogs, {
-            time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            time: new Date().toLocaleTimeString([], {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            }),
             log: `[DEPLOYMENT]: Sending hot-patch request to gateway production runtime...`,
             step: "deploy"
         }];
         try {
             const res = await chatApi.deployProposal(slug);
             if (res.meta && res.meta.code === 200) {
-              liveLogs = [...liveLogs, {
-                time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                log: `[SUCCESS]: Plugin hot-patched into live edge execution memory!`,
-                step: "success"
-              }];
-              reloadProposalsList();
+                liveLogs = [...liveLogs, {
+                    time: new Date().toLocaleTimeString([], {
+                        hour12: false,
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    }),
+                    log: `[SUCCESS]: Plugin hot-patched into live edge execution memory!`,
+                    step: "success"
+                }];
+                reloadProposalsList();
             } else {
-              liveLogs = [...liveLogs, {
-                time: new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                log: `[DEPLOY ERROR]: Execution pass aborted.`,
-                step: "failed"
-              }];
+                liveLogs = [...liveLogs, {
+                    time: new Date().toLocaleTimeString([], {
+                        hour12: false,
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    }),
+                    log: `[DEPLOY ERROR]: Execution pass aborted.`,
+                    step: "failed"
+                }];
             }
         } catch (e) {
             console.error("FactoryStore: Deployment error", e);
         }
     }
 
-    async function deleteProposal(slug: string) {
+    async function deleteProposal(slug: string | null | undefined) {
+        if (!slug) {
+            return confirm("Please select proposal you want to delete")
+        }
         if (!confirm("Are you sure you want to discard this blueprint?")) return;
         try {
             const res = await chatApi.deleteProposal(slug);
@@ -170,14 +209,28 @@ function createFactoryStore() {
     }
 
     return {
-        get proposals() { return proposals; },
-        get selectedProposal() { return selectedProposal; },
-        get liveLogs() { return liveLogs; },
-        get currentStep() { return currentStep; },
-        get activeCodeOutput() { return activeCodeOutput; },
-        set activeCodeOutput(val: string) { activeCodeOutput = val; },
-        get isLoadingProposals() { return isLoadingProposals; },
-        
+        get proposals() {
+            return proposals;
+        },
+        get selectedProposal() {
+            return selectedProposal;
+        },
+        get liveLogs() {
+            return liveLogs;
+        },
+        get currentStep() {
+            return currentStep;
+        },
+        get activeCodeOutput() {
+            return activeCodeOutput;
+        },
+        set activeCodeOutput(val: string) {
+            activeCodeOutput = val;
+        },
+        get isLoadingProposals() {
+            return isLoadingProposals;
+        },
+
         reloadProposalsList,
         selectProposal,
         launchBuild,

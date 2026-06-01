@@ -16,7 +16,7 @@
         MessageSquare,
         LineChart,
         DollarSign, Terminal, Activity, HeartPulse, Sparkles, ShieldAlert, BookOpen, Cpu, Brain, Factory,
-        LayoutGrid
+        LayoutGrid, Users
     } from 'lucide-svelte';
     import Avatar from './Avatar.svelte';
     import SoulTimeline from './SoulTimeline.svelte';
@@ -30,6 +30,7 @@
     import AvailableToolsPopUp from './AvailableToolsPopUp.svelte';
     import GuardrailPatternsPopUp from './GuardrailPatternsPopUp.svelte';
     import AutonomousTasksPopUp from './AutonomousTasksPopUp.svelte';
+    import FriendsPopUp from './FriendsPopUp.svelte';
     import {conversationStore} from '$lib/stores/conversation.svelte';
 
     import {profileStore} from '$lib/stores/profile.svelte';
@@ -246,6 +247,15 @@
         });
     }
 
+    function openFriendsDirectory() {
+        sidebarStore.showUserMenu = false;
+        popupStore.open({
+            title: 'Social Directory',
+            width: 'w-full max-w-md',
+            contentSnippet: friendsDirectorySnippet
+        });
+    }
+
     function handleShowUtility() {
         sidebarStore.showUserMenu = false;
         popupStore.open({
@@ -255,6 +265,10 @@
         });
     }
 </script>
+
+{#snippet friendsDirectorySnippet()}
+    <FriendsPopUp/>
+{/snippet}
 
 {#snippet modelInfoContent()}
     <div class="space-y-6 py-2">
@@ -915,6 +929,14 @@
                     >
                         <User size={14}/>
                         <span>Profile Settings</span>
+                    </button>
+
+                    <button 
+                        onclick={openFriendsDirectory}
+                        class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
+                    >
+                        <Users size={14}/>
+                        <span>My Friends</span>
                     </button>
 
                     <button class="w-full flex items-center gap-3 px-4 py-2 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors">

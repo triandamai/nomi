@@ -198,8 +198,8 @@
     {/if}
 {/snippet}
 
-<div class="flex flex-col h-full text-slate-200">
-    <div class="p-4 border-b border-slate-800 space-y-4 bg-[#0f172a]/50 backdrop-blur-md">
+<div class="space-y-4 text-slate-200 bg-transparent">
+    <div class="sticky top-0 bg-[#0f172a]/95 backdrop-blur-md border-b border-slate-800/60 p-4 -mx-6 -mt-6 z-10 space-y-4">
         <!-- Search Bar -->
         <div class="relative">
             <Search class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -208,7 +208,7 @@
                 placeholder="Search merchant or description..." 
                 oninput={handleSearch}
                 value={searchQuery}
-                class="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all placeholder:text-slate-600"
+                class="w-full bg-[#04060b] border border-slate-800/80 rounded-xl pl-11 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all placeholder:text-slate-600"
             />
         </div>
 
@@ -228,7 +228,7 @@
     </div>
 
     <!-- Transactions List -->
-    <div class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+    <div class="space-y-3 pt-2">
         {#if isLoading && transactions.length === 0}
             <div class="flex justify-center py-12">
                 <Loader2 class="w-8 h-8 animate-spin text-blue-500" />
@@ -300,7 +300,7 @@
 
     <!-- Pagination Footer -->
     {#if totalCount > 20}
-        <div class="p-4 border-t border-slate-800 flex items-center justify-between bg-slate-950">
+        <div class="sticky bottom-0 bg-[#0f172a]/95 backdrop-blur-md border-t border-slate-800/60 p-4 -mx-6 -mb-6 z-10 flex items-center justify-between">
             <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
                 Showing <span class="font-mono text-slate-300">{(currentPage - 1) * 20 + 1}</span> - <span class="font-mono text-slate-300">{Math.min(currentPage * 20, totalCount)}</span> of <span class="font-mono text-slate-300">{totalCount}</span>
             </span>

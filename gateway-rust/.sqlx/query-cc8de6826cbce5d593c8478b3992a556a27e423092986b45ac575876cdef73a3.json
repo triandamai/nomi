@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT u.id, u.name, u.display_name, u.email\n        FROM friendships f\n        JOIN users u ON (f.user_id_1 = u.id AND f.user_id_2 = $1) OR (f.user_id_2 = u.id AND f.user_id_1 = $1)\n        ORDER BY COALESCE(u.display_name, u.name) ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "display_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "email",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "cc8de6826cbce5d593c8478b3992a556a27e423092986b45ac575876cdef73a3"
+}

@@ -83,10 +83,10 @@
     });
 </script>
 
-<div class="flex flex-col w-full h-full">
+<div class="text-slate-200 bg-transparent">
     {#if selectedTask}
         <!-- Detail Mode Header -->
-        <div class="p-4 border-b border-slate-800/60 bg-slate-950/40 flex items-center justify-between">
+        <div class="sticky top-0 bg-[#0f172a]/95 backdrop-blur-md border-b border-slate-800/60 p-4 -mx-6 -mt-6 z-10 flex items-center justify-between">
             <button 
                 onclick={() => selectedTask = null} 
                 class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-all active:scale-95 text-xs font-bold"
@@ -101,7 +101,7 @@
         </div>
 
         <!-- Task Timeline Detail Body -->
-        <div class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+        <div class="space-y-6 pt-2">
             <!-- Header Card Summary -->
             <div class="p-5 bg-gradient-to-r from-slate-950/60 to-slate-900/40 border border-slate-800/50 rounded-2xl space-y-3">
                 <div class="flex items-start justify-between gap-4">
@@ -130,7 +130,7 @@
         </div>
     {:else}
         <!-- List Mode Header -->
-        <div class="p-4 border-b border-slate-800/60 bg-slate-950/40 space-y-4">
+        <div class="sticky top-0 bg-[#0f172a]/95 backdrop-blur-md border-b border-slate-800/60 p-4 -mx-6 -mt-6 z-10 space-y-4">
             <div class="relative">
                 <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <input
@@ -143,7 +143,7 @@
         </div>
 
         <!-- Task List Body -->
-        <div class="flex-1 overflow-y-auto custom-scrollbar p-3">
+        <div class="space-y-2 pt-2">
             {#if isLoading}
                 <div class="flex flex-col items-center justify-center h-full space-y-3 opacity-60">
                     <Loader2 class="w-8 h-8 text-sky-500 animate-spin" />
@@ -192,7 +192,7 @@
         </div>
 
         <!-- Footer -->
-        <div class="p-3.5 bg-slate-950/60 border-t border-slate-800/60 flex items-center justify-between">
+        <div class="sticky bottom-0 bg-[#0f172a]/95 backdrop-blur-md border-t border-slate-800/60 p-4 -mx-6 -mb-6 z-10 flex items-center justify-between">
             <div class="flex items-center gap-2 text-[10px] text-slate-500 font-black uppercase tracking-widest">
                 <Brain class="w-3.5 h-3.5 text-sky-500 animate-pulse" />
                 <span>{filteredTasks.length} Autonomous Orchestrators</span>
