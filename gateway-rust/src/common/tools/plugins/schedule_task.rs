@@ -83,6 +83,39 @@ impl NomiToolPlugin for ScheduleTaskPlugin {
             let due_at_wib = due_at_utc.with_timezone(&tz_wib);
             let frequency = params.frequency.unwrap_or_else(|| "once".to_string());
 
+            // --- RECURSION PREVENTION LOCK FOR SCHEDULING ---
+            let task_type_upper = params.task_type.to_uppercase();
+            if task_type_upper == "AUTONOMOUS_TASK" || task_type_upper == "TRIGGER_AGENT" {
+                if let Some(conversation_id) = dispatcher.conversation_id {
+                    let active_exists = sqlx::query_scalar::<_, bool>(
+                        "SELECT EXISTS(SELECT 1 FROM autonomous_tasks WHERE conversation_id = $1 AND status = 'running')"
+                    )
+                    .bind(conversation_id)
+                    .fetch_one(&dispatcher.pool)
+                    .await
+                    .unwrap_or(false);
+
+                    if active_exists {
+                        return Ok(ToolResult {
+                            error: format!(
+                                "Blocked: Cannot schedule a new background workflow of type '{}' from inside an already running background task.",
+                                task_type_upper
+                            ),
+                            success: false,
+                            content: "".to_string(),
+                            follow_up_prompt: format!(
+                                "You are currently running in the background and another autonomous task is already active. \
+                                 You are forbidden from scheduling a new recursive background task of type '{}'. \
+                                 Please proceed with your other objectives or inform the user that scheduling a duplicate background task is blocked.",
+                                task_type_upper
+                            ),
+                            ref_id: "".to_string(),
+                        });
+                    }
+                }
+            }
+            // ------------------------------------------------
+
             let task_description = match params.task_type.to_uppercase().as_str() {
                 "REMINDER" => format!(
                     "reminder: '{}'",
