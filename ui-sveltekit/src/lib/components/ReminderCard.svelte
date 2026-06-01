@@ -34,7 +34,7 @@
 </script>
 
 {#if loading}
-    <div class="p-4 bg-slate-900/40 border border-slate-800 rounded-2xl animate-pulse flex items-center gap-3">
+    <div class="p-4 bg-slate-900/40 border border-slate-800 rounded-xl animate-pulse flex items-center gap-3">
         <div class="w-10 h-10 bg-slate-800 rounded-full"></div>
         <div class="flex-1 space-y-2">
             <div class="h-2 bg-slate-800 rounded w-1/2"></div>
@@ -42,12 +42,12 @@
         </div>
     </div>
 {:else if error}
-    <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400 text-xs italic">
+    <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 text-xs italic">
         <AlertCircle class="w-4 h-4" />
         <span>Failed to load reminder details.</span>
     </div>
 {:else if reminder}
-    <div class="bg-slate-900/60 border border-emerald-500/30 rounded-2xl overflow-hidden shadow-xl backdrop-blur-md group hover:border-emerald-500/50 transition-all duration-300 max-w-sm">
+    <div class="bg-slate-900/60 border border-emerald-500/30 rounded-xl overflow-hidden shadow-xl backdrop-blur-md group hover:border-emerald-500/50 transition-all duration-300 max-w-sm">
         <div class="px-4 py-2 border-b border-white/5 bg-emerald-500/10 flex items-center justify-between">
             <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-400">
                 <Bell class="w-3 h-3" />

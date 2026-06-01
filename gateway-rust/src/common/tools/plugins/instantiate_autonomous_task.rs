@@ -12,7 +12,7 @@ impl NomiToolPlugin for InstantiateAutonomousTaskPlugin {
     fn schema(&self) -> Value {
         json!({
             "name": "instantiate_autonomous_task",
-            "description": "Spawns an autonomous, background-threaded background worker/agent loop to execute a multi-step task, background chore, monitoring task, recurring schedule, booking, research pipeline, or complex messaging order. Use this when the user asks you to do anything complex, multi-step, research-oriented, or requiring continuous background checking, so Nomi can handle it autonomously in the background.",
+            "description": "Spawns and STARTS an autonomous background worker/agent loop IMMEDIATELY (now) to execute a multi-step task, project, background chore, monitoring task, booking, research pipeline, or messaging order. Use this tool ONLY when the user wants to start or try again a task now in the background. DO NOT call 'schedule_task' unless you need to delay the execution to a specific date/time in the future. You MUST pass: 'task_title' (NOT 'task_name'), 'global_goal' (NOT 'description'), and 'checkpoints' (NOT 'steps') exactly as specified.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -51,9 +51,11 @@ impl NomiToolPlugin for InstantiateAutonomousTaskPlugin {
         "\n## AUTONOMOUS TASK LAUNCH RULES:\n\
          1. Proactively call this tool when the user requests a multi-step project, chore, background research, monitoring task, booking, or messaging sequence. \
             Do NOT wait for the user to explicitly ask you to start an autonomous task or wait for confirmation. If the request is complex, multi-step, or needs background/proactive operations, decide to launch it immediately!\n\
-         2. Always formulate a sequential plan divided into logical checkpoints before invoking this tool.\n\
-         3. Ensure the source_message_id maps precisely to the triggering message UUID to enable rich history context."
-     }
+         2. STRICT PARAMETER MAPPING: You MUST use the exact schema parameter names: 'task_title' (NOT 'task_name'), 'global_goal' (NOT 'description' or 'goal'), 'source_message_id', and 'checkpoints' (NOT 'steps'). Using incorrect parameter names will fail instantly!\n\
+         3. IMMEDIATE VS SCHEDULED: Use this tool to start execution IMMEDIATELY. If the user wants to schedule a task in the future (e.g. 'at 9 PM' or 'tomorrow'), use 'schedule_task' instead.\n\
+         4. Always formulate a sequential plan divided into logical checkpoints before invoking this tool.\n\
+         5. Ensure the source_message_id maps precisely to the triggering message UUID to enable rich history context."
+    }
 
     fn matching_intents(&self) -> &[&str] {
         &["CORE_SYSTEM_TASK_INIT", "AUTONOMOUS_TASK", "BOOKING", "ORDERING"]

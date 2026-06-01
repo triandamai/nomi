@@ -3,9 +3,34 @@ use crate::common::tools::ToolDispatcher;
 use crate::common::repository::message_repo::save_message;
 use crate::feature::message_processor::v2_orchestrator::send_message_to_subscriber;
 use crate::feature::MessageSource;
+use regex::Regex;
 use serde_json::{json, Value};
+use std::sync::OnceLock;
 use tracing::{error, info};
 use uuid::Uuid;
+
+/// Matches any natural-language or JSON signal that the *current step* is done.
+fn step_done_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r##"(?i)(status\s*[=:]\s*["']?completed["']?|step\s+(is\s+|has\s+been\s+)?completed|checkpoint\s+completed|all\s+(steps|checkpoints)\s+completed|task\s+is\s+(complete|done)|successfully\s+completed|have\s+completed|has\s+been\s+fulfilled|goal\s+fulfilled|goal\s+(has\s+been\s+)?achieved|completed\s+(the\s+)?(task|final\s+goal))"##
+        )
+        .expect("step_done_regex is valid")
+    })
+}
+
+/// Matches signals that the *entire task* (all steps) is finished.
+fn final_goal_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r##"(?i)(completed\s+final\s+goal|task\s+completed|all\s+(steps|checkpoints)\s+completed|goal\s+(has\s+been\s+)?achieved|goal\s+fulfilled)"##
+        )
+        .expect("final_goal_regex is valid")
+    })
+}
+
 
 #[derive(sqlx::FromRow)]
 struct TaskInfo {
@@ -53,7 +78,9 @@ pub async fn advanced_orchestrate_task_step(
     let pool = state.pool.clone();
     
     // Safety counter to prevent infinite execution loops in background
-    let mut iteration_limit = 15;
+    let mut iteration_limit = 20;
+    // Counter for turns where no progress was made (no tools, no suspension, no step_completed)
+    let mut stuck_turn_count = 0;
 
     while iteration_limit > 0 {
         iteration_limit -= 1;
@@ -221,7 +248,11 @@ pub async fn advanced_orchestrate_task_step(
              7. If ALL steps in the HTO plan are fully completed and the global goal is satisfied, mark the final task status as \"completed\".\n\
              8. CANCELLATION RULE: If the OWNER (Trian) explicitly asks you in their input message to \"cancel\", \"stop\", \"abort\", or \"cancel dulu\" the task, you MUST IMMEDIATELY transition the task status by outputting a status update with status=\"failed\" and explain in natural language that you have cancelled the task per their request. You MUST NOT execute any more tools or perform any more actions. This will stop the task execution cleanly.\n\
              9. MANDATORY RULE: Never guess, hallucinate, or pass phone numbers, handles, JIDs or numeric strings (like '@2297908166856') to the 'user_id' parameter of `send_message`. You MUST always invoke the search tool (`manage_user` with action='search') first to find the user's database UUID, then pass that UUID directly into the 'user_id' parameter of `send_message`. Any target parameter that is not a valid 36-character UUID will fail instantly.\n\
-             10. SCHEDULING RULE: If you invoke the `schedule_task` tool, you MUST pass the `due_at` parameter in the exact format 'YYYY-MM-DD HH:MM'. You MUST NOT pass text like 'tonight', 'tomorrow', 'now', or '3 hours' as these are invalid and will cause immediate tool execution failures. If you don't know the exact date/time, calculate it based on the WIB system time anchor provided in the tool results or ask the OWNER for clarification.\n\n\
+             10. SCHEDULING RULE: If you invoke the `schedule_task` tool, you MUST pass the `due_at` parameter in the exact format 'YYYY-MM-DD HH:MM'. You MUST NOT pass text like 'tonight', 'tomorrow', 'now', or '3 hours' as these are invalid and will cause immediate tool execution failures. If you don't know the exact date/time, calculate it based on the WIB system time anchor provided in the tool results or ask the OWNER for clarification.\n\
+             11. CONTINUOUS EXECUTION PROTOCOL (CRITICAL): You are executing inside an automatic, continuous background loop on a single dedicated Tokio thread. Consecutive steps in your checkpoints plan are executed sequentially in subsequent turns of this active loop.\n\
+                 - DO NOT try to schedule or spawn a new background task (such as AUTONOMOUS_TASK or TRIGGER_AGENT) via the `schedule_task` tool to progress to the next checkpoint or step! You are forbidden from scheduling recursive background tasks from inside an existing background task.\n\
+                 - To transition to the next step index, simply output a JSON block updating the checkpoints/status (with 'completed': true or 'status': 'completed' for the current step) WITHOUT executing any further tools in that same turn.\n\
+                 - The HTO loop engine will automatically detect your JSON checkpoint update, save it to the database, increment your step index, and immediately invoke you again in the next turn of the current active thread.\n\n\
              Respond in a highly structured manner.",
             soul_text,
             bootstrap_text,
@@ -776,14 +807,9 @@ pub async fn advanced_orchestrate_task_step(
             }
         }
 
-        // Substring-based fallback matches for completion indicators
+        // Regex-based fallback: catch any natural-language or JSON completion signal
         let response_lower = response_text.to_lowercase();
-        if response_lower.contains("status=\"completed\"") 
-            || response_lower.contains("\"status\": \"completed\"")
-            || response_lower.contains("\"status\":\"completed\"")
-            || response_lower.contains("completed final goal")
-            || response_lower.contains("completed the task")
-        {
+        if step_done_regex().is_match(&response_lower) {
             step_completed = true;
         }
 
@@ -815,9 +841,10 @@ pub async fn advanced_orchestrate_task_step(
             let final_checkpoints = parsed_checkpoints_override.unwrap_or_else(|| json!(checkpoints_arr));
 
             // Check if this was the last step
+            // Use >= to handle both exact match and overflow; also check if current was already the last step
             if next_step as usize >= total_steps 
-                || response_lower.contains("completed final goal")
-                || response_lower.contains("task completed")
+                || (current_step_index as usize) >= total_steps.saturating_sub(1)
+                || final_goal_regex().is_match(&response_lower)
             {
                 is_final_goal_completed = true;
             }
@@ -927,8 +954,149 @@ pub async fn advanced_orchestrate_task_step(
             }
         }
 
-        // Catch-all: default iteration yield to avoid tight loops
+        // Catch-all: LLM gave a response with no tools, no suspension, and no completion signal.
+        // This is a "stuck" turn — the model may be describing what it will do instead of acting.
+        // After 3 stuck turns, force-advance to the next step to prevent silent loop exhaustion.
+        stuck_turn_count += 1;
+        info!("HTO: stuck turn #{} for task [{}] step {}. No tools, no suspension, no completion detected.", stuck_turn_count, task_id, current_step_index);
+
+        if stuck_turn_count >= 3 {
+            // Force-advance: mark current step completed and go to next
+            info!("HTO: Force-advancing from step {} after {} stuck turns.", current_step_index, stuck_turn_count);
+            stuck_turn_count = 0;
+
+            // Mark current checkpoint as completed
+            let mut force_checkpoints = checkpoints.as_array().cloned().unwrap_or_default();
+            for cp in &mut force_checkpoints {
+                if let Some(idx) = cp["index"].as_i64() {
+                    if idx as i32 == current_step_index {
+                        if let Some(obj) = cp.as_object_mut() {
+                            obj.insert("status".to_string(), json!("completed"));
+                        }
+                    }
+                }
+            }
+            if !force_checkpoints.is_empty() && (current_step_index as usize) < force_checkpoints.len() {
+                if let Some(obj) = force_checkpoints[current_step_index as usize].as_object_mut() {
+                    obj.insert("status".to_string(), json!("completed"));
+                }
+            }
+
+            let force_next = current_step_index + 1;
+            let force_checkpoints_val = json!(force_checkpoints);
+
+            if force_next as usize >= total_steps {
+                // This was the last step — complete the task
+                info!("HTO: Force-completing task [{}] (was stuck on final step).", task_id);
+
+                let _ = sqlx::query(
+                    "UPDATE autonomous_tasks SET status = 'completed', checkpoints = $1 WHERE id = $2"
+                )
+                .bind(&force_checkpoints_val)
+                .bind(task_id)
+                .execute(&pool)
+                .await;
+
+                let _ = sqlx::query(
+                    "INSERT INTO autonomous_task_logs (task_id, step_index, event_type, log_content, raw_payload) \
+                     VALUES ($1, $2, 'step_end', $3, $4)"
+                )
+                .bind(task_id)
+                .bind(current_step_index)
+                .bind("HTO: Force-completed final step after stuck turns.")
+                .bind(json!({ "checkpoints": force_checkpoints_val }))
+                .execute(&pool)
+                .await;
+
+                let _ = dispatch_task_update(task_id, conversation_id, &state, &pool).await;
+
+                // Send a victory message
+                let soul_content = task.soul_content.clone().unwrap_or_else(|| "You are Nomi, a helpful AI teammate.".to_string());
+                let victory_prompt = format!(
+                    "Your persona/soul instructions:\n=== START PERSONA ===\n{}\n=== END PERSONA ===\n\n\
+                     Inform the user that you have fully completed the global goal: '{}'. Celebrate this milestone!\n\
+                     Guidelines:\n\
+                     1. Output STRICTLY the direct casual teammate response. Do NOT prefix with any planning tags, headers, bullet points, 'Action', 'Status', or thoughts.\n\
+                     2. Adopt the exact tone, style, and language guidelines defined in your soul instructions above.",
+                    soul_content, global_goal
+                );
+
+                if let Ok(vic_res) = state.gemini.generate_content().with_user_message(victory_prompt).with_temperature(0.7).execute().await {
+                    let raw_v = vic_res.text().trim().to_string();
+                    let healed_v = crate::common::format::heal_thinking_tags(&raw_v);
+                    let parsed_v = crate::common::agent::parse_llm_output(&healed_v);
+                    let victory_msg = parsed_v.response.trim().to_string();
+
+                    let saved = save_message(
+                        &pool, conversation_id, "assistant", &victory_msg,
+                        None, None, 0, 0, 0, None, None, None, None, None, None, None,
+                        Some(&state.redis)
+                    ).await?;
+
+                    let members: Vec<Uuid> = sqlx::query_scalar(
+                        "SELECT user_id FROM conversation_members WHERE conversation_id = $1"
+                    )
+                    .bind(conversation_id)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+
+                    send_message_to_subscriber(
+                        &state, members, conversation_id,
+                        MessageSource::Web { name: "web".to_string() },
+                        saved.to_sse_json(0), saved.into()
+                    ).await;
+                }
+
+                return Ok(());
+            } else {
+                // Advance to next step
+                let _ = sqlx::query(
+                    "INSERT INTO autonomous_task_logs (task_id, step_index, event_type, log_content, raw_payload) \
+                     VALUES ($1, $2, 'step_end', $3, $4)"
+                )
+                .bind(task_id)
+                .bind(current_step_index)
+                .bind(format!("Force-advanced from step {} to step {} after stuck turns.", current_step_index, force_next))
+                .bind(json!({ "checkpoints": force_checkpoints_val }))
+                .execute(&pool)
+                .await;
+
+                let _ = sqlx::query(
+                    "UPDATE autonomous_tasks SET current_step_index = $1, checkpoints = $2 WHERE id = $3"
+                )
+                .bind(force_next)
+                .bind(&force_checkpoints_val)
+                .bind(task_id)
+                .execute(&pool)
+                .await;
+
+                let _ = dispatch_task_update(task_id, conversation_id, &state, &pool).await;
+                continue;
+            }
+        }
+
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
+    // iteration_limit exhausted — mark task as failed with a clear reason
+    info!("HTO: iteration_limit exhausted for task [{}]. Marking as failed.", task_id);
+    let _ = sqlx::query(
+        "UPDATE autonomous_tasks SET status = 'failed' WHERE id = $1"
+    )
+    .bind(task_id)
+    .execute(&pool)
+    .await;
+
+    // Fetch conversation_id for the final dispatch (out of while-loop scope)
+    if let Ok(Some(conv_id)) = sqlx::query_scalar::<_, Uuid>(
+        "SELECT conversation_id FROM autonomous_tasks WHERE id = $1"
+    )
+    .bind(task_id)
+    .fetch_optional(&pool)
+    .await
+    {
+        let _ = dispatch_task_update(task_id, conv_id, &state, &pool).await;
     }
 
     Ok(())
@@ -957,14 +1125,13 @@ pub async fn dispatch_task_update(
     #[derive(sqlx::FromRow)]
     struct TaskDetails {
         title: String,
-        global_goal: String,
         status: String,
         current_step_index: i32,
         checkpoints: serde_json::Value,
     }
 
     let task = sqlx::query_as::<_, TaskDetails>(
-        "SELECT title, global_goal, status, current_step_index, checkpoints \
+        "SELECT title, status, current_step_index, checkpoints \
          FROM autonomous_tasks WHERE id = $1 LIMIT 1"
     )
     .bind(task_id)
@@ -972,7 +1139,6 @@ pub async fn dispatch_task_update(
     .await?
     .ok_or_else(|| anyhow::anyhow!("Task not found"))?;
 
-    // Dynamically retrieve cumulative token counter with fallback if migration not yet applied
     let cumulative_tokens = sqlx::query_scalar::<_, Option<i32>>(
         "SELECT cumulative_tokens FROM autonomous_tasks WHERE id = $1"
     )
@@ -982,45 +1148,29 @@ pub async fn dispatch_task_update(
     .unwrap_or(None)
     .unwrap_or(0);
 
-    #[derive(sqlx::FromRow)]
-    struct TimelineRouteLog {
-        step_index: i32,
-        event_type: String,
-        log_content: String,
-        raw_payload: serde_json::Value,
-        created_at: chrono::DateTime<chrono::Utc>,
-    }
-
-    let logs = sqlx::query_as::<_, TimelineRouteLog>(
-        "SELECT step_index, event_type, log_content, raw_payload, created_at \
-         FROM autonomous_task_logs WHERE task_id = $1 ORDER BY created_at ASC"
-    )
-    .bind(task_id)
-    .fetch_all(pool)
-    .await?;
-
-    let json_logs: Vec<serde_json::Value> = logs
+    // --- Slim checkpoints: only index + status, no description text ---
+    // Keeps the MQTT packet well under 10KB even with many steps.
+    let slim_checkpoints: Vec<serde_json::Value> = task.checkpoints
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
         .into_iter()
-        .map(|log| {
-            serde_json::json!({
-                "step_index": log.step_index,
-                "event_type": log.event_type,
-                "log_content": log.log_content,
-                "raw_payload": log.raw_payload,
-                "created_at": log.created_at
-            })
-        })
+        .map(|cp| serde_json::json!({
+            "step_index": cp.get("step_index").or_else(|| cp.get("index")),
+            "status": cp.get("status")
+        }))
         .collect();
 
+    // Lightweight signal only — NO logs, NO raw_payload, NO global_goal.
+    // The frontend re-fetches /tasks/{id}/timeline via HTTP when it receives this ping.
+    // This keeps every MQTT packet well under the 10KB free-tier limit.
     let payload = serde_json::json!({
         "id": task_id,
         "title": task.title,
-        "global_goal": task.global_goal,
         "status": task.status,
         "current_step_index": task.current_step_index,
-        "checkpoints": task.checkpoints,
-        "cumulative_tokens": cumulative_tokens,
-        "logs": json_logs
+        "checkpoints": slim_checkpoints,
+        "cumulative_tokens": cumulative_tokens
     });
 
     let _ = state.dispatch(crate::services::event_dispatcher::AppEvent::conversation(

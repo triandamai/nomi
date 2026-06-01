@@ -45,14 +45,17 @@
         // 1. Load initial timeline snapshot once
         fetchTaskTimeline();
 
-        // 2. Subscribe to real-time MQTT task updates
+        // 2. Subscribe to real-time MQTT task updates.
+        //    The MQTT signal is a lightweight ping (no logs, slim payload).
+        //    Re-fetch the full timeline via HTTP on every ping so the UI
+        //    always shows complete data regardless of MQTT packet size limits.
         unsubscribeMqtt = eventBus.subscribe('mqtt-task_update', (data: any) => {
             if (data && data.id === ref_id) {
-                task = data;
-                loading = false;
+                fetchTaskTimeline();
             }
         });
     });
+
 
     onDestroy(() => {
         if (unsubscribeMqtt) {
@@ -76,27 +79,27 @@
 </script>
 
 {#if loading && !task}
-    <div class="p-5 bg-slate-950/40 border border-slate-800 rounded-3xl animate-pulse flex flex-col gap-3 max-w-md w-full">
+    <div class="p-5 bg-slate-950/40 border border-slate-800 rounded-xl animate-pulse flex flex-col gap-3 max-w-md w-full">
         <div class="flex items-center gap-3">
-            <div class="w-8 h-8 bg-slate-800 rounded-xl"></div>
+            <div class="w-8 h-8 bg-slate-800 rounded-lg"></div>
             <div class="flex-1 space-y-2">
                 <div class="h-3 bg-slate-800 rounded w-1/3"></div>
                 <div class="h-2 bg-slate-800 rounded w-2/3"></div>
             </div>
         </div>
-        <div class="h-20 bg-slate-900/60 rounded-2xl"></div>
+        <div class="h-20 bg-slate-900/60 rounded-lg"></div>
     </div>
 {:else if error && !task}
-    <div class="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center gap-3 text-rose-400 text-xs italic max-w-md w-full">
+    <div class="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-3 text-rose-400 text-xs italic max-w-md w-full">
         <AlertCircle class="w-4 h-4 shrink-0" />
         <span>Failed to load nomi workflow timeline: {error}</span>
     </div>
 {:else if task}
-    <div class="bg-slate-950/60 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-xl group hover:border-slate-700/80 transition-all duration-500 max-w-md w-full">
+    <div class="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden shadow-2xl backdrop-blur-xl group hover:border-slate-700/80 transition-all duration-500 max-w-md w-full">
         <!-- Card Header -->
         <div class="px-5 py-3.5 border-b border-white/5 bg-slate-900/30 flex items-center justify-between gap-4">
             <div class="flex items-center gap-3 min-w-0">
-                <div class="w-8 h-8 rounded-xl bg-purple-500/15 border border-purple-500/35 flex items-center justify-center text-purple-400 shrink-0 shadow-inner shadow-purple-500/10">
+                <div class="w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-500/35 flex items-center justify-center text-purple-400 shrink-0 shadow-inner shadow-purple-500/10">
                     <Activity class="w-4.5 h-4.5" />
                 </div>
                 <div class="flex flex-col min-w-0">
@@ -127,7 +130,7 @@
         {:else}
             <div class="p-5 flex flex-col gap-4">
                 <!-- Global Goal Description -->
-                <div class="flex flex-col gap-1.5 p-3 rounded-2xl bg-slate-900/40 border border-slate-800/40">
+                <div class="flex flex-col gap-1.5 p-3 rounded-lg bg-slate-900/40 border border-slate-800/40">
                     <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Global Objective</span>
                     <p class="text-xs font-medium text-slate-300 leading-relaxed">{task.global_goal}</p>
                 </div>

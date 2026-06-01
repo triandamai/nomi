@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT step_index, event_type, log_content FROM autonomous_task_logs WHERE task_id = $1 ORDER BY created_at ASC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "step_index",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "event_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "log_content",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "16151d2c30952e1e58174d21e181d52929fd0fa8759d4b54c92e3800806014b2"
+}

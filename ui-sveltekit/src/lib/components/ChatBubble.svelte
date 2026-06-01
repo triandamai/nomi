@@ -461,7 +461,7 @@
         {@html renderedContent}
 
         {#if requiredFields.length > 0 && !formSubmitted}
-            <div class="mt-4 p-4 bg-slate-900/50 border border-slate-800/80 rounded-2xl flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-sm">
+            <div class="mt-4 p-4 bg-slate-900/50 border border-slate-800/80 rounded-xl flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-sm">
                 <div class="flex items-center gap-2 border-b border-white/5 pb-2 text-[9px] font-black uppercase tracking-widest text-amber-400">
                     <Cpu class="w-3.5 h-3.5 animate-pulse" />
                     <span>Interactive Clarification</span>
@@ -476,14 +476,14 @@
                                 type="text" 
                                 bind:value={formValues[field.name]}
                                 placeholder="Type answer here..."
-                                class="px-3.5 py-2 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-white placeholder-slate-600 focus:border-amber-500/50 focus:outline-none transition-all"
+                                class="px-3.5 py-2 rounded-lg bg-slate-950/60 border border-slate-800 text-xs text-white placeholder-slate-600 focus:border-amber-500/50 focus:outline-none transition-all"
                             />
                         {:else if field.type === 'select'}
                             <div class="flex flex-wrap gap-2">
                                 {#each field.options as opt}
                                     <button
                                         onclick={() => formValues[field.name] = opt}
-                                        class="px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all duration-300
+                                        class="px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all duration-300
                                             {formValues[field.name] === opt ? 
                                              'bg-amber-500/10 border-amber-500 text-amber-400' : 
                                              'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'}"
@@ -495,7 +495,7 @@
                         {:else if field.type === 'button' || field.type === 'approval'}
                             <button
                                 onclick={() => submitForm(field.name, 'Approved')}
-                                class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-xs font-bold text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                                class="w-full py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 text-xs font-bold text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
                             >
                                 <UserCheck class="w-4 h-4" />
                                 {field.label}
@@ -507,7 +507,7 @@
                 {#if requiredFields.some(f => f.type !== 'button' && f.type !== 'approval')}
                     <button
                         onclick={() => submitForm()}
-                        class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-xs font-bold text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                        class="w-full py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 text-xs font-bold text-slate-950 hover:from-amber-400 hover:to-amber-500 shadow-lg shadow-amber-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
                     >
                         <UserCheck class="w-4 h-4" />
                         Submit Answer
@@ -515,7 +515,7 @@
                 {/if}
             </div>
         {:else if requiredFields.length > 0 && formSubmitted}
-            <div class="mt-4 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl flex items-center gap-2 text-emerald-400 text-xs font-semibold">
+            <div class="mt-4 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex items-center gap-2 text-emerald-400 text-xs font-semibold">
                 <CheckCircle2 class="w-4 h-4 shrink-0" />
                 <span>Response submitted successfully!</span>
             </div>

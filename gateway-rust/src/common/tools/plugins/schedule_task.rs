@@ -15,7 +15,7 @@ impl NomiToolPlugin for ScheduleTaskPlugin {
         serde_json::to_value(
             FunctionDeclaration::new(
                 "schedule_task",
-                "Schedule a background task (Reminders, DMs, or Autonomous Agentic Tasks). Recurrence (daily, weekly, monthly) is supported. The `due_at` field has a STRICT FORMAT: 'YYYY-MM-DD HH:MM'. Explicitly calculate this timestamp relative to the [SYSTEM TIME ANCHOR] provided in the system prompt. For example, if current time is 2026-05-14 20:27 WIB and the user says 'in 10 minutes', you MUST output exactly '2026-05-14 20:37'. Never include trailing 'Z', offsets, or seconds. The user is in WIB (UTC+7). If the user's scheduling instruction or target time is still ambiguous, do NOT execute this tool; instead, ask the user for clarification conversational.",
+                "Schedule a future or recurring background task (Reminders, DMs, or Autonomous Tasks to run in the FUTURE). DO NOT use this tool to start or run an autonomous task immediately (now). If the user wants a task started immediately (or says 'start a task', 'try again', or requests a task today), you MUST call 'instantiate_autonomous_task' instead! The `due_at` field is strictly required and must have a STRICT FORMAT: 'YYYY-MM-DD HH:MM'. Explicitly calculate this timestamp relative to the [SYSTEM TIME ANCHOR] provided in the system prompt. For example, if current time is 2026-05-14 20:27 WIB and the user says 'in 10 minutes', you MUST output exactly '2026-05-14 20:37'. Never include trailing 'Z', offsets, or seconds. The user is in WIB (UTC+7). If the user's scheduling instruction or target time is still ambiguous, do NOT execute this tool; instead, ask the user for clarification conversational.",
                 None,
             )
             .with_parameters::<ScheduleTaskParameters>()
@@ -23,7 +23,7 @@ impl NomiToolPlugin for ScheduleTaskPlugin {
     }
 
     fn rules(&self) -> &str {
-        "### REMINDER & SCHEDULING LOGIC\n- Use `schedule_task`, `modify_reminder`, `get_reminder_stats` to manage schedule. Use relative analysis to translate vague human terms into precise Datetimes.\n- CRITICAL: If the scheduling instruction, target time, or task goal is ambiguous, you MUST NOT proceed with scheduling. Ask the user for clarification instead.\n"
+        "### REMINDER & SCHEDULING LOGIC\n- Use `schedule_task`, `modify_reminder`, `get_reminder_stats` to manage schedule. Use relative analysis to translate vague human terms into precise Datetimes.\n- CRITICAL: If the scheduling instruction, target time, or task goal is ambiguous, you MUST NOT proceed with scheduling. Ask the user for clarification instead.\n- STRICT DIFFERENTIATION: NEVER use `schedule_task` to start an immediate autonomous task. If the user wants an autonomous task started immediately (now), always use `instantiate_autonomous_task`.\n"
     }
 
     fn matching_intents(&self) -> &[&str] {

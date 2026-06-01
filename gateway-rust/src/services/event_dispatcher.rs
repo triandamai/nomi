@@ -71,21 +71,32 @@ pub async fn dispatch(state: &AppState, event: AppEvent) -> anyhow::Result<()> {
         let _ = state.publish_presence(msg).await;
     }
 
+    // 2. MQTT Dispatch
     match event.scope {
         EventScope::User(user_id) => {
-            // 2. MQTT Dispatch
             let topic = format!("nomi/users/{}/{}", user_id, event.name);
-            let _ = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await;
+            if let Err(e) = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await {
+                tracing::warn!("MQTT publish failed [{}]: {:?}", topic, e);
+            }
         }
         EventScope::Conversation(conv_id) => {
-            // 2. MQTT Dispatch
             let topic = format!("nomi/conversations/{}/{}", conv_id, event.name);
-            let _ = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await;
+            // task_update uses retain=true: TaskCard components that mount *after* the publish
+            // still receive the latest task state immediately from the broker.
+            let result = if event.name == "task_update" {
+                state.mqtt.publish_retained(&topic, &payload_str, QoS::AtLeastOnce).await
+            } else {
+                state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await
+            };
+            if let Err(e) = result {
+                tracing::warn!("MQTT publish failed [{}]: {:?}", topic, e);
+            }
         }
         EventScope::Broadcast => {
-            // 2. MQTT Dispatch
             let topic = format!("nomi/broadcast/{}", event.name);
-            let _ = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await;
+            if let Err(e) = state.mqtt.publish_event(&topic, &payload_str, QoS::AtLeastOnce).await {
+                tracing::warn!("MQTT publish failed [{}]: {:?}", topic, e);
+            }
         }
     }
 

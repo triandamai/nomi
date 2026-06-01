@@ -56,18 +56,14 @@ impl MqttManager {
         Self { client }
     }
 
-    // Helper method to let other modules securely broadcast events over EMQX
+    /// Publish an event to a topic. Awaits the send directly so errors surface immediately.
     pub async fn publish_event(&self, topic: &str, payload: &str, qos: QoS) -> Result<(), rumqttc::ClientError> {
-        let client = self.client.clone();
-        let topic = topic.to_string();
-        let payload_bytes = payload.as_bytes().to_vec();
-        
-        tokio::spawn(async move {
-            if let Err(e) = client.publish(topic, qos, false, payload_bytes).await {
-                tracing::error!("🛑 Failed to publish MQTT event in background: {:?}", e);
-            }
-        });
-        
-        Ok(())
+        self.client.publish(topic, qos, false, payload.as_bytes().to_vec()).await
+    }
+
+    /// Publish with retain=true so late-joining subscribers (e.g. TaskCard mounting after the
+    /// initial publish) still receive the last known state from the broker.
+    pub async fn publish_retained(&self, topic: &str, payload: &str, qos: QoS) -> Result<(), rumqttc::ClientError> {
+        self.client.publish(topic, qos, true, payload.as_bytes().to_vec()).await
     }
 }

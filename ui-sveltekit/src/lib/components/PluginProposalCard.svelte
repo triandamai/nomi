@@ -36,27 +36,27 @@
 </script>
 
 {#if loading}
-    <div class="p-5 bg-border-main/10 border border-border-main rounded-2xl animate-pulse flex flex-col gap-4 max-w-sm">
+    <div class="p-5 bg-border-main/10 border border-border-main rounded-xl animate-pulse flex flex-col gap-4 max-w-sm">
         <div class="flex items-center justify-between">
             <div class="h-2 bg-slate-800 rounded w-1/3"></div>
             <div class="w-4 h-4 bg-slate-800 rounded-full"></div>
         </div>
         <div class="flex items-center gap-4">
-            <div class="w-12 h-12 bg-slate-800 rounded-xl"></div>
+            <div class="w-12 h-12 bg-slate-800 rounded-lg"></div>
             <div class="flex-1 space-y-2">
                 <div class="h-3 bg-slate-800 rounded w-3/4"></div>
                 <div class="h-2 bg-slate-800 rounded w-1/2"></div>
             </div>
         </div>
-        <div class="h-10 bg-slate-800 rounded-xl w-full"></div>
+        <div class="h-10 bg-slate-800 rounded-lg w-full"></div>
     </div>
 {:else if error}
-    <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400 text-xs italic">
+    <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 text-xs italic">
         <AlertCircle class="w-4 h-4" />
         <span>Blueprint details unavailable.</span>
     </div>
 {:else if proposal}
-    <div class="bg-border-main/20 border border-border-main rounded-2xl overflow-hidden shadow-2xl backdrop-blur-sm group/proposal hover:border-accent-emerald/40 transition-all duration-300 max-w-sm">
+    <div class="bg-border-main/20 border border-border-main rounded-xl overflow-hidden shadow-2xl backdrop-blur-sm group/proposal hover:border-accent-emerald/40 transition-all duration-300 max-w-sm">
         <div class="px-5 py-3 border-b border-border-main bg-border-main/40 flex items-center justify-between">
             <div class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-accent-emerald">
                 <Factory class="w-3.5 h-3.5" />
@@ -66,7 +66,7 @@
         </div>
         <div class="p-5 flex flex-col gap-4">
             <div class="flex items-center gap-4">
-                <div class="p-3 bg-bg-main rounded-xl border border-border-main group-hover/proposal:border-accent-emerald/20 transition-colors">
+                <div class="p-3 bg-bg-main rounded-lg border border-border-main group-hover/proposal:border-accent-emerald/20 transition-colors">
                     <Cpu class="w-6 h-6 text-accent-emerald opacity-80" />
                 </div>
                 <div class="flex-1 min-w-0">
@@ -86,7 +86,7 @@
 
             <button 
                 onclick={() => goto(`/dashboard/srp/proposals`)}
-                class="w-full py-3 bg-accent-emerald hover:bg-accent-emerald/80 text-bg-main font-black rounded-xl text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent-emerald/10 active:scale-[0.98]"
+                class="w-full py-3 bg-accent-emerald hover:bg-accent-emerald/80 text-bg-main font-black rounded-lg text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent-emerald/10 active:scale-[0.98]"
             >
                 <span>Open Factory Console</span>
                 <ArrowRight class="w-3.5 h-3.5" />
