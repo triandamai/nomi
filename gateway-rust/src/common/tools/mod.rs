@@ -38,6 +38,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use uuid::Uuid;
 use crate::common::tools::plugins::forecast::WeatherFallbackPlugin;
+use crate::common::tools::plugins::report_to_owner::ReportToOwnerPlugin;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "tool", content = "args")]
@@ -104,6 +105,7 @@ impl ToolDispatcher {
         plugins.insert("create_sticker", Arc::new(StickerGeneratorPlugin));
         plugins.insert("get_current_weather", Arc::new(WeatherFallbackPlugin));
         plugins.insert("instantiate_autonomous_task", Arc::new(crate::common::tools::plugins::instantiate_autonomous_task::InstantiateAutonomousTaskPlugin));
+        plugins.insert("report_to_owner", Arc::new(ReportToOwnerPlugin));
 
 
         Self {

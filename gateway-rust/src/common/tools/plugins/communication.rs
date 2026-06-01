@@ -91,37 +91,42 @@ impl NomiToolPlugin for CommunicationPlugin {
 
             if channels.is_empty() {
                 info!("Communication: Target user has no WhatsApp/Telegram channels. Falling back to web/mobile virtual channels.");
-                
-                // Resolve active private/sub-chat conversation between Nomi and the target user
-                let conversation_id = match sqlx::query_scalar::<_, uuid::Uuid>(
-                    "SELECT c.id FROM conversations c \
-                     INNER JOIN conversation_members cm ON c.id = cm.conversation_id \
-                     WHERE cm.user_id = $1 AND (c.conversation_type = 'private' OR c.conversation_type = 'channel_subchat') \
-                     LIMIT 1"
-                )
-                .bind(parsed_uuid)
-                .fetch_optional(&dispatcher.pool)
-                .await? {
-                    Some(cid) => cid,
-                    None => {
-                        // Spawn a new private conversation if none exists
-                        let new_cid = uuid::Uuid::new_v4();
-                        let _ = sqlx::query(
-                            "INSERT INTO conversations (id, title, conversation_type) VALUES ($1, 'Private Chat', 'private')"
-                        )
-                        .bind(new_cid)
-                        .execute(&dispatcher.pool)
-                        .await;
-                        
-                        let _ = sqlx::query(
-                            "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2)"
-                        )
-                        .bind(new_cid)
-                        .bind(parsed_uuid)
-                        .execute(&dispatcher.pool)
-                        .await;
-                        
-                        new_cid
+
+                // Prefer the dispatcher's active conversation (the task's parent conversation)
+                // so the message lands in the chat the user is already watching.
+                let conversation_id = if let Some(active_conv) = dispatcher.conversation_id {
+                    active_conv
+                } else {
+                    // Fallback: resolve or create a private conversation for the target user
+                    match sqlx::query_scalar::<_, uuid::Uuid>(
+                        "SELECT c.id FROM conversations c \
+                         INNER JOIN conversation_members cm ON c.id = cm.conversation_id \
+                         WHERE cm.user_id = $1 AND (c.conversation_type = 'private' OR c.conversation_type = 'channel_subchat') \
+                         LIMIT 1"
+                    )
+                    .bind(parsed_uuid)
+                    .fetch_optional(&dispatcher.pool)
+                    .await? {
+                        Some(cid) => cid,
+                        None => {
+                            let new_cid = uuid::Uuid::new_v4();
+                            let _ = sqlx::query(
+                                "INSERT INTO conversations (id, title, conversation_type) VALUES ($1, 'Private Chat', 'private')"
+                            )
+                            .bind(new_cid)
+                            .execute(&dispatcher.pool)
+                            .await;
+
+                            let _ = sqlx::query(
+                                "INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2)"
+                            )
+                            .bind(new_cid)
+                            .bind(parsed_uuid)
+                            .execute(&dispatcher.pool)
+                            .await;
+
+                            new_cid
+                        }
                     }
                 };
 
@@ -246,8 +251,20 @@ impl NomiToolPlugin for CommunicationPlugin {
                         source: vec![channel_type.clone(), "web".to_string()],
                     },
                     message_item.to_sse_json(0),
-                    message_item,
+                    message_item.clone(),
                 ).await;
+
+                // Also dispatch directly on the conversation topic so the frontend's
+                // conversation MQTT subscription receives it regardless of user UUID resolution.
+                if conversation_id != uuid::Uuid::nil() {
+                    let _ = dispatcher.app_state.dispatch(
+                        crate::services::event_dispatcher::AppEvent::conversation(
+                            conversation_id,
+                            "message",
+                            message_item.to_sse_json(0),
+                        )
+                    ).await;
+                }
             }
 
             let first_resolved_jid = sent_jids.first().cloned().unwrap_or_default();

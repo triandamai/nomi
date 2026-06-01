@@ -225,6 +225,12 @@ pub async fn advanced_orchestrate_task_step(
              - User Email: \"{}\"\n\
              - Inferred Preferences from Memory (RAG):\n{}\n\n\
              ===================================================\n\
+             TASK ORIGIN CONTEXT (DO NOT GUESS — USE THESE VALUES DIRECTLY):\n\
+             - Task Owner: \"{}\" (this is the person who created this task and must receive the final result)\n\
+             - Parent Conversation ID: \"{}\" (this is the exact conversation where this task was launched from)\n\
+             - Sub-Conversation ID (external target chat): \"{}\"\n\
+             These values are injected by the system. Do NOT search for the owner using manage_user when reporting back — use `report_to_owner` directly.\n\n\
+             ===================================================\n\
              TWIN-CHANNEL CHAT HISTORY CONTEXT:\n\n\
              [A] OWNER CONVERSATION HISTORY (Parent Chat):\n\
              {}\n\n\
@@ -247,18 +253,22 @@ pub async fn advanced_orchestrate_task_step(
              6. When the current step index is completed, output a JSON structure explaining the progress updates to update checkpoints.\n\
              7. If ALL steps in the HTO plan are fully completed and the global goal is satisfied, mark the final task status as \"completed\".\n\
              8. CANCELLATION RULE: If the OWNER (Trian) explicitly asks you in their input message to \"cancel\", \"stop\", \"abort\", or \"cancel dulu\" the task, you MUST IMMEDIATELY transition the task status by outputting a status update with status=\"failed\" and explain in natural language that you have cancelled the task per their request. You MUST NOT execute any more tools or perform any more actions. This will stop the task execution cleanly.\n\
-             9. MANDATORY RULE: Never guess, hallucinate, or pass phone numbers, handles, JIDs or numeric strings (like '@2297908166856') to the 'user_id' parameter of `send_message`. You MUST always invoke the search tool (`manage_user` with action='search') first to find the user's database UUID, then pass that UUID directly into the 'user_id' parameter of `send_message`. Any target parameter that is not a valid 36-character UUID will fail instantly.\n\
+             9. EXTERNAL MESSAGING RULE: When you need to send a message to a THIRD-PARTY person (NOT the task owner), you MUST first call `manage_user` with action='search' to find their database UUID, then pass that UUID into `send_message`. Never guess UUIDs.\n\
              10. SCHEDULING RULE: If you invoke the `schedule_task` tool, you MUST pass the `due_at` parameter in the exact format 'YYYY-MM-DD HH:MM'. You MUST NOT pass text like 'tonight', 'tomorrow', 'now', or '3 hours' as these are invalid and will cause immediate tool execution failures. If you don't know the exact date/time, calculate it based on the WIB system time anchor provided in the tool results or ask the OWNER for clarification.\n\
              11. CONTINUOUS EXECUTION PROTOCOL (CRITICAL): You are executing inside an automatic, continuous background loop on a single dedicated Tokio thread. Consecutive steps in your checkpoints plan are executed sequentially in subsequent turns of this active loop.\n\
                  - DO NOT try to schedule or spawn a new background task (such as AUTONOMOUS_TASK or TRIGGER_AGENT) via the `schedule_task` tool to progress to the next checkpoint or step! You are forbidden from scheduling recursive background tasks from inside an existing background task.\n\
                  - To transition to the next step index, simply output a JSON block updating the checkpoints/status (with 'completed': true or 'status': 'completed' for the current step) WITHOUT executing any further tools in that same turn.\n\
-                 - The HTO loop engine will automatically detect your JSON checkpoint update, save it to the database, increment your step index, and immediately invoke you again in the next turn of the current active thread.\n\n\
+                 - The HTO loop engine will automatically detect your JSON checkpoint update, save it to the database, increment your step index, and immediately invoke you again in the next turn of the current active thread.\n\
+             12. REPORTING RULE (CRITICAL): When your task requires informing the OWNER (Trian) of results — whether as an intermediate update or the final delivery — you MUST call the `report_to_owner` tool with a `message_body` containing your result summary. This tool automatically delivers the message to the correct conversation without any user search. NEVER use `send_message` + `manage_user` to notify the task owner — only use `report_to_owner` for that. Use `send_message` only when contacting external third-party people.\n\n\
              Respond in a highly structured manner.",
             soul_text,
             bootstrap_text,
             user_display_name,
             user_email,
             rag_context,
+            user_display_name,
+            conversation_id,
+            sub_conversation_id.map(|id| id.to_string()).unwrap_or_else(|| "None".to_string()),
             parent_history,
             sub_history,
             global_goal,
@@ -267,6 +277,7 @@ pub async fn advanced_orchestrate_task_step(
             scratchpad,
             current_step_index
         );
+
 
         let send_res = crate::common::agent::send_prompt(
             &dispatcher,

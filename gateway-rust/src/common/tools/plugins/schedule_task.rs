@@ -104,9 +104,10 @@ impl NomiToolPlugin for ScheduleTaskPlugin {
                             success: false,
                             content: "".to_string(),
                             follow_up_prompt: format!(
-                                "You are currently running in the background and another autonomous task is already active. \
-                                 You are forbidden from scheduling a new recursive background task of type '{}'. \
-                                 Please proceed with your other objectives or inform the user that scheduling a duplicate background task is blocked.",
+                                "BLOCKED: You attempted to schedule a recursive background task of type '{}', which is forbidden inside an active HTO workflow. \
+                                 DO NOT retry schedule_task. DO NOT call any other tool. \
+                                 If you have already gathered all the information needed for this step, call `report_to_owner` with your results summary and then IMMEDIATELY output your checkpoint completion JSON to advance to the next step. \
+                                 If the current step is the final step and the global goal is satisfied, set status to 'completed' in your checkpoint JSON.",
                                 task_type_upper
                             ),
                             ref_id: "".to_string(),
