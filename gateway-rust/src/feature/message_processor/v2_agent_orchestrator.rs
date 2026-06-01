@@ -10,7 +10,7 @@ use crate::feature::{Conversation, MessageSource, UnifiedMessage};
 use crate::rag::trigger_memory_consolidation;
 use crate::services::event_dispatcher::AppEvent;
 use crate::services::intent_classifier::{ClassificationResult, IntentClassifierService};
-use crate::{AppState, rag};
+use crate::AppState;
 use anyhow::anyhow;
 use chrono::Utc;
 use rust_decimal::prelude::ToPrimitive;
@@ -123,73 +123,6 @@ impl V2AgentOrchestrator {
             true,
         );
 
-        let rows = sqlx::query(
-            "SELECT 
-                messages.id,
-                messages.created_at,
-                messages.role,
-                messages.content,
-                messages.thought,
-                messages.user_id,
-                messages.total_tokens,
-                messages.reply_to_id,
-                users.display_name as display_name,
-                messages.image_url,
-                messages.video_url,
-                messages.audio_url,
-                messages.document_url,
-                messages.sticker_url,
-                messages.metadata,
-                CASE WHEN messages.reply_to_id IS NOT NULL THEN
-                 jsonb_build_object(
-                   'id', rm.id,
-                   'role', rm.role,
-                   'content', rm.content,
-                   'display_name', ru.display_name
-                 )
-                ELSE NULL END as replied_message
-            FROM messages 
-            LEFT JOIN users ON users.id = messages.user_id
-            LEFT JOIN messages AS rm ON rm.id = messages.reply_to_id
-            LEFT JOIN users AS ru ON ru.id = rm.user_id
-            WHERE messages.conversation_id = $1
-            ORDER BY created_at
-        DESC LIMIT 15",
-        )        .bind(conversation_id)
-        .fetch_all(&state.pool)
-        .await?;
-
-        use sqlx::Row;
-        let history: Vec<crate::common::repository::message_repo::MessageItemWithDisplay> = rows.into_iter().map(|r| {
-            let replied: Option<serde_json::Value> = r.get("replied_message");
-            let _replied_message: Option<crate::feature::conversation::model::RepliedMessage> = replied.and_then(|v| serde_json::from_value(v).ok());
-
-            crate::common::repository::message_repo::MessageItemWithDisplay {
-                id: r.get("id"),
-                conversation_id,
-                created_at: r.get("created_at"),
-                role: r.get("role"),
-                content: r.get("content"),
-                thought: r.get("thought"),
-                display_name: r.get("display_name"),
-                user_id: r.get("user_id"),
-                total_tokens: r.get("total_tokens"),
-                image_url: r.get("image_url"),
-                video_url: r.get("video_url"),
-                audio_url: r.get("audio_url"),
-                document_url: r.get("document_url"),
-                sticker_url: r.get("sticker_url"),
-                metadata: r.get("metadata"),
-                reply_to_id: r.get("reply_to_id"),
-                replied_message: r.get("replied_message"),
-            }
-        }).collect();
-
-        let mut history_text = crate::feature::message_processor::history_utils::HighFidelityHistory::format_messages(
-            history,
-            &state.storage,
-        );
-
         let dispatcher = ToolDispatcher::new(
             state.pool.clone(),
             std::env::current_dir().unwrap_or_default(),
@@ -200,6 +133,11 @@ impl V2AgentOrchestrator {
             state.storage.clone(),
             state.clone(),
         );
+
+        let retrieval = crate::rag::RagRetrieval::new(state.clone(), dispatcher.clone())
+            .with_history(15);
+
+        let mut history_text = retrieval.fetch_history().await?;
 
         let classifier = IntentClassifierService::new();
         let default_thresholds = json!({});
@@ -254,8 +192,6 @@ impl V2AgentOrchestrator {
 
         let mut intents = intent.intents.clone();
 
-        let embedding = rag::get_embedding(&state.gemini_api_key, &msg.text_content).await;
-
         // --- 🚀 Step 1: Dynamic Context Pruning via Intent Classifier 🚀 ---
         // Safety: Only bypass RAG if it's pure chitchat without complex entities or questions
         let is_pure_chitchat = (intents.contains(&"CHITCHAT".to_string())
@@ -271,20 +207,8 @@ impl V2AgentOrchestrator {
         let memories_text = if is_pure_chitchat && !has_potential_entities && !is_question {
             info!("Pure chitchat detected (intent: {:?}). Bypassing RAG retrieval to save context tokens.", intents);
             String::new()
-        } else if embedding.is_ok() {
-            crate::utils::rag::hybrid_retrieve(
-                &state.pool,
-                &msg.text_content,
-                embedding.unwrap().embedding.values,
-                Some(conversation_id),
-                None,
-                None,
-            )
-            .await
-            .unwrap_or_default()
-            .join("---")
         } else {
-            String::new()
+            retrieval.clone().with_retrieval(msg.text_content.clone()).fetch_memories().await.unwrap_or_default()
         };
 
         // 🌟 AGENTIC DISCOVERY HOOK: If no specific domain intent is found, force-inject Discovery
@@ -304,165 +228,9 @@ impl V2AgentOrchestrator {
                 + crate::prompts::PromptRegistry::tool_usage_guidelines().len()
         };
 
-        let build_system_prompt = |intents_val: &[String]| -> String {
-            let mut combined = String::new();
-
-            // 1. Identity Extraction & Clean Name Logic
-            let raw_display_name = self
-                .current_user
-                .as_ref()
-                .map(|u| u.display_name.clone())
-                .unwrap_or_else(|| "Human".to_string());
-
-            let is_technical_id = |s: &str| {
-                let s = s.trim();
-                s.is_empty()
-                    || s.contains('@') // JID
-                    || (s.contains('-') && s.len() > 20) // UUID
-                    || s.chars().all(|c| c.is_numeric() || c == '+') // Phone/Telegram ID
-            };
-
-            let safe_name = if is_technical_id(&raw_display_name) {
-                "Human"
-            } else {
-                &raw_display_name
-            };
-
-            // 2. Base Rules with Dynamic Name
-            combined.push_str(
-                &crate::prompts::PromptRegistry::CORE_RULES.replace("[Human]", safe_name),
-            );
-            combined.push_str(
-                &crate::prompts::PromptRegistry::BOUNDARIES.replace("[Human]", safe_name),
-            );
-
-            // 3. Dynamic Onboarding & ID Profile
-            if let Some(user_identity) = &self.current_user {
-                combined.push_str("\n### CURRENT INTERACTOR IDENTITY PROFILE\n");
-                combined.push_str(&format!("- Database User ID: {}\n", user_identity.id));
-
-                if is_technical_id(&raw_display_name) {
-                    combined.push_str("- Verified Speaker Name: UNKNOWN / TECHNICAL ID\n");
-                    combined.push_str("- Onboarding Protocol: This user has no saved profile name or is using a technical identifier (JID/UUID). DO NOT call them by their ID. Politely ask what they would like you to call them as part of your organic conversation.\n");
-                } else {
-                    combined.push_str(&format!("- Verified Speaker Name: {}\n", raw_display_name));
-                    combined.push_str(&format!(
-                        "- Contextual History Recollections:\n{}\n",
-                        memories_text
-                    ));
-                }
-            }
-
-            let boot = conversation.bootstrap_content.clone().unwrap_or_default();
-            let soul = conversation.soul_content.clone().unwrap_or_default();
-
-            combined.push_str("\n### Identity Layer\n");
-            combined.push_str(&boot.replace("[Human]", safe_name));
-
-            // [FIX] Visual Context Injection
-            // Fetch the latest unprocessed media directly from history and inject it as context.
-            let pending_media = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    crate::common::repository::message_repo::get_latest_unprocessed_media(
-                        &state.pool,
-                        conversation_id,
-                    )
-                    .await
-                    .ok()
-                    .flatten()
-                })
-            });
-
-            if let Some((url, _type)) = pending_media {
-                let full_url = state.storage.get_full_url(&url);
-                combined.push_str("\n");
-                combined.push_str(&format!(
-                    "### ACTIVE VISUAL BUFFER\n- Current File: {}\n- Instruction: This file is currently 'Active' and ready for tools like `create_sticker` or `log_expense`. Use the URL provided here for the tool call if the user's intent matches.\n",
-                    full_url
-                ));
-            }
-
-            if !soul.is_empty() {
-                combined.push_str("\n### Current Personality/Soul\n");
-                combined.push_str(&soul.replace("[Human]", safe_name));
-            }
-
-            let timezone_str = "Asia/Jakarta";
-            let tz: chrono_tz::Tz = timezone_str.parse().unwrap_or(chrono_tz::UTC);
-            let now_local = Utc::now().with_timezone(&tz);
-
-            combined.push_str(&format!(
-                "\n### Current Contextual Time\n- UTC: {}\n- Local Time: {} ({})\n",
-                Utc::now().to_rfc3339(),
-                now_local.to_rfc3339(),
-                timezone_str
-            ));
-
-            combined.push_str("\n### Timezone & Tool Parameter Instructions\n");
-            combined.push_str(&format!(
-                "The user's current local time is {} (Asia/Jakarta). \n\
-                 When calling date-range tracking tools like `get_reminder_stats`, you MUST format parameters like `start_after` and `end_before` as absolute strict ISO 8601 strings with offsets.\n\
-                 For a query about 'today', start_after MUST be formatted exactly as '{}-00:00:00+07:00' and end_before as '{}-23:59:59+07:00'.\n",
-                now_local.format("%H:%M"),
-                now_local.format("%Y-%m-%d"),
-                now_local.format("%Y-%m-%d")
-            ));
-
-            combined.push_str("\n### Orchestrator Instructions \n");
-            combined.push_str(crate::prompts::PromptRegistry::orchestrator_instructions());
-
-            if !intents_val.contains(&"GENERAL".to_string()) || intents_val.len() > 1 {
-                // Modular Domain Logic from Plugins
-                let mut domain_rules = String::new();
-                for plugin in dispatcher.plugins.values() {
-                    let plugin_intents = plugin.matching_intents();
-                    if intents_val
-                        .iter()
-                        .any(|i| plugin_intents.contains(&i.as_str()))
-                        || intents_val.contains(&"FULL_REGISTRY".to_string())
-                    {
-                        let rules = plugin.rules();
-                        if !rules.is_empty() && !domain_rules.contains(rules) {
-                            domain_rules.push_str(rules);
-                        }
-
-                        // 🌟 SHADOW RULE INJECTION: Fetch runtime optimizations for this static tool handle
-                        let plugin_slug = plugin.schema()["name"].as_str().unwrap_or_default().to_string();
-                        if !plugin_slug.is_empty() {
-                            if let Some(Some(row)) = tokio::task::block_in_place(|| {
-                                tokio::runtime::Handle::current().block_on(async {
-                                    sqlx::query("SELECT additional_rules FROM static_plugin_reinforcements WHERE plugin_slug = $1")
-                                        .bind(&plugin_slug)
-                                        .fetch_optional(&state.pool)
-                                        .await
-                                        .ok()
-                                })
-                            }) {
-                                use sqlx::Row;
-                                if let Ok(extra_rules) = row.try_get::<Vec<String>, _>("additional_rules") {
-                                    for rule in extra_rules {
-                                        if !rule.is_empty() && !domain_rules.contains(&rule) {
-                                            domain_rules.push_str("\n- Learned Operational Guardrail: ");
-                                            domain_rules.push_str(&rule);
-                                            domain_rules.push_str("\n");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                combined.push_str(&domain_rules);
-            }
-
-            if intents_val.contains(&"FULL_REGISTRY".to_string()) {
-                combined.push_str(crate::prompts::PromptRegistry::tool_usage_guidelines());
-            }
-
-            combined
-        };
-
-        let mut system_prompt = build_system_prompt(&intents);
+        let mut system_prompt = retrieval
+            .generate_system_prompt(&self.current_user, &conversation, &intents, &memories_text)
+            .await?;
 
         let new_system_prompt_len = system_prompt.len();
         let saved_percent = if old_system_prompt_len > 0 {
@@ -475,57 +243,8 @@ impl V2AgentOrchestrator {
         };
         info!("Tokens saved by modular assembly: {:.2}%", saved_percent);
 
-        // [FIX] Proper Async Fetch for Pending Media
-        let pending_media = crate::common::repository::message_repo::get_latest_unprocessed_media(
-            &state.pool,
-            conversation_id,
-        )
-        .await
-        .ok()
-        .flatten();
-
-        // [NEW] Fetch raw media bytes with robust path/mime handling
-        let mut raw_media = None;
-        if let Some((url, _type)) = pending_media.as_ref() {
-            let base_url = dotenvy::var("PUBLIC_GATEWAY_URL")
-                .unwrap_or("http://localhost:8000/api".to_string());
-            let file_path = if url.starts_with("http") && url.contains(&base_url) {
-                url.replace(&format!("{}/files/", base_url), "")
-            } else {
-                url.clone()
-            };
-
-            if let Ok(data) = state
-                .storage
-                .get_file("conversations".to_string(), file_path.clone())
-                .await
-            {
-                let mime_type = mime_guess::from_path(&file_path)
-                    .first_or_octet_stream()
-                    .to_string();
-
-                // Gemini rejects generic octet-stream. Force image fallbacks for multimodal safety.
-                let safe_mime = if mime_type == "application/octet-stream" {
-                    if file_path.to_lowercase().ends_with(".png") {
-                        "image/png".to_string()
-                    } else if file_path.to_lowercase().ends_with(".webp") {
-                        "image/webp".to_string()
-                    } else {
-                        "image/jpeg".to_string()
-                    }
-                } else {
-                    mime_type
-                };
-
-                use base64::Engine;
-                let base64_data = base64::engine::general_purpose::STANDARD.encode(data.to_vec());
-                raw_media = Some((safe_mime, base64_data));
-                info!(
-                    "Multimodal: Prepared media context (mime: {})",
-                    raw_media.as_ref().unwrap().0
-                );
-            }
-        }
+        // [FIX] Proper Async Fetch for Pending Media via universal RagRetrieval
+        let raw_media = retrieval.fetch_raw_media().await;
 
         // --- V2 Autonomous Loop ---
         let mut loop_count = 0;
@@ -643,28 +362,31 @@ impl V2AgentOrchestrator {
                                 "Truncation detected (ends with ':'). Triggering self-correction."
                             );
                             let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S");
-                            history_text.push_str(&format!("- <MessageEntry timestamp=\"{}\" id=\"CORRECTION_TRUNCATION\" type=\"ASSISTANT_RETRY\">\n", timestamp));
-                            history_text.push_str("    [Actor]: Nomi\n");
-                            history_text.push_str(&format!("    [Content]: {}\n", chunk.content));
-                            history_text.push_str("  </MessageEntry>\n\n");
-                            
-                            history_text.push_str(&format!("- <SystemContext trigger=\"SELF_CORRECTION\" reason=\"Truncation detected (ends with ':')\" directive=\"Continue your response starting from the code block.\" />\n"));
+                            history_text.push_str(&format!(
+                                "- <MessageEntry timestamp=\"{}\" id=\"CORRECTION_TRUNCATION\" type=\"ASSISTANT_RETRY\">\n\
+                                 \x20\x20\x20\x20[Actor]: Nomi\n\
+                                 \x20\x20\x20\x20[Content]: {}\n\
+                                 \x20\x20</MessageEntry>\n\n\
+                                 - <SystemContext trigger=\"SELF_CORRECTION\" reason=\"Truncation detected (ends with ':')\" directive=\"Continue your response starting from the code block.\" />\n",
+                                timestamp, chunk.content
+                            ));
                             continue;
                         }
 
                         turn_text.push_str(&chunk.content);
-
                         accumulated_content.push_str(&chunk.content);
-                        accumulated_content.push_str("");
                     }
 
                     // Append model's output to history_text to ensure context persists across the loop turns
                     if !turn_text.is_empty() {
                         let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S");
-                        history_text.push_str(&format!("- <MessageEntry timestamp=\"{}\" id=\"LIVE_TURN_NOMI\" type=\"ASSISTANT_THOUGHT\">\n", timestamp));
-                        history_text.push_str("    [Actor]: Nomi\n");
-                        history_text.push_str(&format!("    [Content]: {}\n", turn_text));
-                        history_text.push_str("  </MessageEntry>\n\n");
+                        history_text.push_str(&format!(
+                            "- <MessageEntry timestamp=\"{}\" id=\"LIVE_TURN_NOMI\" type=\"ASSISTANT_THOUGHT\">\n\
+                             \x20\x20\x20\x20[Actor]: Nomi\n\
+                             \x20\x20\x20\x20[Content]: {}\n\
+                             \x20\x20</MessageEntry>\n\n",
+                            timestamp, turn_text
+                        ));
                     }
 
                     total_prompt_tokens += chunk.prompt_tokens;
@@ -784,7 +506,9 @@ impl V2AgentOrchestrator {
                             }
                         }
                         // Automatically re-load the system prompt definitions with the new domain rules included!
-                        system_prompt = build_system_prompt(&intents);
+                        if let Ok(new_prompt) = retrieval.generate_system_prompt(&self.current_user, &conversation, &intents, &memories_text).await {
+                            system_prompt = new_prompt;
+                        }
                     }
                     // --- 🚨 START METADATA INTERCEPTION HOOK 🚨 ---
                     for (name, result) in &tool_results {
@@ -836,7 +560,9 @@ impl V2AgentOrchestrator {
                         );
                         has_retried = true;
                         intents = vec!["FULL_REGISTRY".to_string()];
-                        system_prompt = build_system_prompt(&intents);
+                        if let Ok(new_prompt) = retrieval.generate_system_prompt(&self.current_user, &conversation, &intents, &memories_text).await {
+                            system_prompt = new_prompt;
+                        }
                         loop_count -= 1; // Retry this iteration
                         continue;
                     }
@@ -1069,87 +795,12 @@ impl V2AgentOrchestrator {
             self.state.clone(),
         );
 
-        let build_system_prompt = |intents_val: &[String]| -> String {
-            let mut combined = String::new();
-
-            let timezone_str = "Asia/Jakarta";
-            let tz: chrono_tz::Tz = timezone_str.parse().unwrap_or(chrono_tz::UTC);
-            let now_local = Utc::now().with_timezone(&tz);
-
-            // 🌟 HIGH-FIDELITY SYSTEM CONTEXT: Standardized tagging for background triggers
-            let (trigger_type, trigger_reason) = match &trigger {
-                ExecutionTrigger::UserRequested { reason } => ("USER_REQUESTED", reason),
-                ExecutionTrigger::ProactiveCheck { reason } => ("PROACTIVE_CHECK", reason),
-                ExecutionTrigger::SystemAlert { reason } => ("SYSTEM_ALERT", reason),
-            };
-
-            combined.push_str(&format!(
-                "- <SystemContext trigger=\"{}\" reason=\"{}\" timestamp=\"{}\" />\n",
-                trigger_type,
-                trigger_reason,
-                now_local.to_rfc3339()
-            ));
-
-            combined.push_str(crate::prompts::PromptRegistry::CORE_RULES);
-            combined.push_str(crate::prompts::PromptRegistry::BOUNDARIES);
-
-            let boot = workspace_bootstrap.clone().unwrap_or_default();
-            let soul = workspace_soul.clone().unwrap_or_default();
-
-            combined.push_str("### Identity Layer");
-            combined.push_str(&boot);
-            if !soul.is_empty() {
-                combined.push_str("### Current Personality/Soul");
-                combined.push_str(&soul);
-            }
-
-            combined.push_str(&format!(
-                "\
-            ### Current Contextual Time\n
-            - UTC: {}\n
-            - Local Time: {} ({})\n",
-                Utc::now().to_rfc3339(),
-                now_local.to_rfc3339(),
-                timezone_str
-            ));
-
-            combined.push_str("\n### Timezone Instructions]n");
-            combined.push_str(&format!(
-                "The user's current local time is {} ({}). When the user asks for a time like \"6:00\", assume they mean this local time and calculate the UTC equivalent for storage using the +07:00 offset or by converting from Asia/Jakarta. ALWAYS provide the due_at in ISO 8601 format including the local offset (e.g., {} ) for the tool call, but you can acknowledge the local time in your thoughts.\n",
-                now_local.format("%H:%M"),
-                timezone_str,
-                now_local.format("%Y-%m-%dT%H:%M:%S%z")
-            ));
-
-            combined.push_str("\n### Orchestrator Instructions\n");
-            combined.push_str(crate::prompts::PromptRegistry::orchestrator_instructions());
-
-            // Modular Domain Logic from Plugins
-            let mut domain_rules = String::new();
-            for plugin in dispatcher.plugins.values() {
-                let plugin_intents = plugin.matching_intents();
-                if intents_val
-                    .iter()
-                    .any(|i| plugin_intents.contains(&i.as_str()))
-                    || intents_val.contains(&"FULL_REGISTRY".to_string())
-                {
-                    let rules = plugin.rules();
-                    if !rules.is_empty() && !domain_rules.contains(rules) {
-                        domain_rules.push_str(rules);
-                    }
-                }
-            }
-            combined.push_str(&domain_rules);
-
-            if intents_val.contains(&"FULL_REGISTRY".to_string()) {
-                combined.push_str(crate::prompts::PromptRegistry::tool_usage_guidelines());
-            }
-
-            combined
-        };
+        let retrieval = crate::rag::RagRetrieval::new(self.state.clone(), dispatcher.clone());
 
         let intents_list = vec!["FULL_REGISTRY".to_string()];
-        let system_prompt = build_system_prompt(&intents_list);
+        let system_prompt = retrieval
+            .generate_system_task_prompt(&workspace_bootstrap, &workspace_soul, &trigger, &intents_list)
+            .await?;
 
         let incoming_ctx = json!({
             "is_group": false,

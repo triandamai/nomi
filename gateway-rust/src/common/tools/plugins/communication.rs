@@ -36,9 +36,10 @@ impl NomiToolPlugin for CommunicationPlugin {
 
     fn rules(&self) -> &str {
         "\n##OUTBOUND MESSAGING CORE RULES:\n\
-        1. When instructed to send a message to a user, you MUST always call the user search tool (`manage_user` with action 'search') first to obtain the target user's database UUID.\n\
-        2. Pass that database UUID directly into the 'user_id' field of this tool.\n\
-        3. If the user has multiple registered channels (e.g. WhatsApp and Telegram) and you did not specify a 'channel_type', the tool will ask for clarification. In that case, choose the correct channel or ask the human user."
+         1. When instructed to send a message to a user, you MUST always call the user search tool (`manage_user` with action 'search') first to obtain the target user's database UUID.\n\
+         2. Pass that database UUID directly into the 'user_id' field of this tool.\n\
+         3. If the user has multiple registered channels (e.g. WhatsApp and Telegram) and you did not specify a 'channel_type', the tool will ask for clarification. In that case, choose the correct channel or ask the human user.\n\
+         4. NO CHANNEL IS NOT A LIMITATION: If a target user has NO registered database channels (e.g., no WhatsApp/Telegram), do NOT abort, do NOT stop, and do NOT tell the user about a channel limitation. Nomi fully supports web, mobile, email, and virtual app inbox channels; the system will automatically fall back to these. Keep proceeding and call this tool normally. ONLY ask for clarification if there is MORE than one active channel."
     }
 
     fn matching_intents(&self) -> &[&str] {

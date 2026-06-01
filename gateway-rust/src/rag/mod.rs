@@ -1,4 +1,6 @@
 pub mod rag_model;
+pub mod retrieval;
+pub use retrieval::RagRetrieval;
 
 use crate::prompts::PromptRegistry;
 use crate::rag::rag_model::EmbeddingResponse;

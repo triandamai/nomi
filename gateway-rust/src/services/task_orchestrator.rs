@@ -3,7 +3,6 @@ use crate::common::tools::ToolDispatcher;
 use crate::common::repository::message_repo::save_message;
 use crate::feature::message_processor::v2_orchestrator::send_message_to_subscriber;
 use crate::feature::MessageSource;
-use crate::rag::get_embedding;
 use serde_json::{json, Value};
 use tracing::{error, info};
 use uuid::Uuid;
@@ -19,12 +18,6 @@ struct TaskInfo {
     sub_conversation_id: Option<Uuid>,
     soul_content: Option<String>,
     bootstrap_content: Option<String>,
-}
-
-#[derive(sqlx::FromRow)]
-struct HistoricalTurn {
-    role: String,
-    content: String,
 }
 
 #[allow(dead_code)]
@@ -94,64 +87,6 @@ pub async fn advanced_orchestrate_task_step(
         let checkpoints = task.checkpoints;
         let mut sub_conversation_id = task.sub_conversation_id;
 
-        // 2. Fetch Twin chronological conversation history contexts (Step 3)
-        // A. Fetch last 15 messages from Parent Conversation (Owner)
-        let parent_turns = sqlx::query_as::<_, HistoricalTurn>(
-            "SELECT role, content FROM ( \
-                 SELECT role, content, created_at FROM messages \
-                 WHERE conversation_id = $1 \
-                 ORDER BY created_at DESC LIMIT 15 \
-             ) sub ORDER BY created_at ASC"
-        )
-        .bind(conversation_id)
-        .fetch_all(&pool)
-        .await?;
-
-        let parent_history = parent_turns
-            .into_iter()
-            .map(|m| format!("[{}]: {}", m.role, m.content))
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        // B. Fetch last 15 messages from Sub-Conversation (Target) if exists
-        let sub_history = if let Some(sub_convo_id) = sub_conversation_id {
-            let sub_turns = sqlx::query_as::<_, HistoricalTurn>(
-                "SELECT role, content FROM ( \
-                     SELECT role, content, created_at FROM messages \
-                     WHERE conversation_id = $1 \
-                     ORDER BY created_at DESC LIMIT 15 \
-                 ) sub ORDER BY created_at ASC"
-            )
-            .bind(sub_convo_id)
-            .fetch_all(&pool)
-            .await?;
-
-            sub_turns
-                .into_iter()
-                .map(|m| format!("[{}]: {}", m.role, m.content))
-                .collect::<Vec<String>>()
-                .join("\n")
-        } else {
-            "No active sub-conversation mapped yet.".to_string()
-        };
-
-        // 3. Contextual Timeline Log Rehydration (Scratchpad Memory) using non-macro query_as
-        let previous_logs = sqlx::query_as::<_, TimelineLog>(
-            "SELECT step_index, event_type, log_content, raw_payload FROM autonomous_task_logs \
-             WHERE task_id = $1 ORDER BY created_at ASC"
-        )
-        .bind(task_id)
-        .fetch_all(&pool)
-        .await?;
-
-        let mut scratchpad = String::new();
-        for log in &previous_logs {
-            scratchpad.push_str(&format!(
-                "[Step {}] EVENT: '{}' | Details: {}\n",
-                log.step_index, log.event_type, log.log_content
-            ));
-        }
-
         // 4. Structured User Profile & RAG Memory Scan (Proactive Data Retrieval) using non-macro query_as
         let mut owner_row = sqlx::query_as::<_, OwnerInfo>(
             "SELECT u.id, u.display_name, u.email FROM users u \
@@ -175,13 +110,77 @@ pub async fn advanced_orchestrate_task_step(
         let user_display_name = owner_row.as_ref().map(|o| o.display_name.clone().unwrap_or_default()).unwrap_or_else(|| "Trian".to_string());
         let user_email = owner_row.as_ref().map(|o| o.email.clone().unwrap_or_default()).unwrap_or_default();
 
-        // Perform RAG vector lookup for user context preferences
+        // Build the dynamic ToolDispatcher to execute Nomi tools in the background context
+        let dispatcher = ToolDispatcher::new(
+            pool.clone(),
+            std::path::PathBuf::from("."),
+            owner_row.as_ref().map(|o| o.id), // Use the actual authentic owner user ID!
+            Some(conversation_id),
+            state.gemini.clone(),
+            state.gemini_api_key.clone(),
+            state.storage.clone(),
+            state.clone(),
+        );
+
+        // Instantiate the universal RagRetrieval context builder
+        let retrieval = crate::rag::RagRetrieval::new(state.clone(), dispatcher.clone())
+            .with_history(15)
+            .with_simple_history(true);
+
+        // 2. Fetch Twin chronological conversation history contexts (Step 3)
+        // A. Fetch last 15 messages from Parent Conversation (Owner) via universal retrieval
+        let parent_history = retrieval.fetch_history().await?;
+
+        // B. Fetch last 15 messages from Sub-Conversation (Target) if exists via universal retrieval
+        let sub_history = if let Some(sub_convo_id) = sub_conversation_id {
+            let sub_dispatcher = ToolDispatcher::new(
+                pool.clone(),
+                std::path::PathBuf::from("."),
+                owner_row.as_ref().map(|o| o.id),
+                Some(sub_convo_id),
+                state.gemini.clone(),
+                state.gemini_api_key.clone(),
+                state.storage.clone(),
+                state.clone(),
+            );
+
+            let sub_retrieval = crate::rag::RagRetrieval::new(state.clone(), sub_dispatcher)
+                .with_history(15)
+                .with_simple_history(true);
+
+            sub_retrieval.fetch_history().await.unwrap_or_default()
+        } else {
+            "No active sub-conversation mapped yet.".to_string()
+        };
+
+        // 3. Contextual Timeline Log Rehydration (Scratchpad Memory) using non-macro query_as
+        let previous_logs = sqlx::query_as::<_, TimelineLog>(
+            "SELECT step_index, event_type, log_content, raw_payload FROM autonomous_task_logs \
+             WHERE task_id = $1 ORDER BY created_at ASC"
+        )
+        .bind(task_id)
+        .fetch_all(&pool)
+        .await?;
+
+        let mut scratchpad = String::new();
+        for log in &previous_logs {
+            scratchpad.push_str(&format!(
+                "[Step {}] EVENT: '{}' | Details: {}\n",
+                log.step_index, log.event_type, log.log_content
+            ));
+        }
+
+        // Perform RAG vector lookup for user context preferences via universal retrieval
         let mut rag_context = String::new();
-        if let Ok(embedding_res) = get_embedding(&state.gemini_api_key, &global_goal).await {
-            if let Ok(similar_records) = crate::rag::search_similar(&pool, embedding_res.embedding.values, 3).await {
-                for record in similar_records {
-                    rag_context.push_str(&format!("* {}\n", record.content));
-                }
+        let memories_text = retrieval.clone()
+            .with_retrieval(global_goal.clone())
+            .fetch_memories()
+            .await
+            .unwrap_or_default();
+
+        if !memories_text.is_empty() {
+            for record in memories_text.split("---") {
+                rag_context.push_str(&format!("* {}\n", record));
             }
         }
 
@@ -236,18 +235,6 @@ pub async fn advanced_orchestrate_task_step(
             checkpoints,
             scratchpad,
             current_step_index
-        );
-
-        // Build the dynamic ToolDispatcher to execute Nomi tools in the background context
-        let dispatcher = ToolDispatcher::new(
-            pool.clone(),
-            std::path::PathBuf::from("."),
-            owner_row.as_ref().map(|o| o.id), // Use the actual authentic owner user ID!
-            Some(conversation_id),
-            state.gemini.clone(),
-            state.gemini_api_key.clone(),
-            state.storage.clone(),
-            state.clone(),
         );
 
         let send_res = crate::common::agent::send_prompt(

@@ -17,6 +17,40 @@ use std::collections::HashMap;
 use tokio_stream::StreamExt;
 use tracing::{error, info};
 
+pub async fn send_prompt_with_retrieval(
+    builder: crate::rag::RagRetrieval,
+) -> Result<(gemini_rust::GenerationResponse, ChatStreamChunk), String> {
+    let dispatcher = builder.dispatcher.clone();
+    let intents = builder.intents.clone();
+
+    // 1. Resolve context dynamically
+    let (history, memories) = builder.execute().await
+        .map_err(|e| format!("Context assembly failed: {}", e))?;
+
+    // 2. Wrap under existing PromptActor abstractions
+    let actor = if builder.tool_turns.is_empty() {
+        PromptActor::User {
+            history,
+            memories,
+            message: builder.message,
+            system_prompt: builder.system_prompt,
+            media: builder.media,
+        }
+    } else {
+        PromptActor::MultiTool {
+            history,
+            memories,
+            message: builder.message,
+            system_prompt: builder.system_prompt,
+            tool_turns: builder.tool_turns,
+            media: builder.media,
+        }
+    };
+
+    // 3. Execute prompt cleanly
+    send_prompt(&dispatcher, actor, &intents).await
+}
+
 pub async fn send_prompt(
     dispatcher: &ToolDispatcher,
     actor: PromptActor,

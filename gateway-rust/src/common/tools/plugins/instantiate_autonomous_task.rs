@@ -12,7 +12,7 @@ impl NomiToolPlugin for InstantiateAutonomousTaskPlugin {
     fn schema(&self) -> Value {
         json!({
             "name": "instantiate_autonomous_task",
-            "description": "Spawns an autonomous, background-threaded agent loop to execute a multi-step task or order. Returns the task UUID, which is saved in metadata.",
+            "description": "Spawns an autonomous, background-threaded background worker/agent loop to execute a multi-step task, background chore, monitoring task, recurring schedule, booking, research pipeline, or complex messaging order. Use this when the user asks you to do anything complex, multi-step, research-oriented, or requiring continuous background checking, so Nomi can handle it autonomously in the background.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -49,7 +49,8 @@ impl NomiToolPlugin for InstantiateAutonomousTaskPlugin {
 
     fn rules(&self) -> &str {
         "\n## AUTONOMOUS TASK LAUNCH RULES:\n\
-         1. Call this tool when the user requests a complex, multi-step chore (e.g. booking, ordering, searching, scheduling, contacting team members).\n\
+         1. Proactively call this tool when the user requests a multi-step project, chore, background research, monitoring task, booking, or messaging sequence. \
+            Do NOT wait for the user to explicitly ask you to start an autonomous task or wait for confirmation. If the request is complex, multi-step, or needs background/proactive operations, decide to launch it immediately!\n\
          2. Always formulate a sequential plan divided into logical checkpoints before invoking this tool.\n\
          3. Ensure the source_message_id maps precisely to the triggering message UUID to enable rich history context."
      }
@@ -99,6 +100,75 @@ impl NomiToolPlugin for InstantiateAutonomousTaskPlugin {
 
                 parsed_source_msg = latest_msg_id;
             }
+
+            // --- DEDUPLICATION & RECURSION PREVENTION LOCKS ---
+            // 1. Prevent duplicate tasks for the exact same source triggering message
+            if let Some(source_msg_id) = parsed_source_msg {
+                let existing_task = sqlx::query(
+                    "SELECT id, status FROM autonomous_tasks WHERE source_message_id = $1 LIMIT 1"
+                )
+                .bind(source_msg_id)
+                .fetch_optional(&dispatcher.pool)
+                .await?;
+
+                if let Some(row) = existing_task {
+                    use sqlx::Row;
+                    let task_uuid: Uuid = row.get("id");
+                    let status: String = row.get("status");
+
+                    let res_content = format!(
+                        "Blocked: An autonomous task has already been spawned for source message ID '{}'. \
+                         Existing Task ID: '{}' has status '{}'. Duplicate prevention is active to prevent recursion loops.",
+                        source_msg_id, task_uuid, status
+                    );
+                    return Ok(ToolResult {
+                        error: "".to_string(),
+                        success: true,
+                        content: res_content,
+                        follow_up_prompt: format!(
+                            "Explain to the user that the background workflow for '{}' was already initiated (Task ID: '{}', status: '{}'). \
+                             If it failed with an error, do NOT try to spawn it again. Ask the user if they want you to retry/restart the existing task or how they want to proceed.",
+                            title, task_uuid, status
+                        ),
+                        ref_id: task_uuid.to_string(),
+                    });
+                }
+            }
+
+            // 2. Prevent duplicate concurrent active tasks with the same title in the same conversation
+            let active_task = sqlx::query(
+                "SELECT id, status FROM autonomous_tasks \
+                 WHERE conversation_id = $1 AND title = $2 \
+                 AND status IN ('running', 'paused_for_input', 'waiting_external_feedback') LIMIT 1"
+            )
+            .bind(conversation_id)
+            .bind(title)
+            .fetch_optional(&dispatcher.pool)
+            .await?;
+
+            if let Some(row) = active_task {
+                use sqlx::Row;
+                let task_uuid: Uuid = row.get("id");
+                let status: String = row.get("status");
+
+                let res_content = format!(
+                    "Blocked: A background task with the title '{}' is already active in this conversation. \
+                     Active Task ID: '{}', current status: '{}'.",
+                    title, task_uuid, status
+                );
+                return Ok(ToolResult {
+                    error: "".to_string(),
+                    success: true,
+                    content: res_content,
+                    follow_up_prompt: format!(
+                        "Inform the user that the background task '{}' (Task ID: '{}') is already active in this conversation with status '{}'. \
+                         Explain that they can watch its progress live in the side-panel and that you cannot spawn a duplicate active task.",
+                        title, task_uuid, status
+                    ),
+                    ref_id: task_uuid.to_string(),
+                });
+            }
+            // --------------------------------------------------
 
             // 1. Write the new task to the main ledger database using non-macro query_scalar
             let task_uuid = sqlx::query_scalar::<_, Uuid>(
